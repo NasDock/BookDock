@@ -1,0 +1,214 @@
+import React, { useEffect } from 'react';
+import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
+import { useAuth, AuthProvider } from '@bookdock/auth';
+import { initApiClient } from '@bookdock/api-client';
+import { Button } from '@bookdock/ui';
+
+// Pages
+import Library from './pages/Library';
+import Reader from './pages/Reader';
+import ReaderTTS from './pages/Reader-TTS';
+import Settings from './pages/Settings';
+import Login from './pages/Login';
+import Admin from './pages/Admin';
+
+// Stores
+import { useLibraryStore } from './stores/libraryStore';
+import { useThemeStore } from './stores/themeStore';
+
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+      </div>
+    );
+  }
+
+  if (user?.role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function Layout({ children }: { children: React.ReactNode }) {
+  const { user, logout, isAuthenticated } = useAuth();
+  const location = useLocation();
+  const { theme, toggleTheme } = useThemeStore();
+
+  if (!isAuthenticated) {
+    return <>{children}</>;
+  }
+
+  const navItems = [
+    { path: '/', label: '书库', icon: '📚' },
+    { path: '/settings', label: '设置', icon: '⚙️' },
+  ];
+
+  if (user?.role === 'admin') {
+    navItems.push({ path: '/admin', label: '管理', icon: '🔧' });
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Header */}
+      <header className="sticky top-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center space-x-8">
+              <Link to="/" className="flex items-center space-x-2">
+                <span className="text-2xl">📖</span>
+                <span className="text-xl font-bold text-gray-900 dark:text-white">书仓</span>
+              </Link>
+              <nav className="flex space-x-1">
+                {navItems.map((item) => (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      location.pathname === item.path
+                        ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <span className="mr-1">{item.icon}</span>
+                    {item.label}
+                  </Link>
+                ))}
+              </nav>
+            </div>
+
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                aria-label="Toggle theme"
+              >
+                {theme === 'dark' ? '☀️' : '🌙'}
+              </button>
+
+              <div className="flex items-center space-x-3">
+                <span className="text-sm text-gray-600 dark:text-gray-400">
+                  {user?.username}
+                  {user?.membership === 'premium' && (
+                    <span className="ml-2 px-2 py-0.5 text-xs bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-full">
+                      Premium
+                    </span>
+                  )}
+                </span>
+                <Button variant="ghost" size="sm" onClick={logout}>
+                  退出
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Main content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {children}
+      </main>
+    </div>
+  );
+}
+
+function AppContent() {
+  const { isAuthenticated } = useAuth();
+
+  return (
+    <Layout>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <Library />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/book/:id"
+          element={
+            <ProtectedRoute>
+              <Reader />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/book/:id/tts"
+          element={
+            <ProtectedRoute>
+              <ReaderTTS />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <Settings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/*"
+          element={
+            <AdminRoute>
+              <Admin />
+            </AdminRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Layout>
+  );
+}
+
+export default function App() {
+  const { token } = useAuth();
+
+  useEffect(() => {
+    // Initialize API client
+    initApiClient({
+      baseURL: apiBaseUrl,
+      getAuthToken: () => token || localStorage.getItem('bookdock_auth_token'),
+      onAuthError: () => {
+        localStorage.removeItem('bookdock_auth_token');
+        localStorage.removeItem('bookdock_auth_user');
+        window.location.href = '/login';
+      },
+    });
+  }, [token]);
+
+  return (
+    <AuthProvider apiBaseUrl={apiBaseUrl}>
+      <AppContent />
+    </AuthProvider>
+  );
+}

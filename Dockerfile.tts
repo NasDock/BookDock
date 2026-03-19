@@ -1,0 +1,127 @@
+# =============================================================================
+# BookDock TTS Service - Piper TTS Docker
+# =============================================================================
+# Piper TTS: Fast, local neural TTS - ideal for NAS (low RAM/CPU footprint)
+# Website: https://github.com/rhasspy/piper
+#
+# Build:  docker build -f Dockerfile.tts -t bookdock-tts .
+# Run:    docker run -d bookdock-tts
+#
+# Supported voices: see https://github.com/rhasspy/piper/tree/master/src/piper_train#vo
+# Quick picks for English: en_US-lessac-medium, en_US-lessac-medium.onnx
+# Chinese support: zh_CN-huayan-medium (if available)
+# =============================================================================
+
+FROM python:3.11-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+# ── Stage 1: Build / Install ─────────────────────────────────────────────────
+FROM base AS builder
+
+# Install system build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libespeak1 \
+    libsndfile1 \
+    espeak-ng \
+    curl \
+    sox \
+    libsox-fmt-mp3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip and install Python deps
+RUN pip install --upgrade pip setuptools wheel
+
+# Install piper
+# Using the official piper-phonemize wheel (includes phoneme support)
+RUN pip install \
+    piper-tts \
+    onnxruntime \
+    gunicorn \
+    fastapi \
+    uvicorn \
+    redis \
+    pydantic \
+    aiofiles \
+    && rm -rf /root/.cache/pip
+
+# Download default voice model (English - lessac medium quality)
+# Voice models: https://github.com/rhasspy/piper/releases
+ENV PIPER_MODEL="en_US-lessac-medium"
+ENV PIPER_MODEL_URL="https://github.com/rhasspy/piper/releases/download/2023.11.14/en_US-lessac-medium.onnx"
+ENV PIPER_MODEL_JSON_URL="https://github.com/rhasspy/piper/releases/download/2023.11.14/en_US-lessac-medium.onnx.json"
+
+RUN mkdir -p /models && \
+    curl -L -o /models/voice.onnx "$PIPER_MODEL_URL" && \
+    curl -L -o /models/voice.onnx.json "$PIPER_MODEL_JSON_URL"
+
+
+# ── Stage 2: Production Runtime ──────────────────────────────────────────────
+FROM base AS runner
+
+LABEL org.opencontainers.image.title="BookDock TTS Service"
+LABEL org.opencontainers.image.description="Piper TTS engine for BookDock audio reading"
+LABEL maintainer="BookDock Team"
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libespeak1 \
+    libsndfile1 \
+    espeak-ng \
+    sox \
+    libsox-fmt-mp3 \
+    curl \
+    tini \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# Copy piper from builder
+COPY --from=builder /usr/local/lib/python3.11/dist-packages /usr/local/lib/python3.11/dist-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+COPY --from=builder /models /models
+
+# Install gunicorn + fastapi deps in runner (clean env)
+RUN pip install --no-cache-dir \
+    gunicorn \
+    fastapi \
+    uvicorn \
+    redis \
+    pydantic \
+    aiofiles \
+    piper-tts \
+    onnxruntime
+
+# Create non-root user
+RUN groupadd -r bookdock && useradd -r -g bookdock bookdock && \
+    mkdir -p /data/audio /root/.cache/piper && \
+    chown -R bookdock:bookdock /data /models /root/.cache
+
+WORKDIR /app
+
+# Copy TTS service code
+COPY --chmod=755 tts-service/ ./tts-service/
+
+# Pin voice model from environment
+ENV PIPER_VOICE_PATH="/models/voice.onnx"
+ENV PIPER_SAMPLE_RATE=22050
+ENV PIPER_PORT=5000
+
+USER bookdock
+
+EXPOSE 5000
+
+HEALTHCHECK --interval=30s --timeout=15s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
+
+ENTRYPOINT ["tini", "--", "python", "-m", "tts_service"]
+
+
+# ── Optional: Unused Coqui TTS stage (much heavier, ~8GB image)
+# ── Kept as reference if piper quality is insufficient
+# FROM nvidia/cuda:11.8-cudnn8-runtime-ubuntu22.04 AS coqui-builder
+# ...

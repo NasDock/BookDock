@@ -1,0 +1,278 @@
+# BookDock (书仓) - Docker Compose Configuration
+# Production-ready deployment for NAS (Synology, QNAP, Unraid)
+#
+# Usage:
+#   cp .env.example .env
+#   # Edit .env with your NAS-specific paths and credentials
+#   docker-compose up -d
+#
+# Services exposed via nginx reverse proxy:
+#   - Web UI:        http://<host>:80
+#   - API:          http://<host>:80/api
+#   - WebSocket:    http://<host>:80/ws
+
+version: "3.9"
+
+services:
+  # ---------------------------------------------------------------------------
+  # Nginx Reverse Proxy
+  # ---------------------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: bookdock-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ${NAS_CERT_PATH:-./certbot/conf}:/etc/letsencrypt:ro
+      - ${NAS_CERT_WWW_PATH:-./certbot/www}:/var/www/certbot:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      tts:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/health", "-o", "/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - bookdock
+
+  # ---------------------------------------------------------------------------
+  # API Server (Node.js / Fastify)
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+      target: builder
+    container_name: bookdock-api
+    restart: unless-stopped
+    command: node dist/server.js
+    environment:
+      NODE_ENV: production
+      # Database
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      # Redis
+      REDIS_URL: redis://redis:6379
+      # JWT
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRY: ${JWT_EXPIRY:-7d}
+      # NAS Paths
+      NAS_EBOOK_PATH: ${NAS_EBOOK_PATH}
+      NAS_AUDIO_PATH: ${NAS_AUDIO_PATH}
+      # TTS Service
+      TTS_API_URL: http://tts:5000
+      # App
+      PORT: 3000
+      API_BASE_URL: ${API_BASE_URL:-http://localhost}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+    volumes:
+      - ${NAS_EBOOK_PATH}:/data/ebooks:ro
+      - ${NAS_AUDIO_PATH}:/data/audio
+      - api uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/health", "-o", "/dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - bookdock
+
+  # ---------------------------------------------------------------------------
+  # Ebook Indexer Worker
+  # ---------------------------------------------------------------------------
+  indexer:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+      target: builder
+    container_name: bookdock-indexer
+    restart: unless-stopped
+    command: node dist/workers/indexer.js
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      NAS_EBOOK_PATH: ${NAS_EBOOK_PATH}
+      # Polling interval for scanning new books (seconds)
+      INDEXER_SCAN_INTERVAL: ${INDEXER_SCAN_INTERVAL:-300}
+    volumes:
+      - ${NAS_EBOOK_PATH}:/data/ebooks:ro
+      - indexer-meta:/app/meta
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - bookdock
+    # Indexer doesn't need exposed ports; runs as background worker
+
+  # ---------------------------------------------------------------------------
+  # TTS Worker (Coqui / Piper based)
+  # ---------------------------------------------------------------------------
+  tts:
+    build:
+      context: .
+      dockerfile: Dockerfile.tts
+    container_name: bookdock-tts
+    restart: unless-stopped
+    environment:
+      # Piper TTS config
+      PIPER_MODEL: ${TTS_PIPER_MODEL:-en_US-lessac-medium}
+      PIPER_PORT: 5000
+      # Or Coqui TTS
+      COQUI_MODEL: ${TTS_COQUI_MODEL:-}
+      TTS_VOICE: ${TTS_VOICE:-lessac}
+      TTS_LANGUAGE: ${TTS_LANGUAGE:-en}
+      TTS_SAMPLE_RATE: ${TTS_SAMPLE_RATE:-22050}
+      # Redis for job queue
+      REDIS_URL: redis://redis:6379
+      # Worker concurrency
+      TTS_CONCURRENCY: ${TTS_CONCURRENCY:-2}
+    volumes:
+      - ${NAS_AUDIO_PATH}:/data/audio
+      - tts-models:/models
+      - tts-cache:/root/.cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+    networks:
+      - bookdock
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL Database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: bookdock-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-bookdock}
+      POSTGRES_USER: ${POSTGRES_USER:-bookdock}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bookdock} -d ${POSTGRES_DB:-bookdock}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - bookdock
+    # NAS-friendly: optional external volume mount
+    # volumes:
+    #   - /volume1/docker/bookdock/postgres-data:/var/lib/postgresql/data
+
+  # ---------------------------------------------------------------------------
+  # Redis Cache
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: bookdock-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory ${REDIS_MAXMEMORY:-256mb}
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - bookdock
+
+  # ---------------------------------------------------------------------------
+  # Certbot (for HTTPS certificates - optional)
+  # ---------------------------------------------------------------------------
+  certbot:
+    image: certbot/certbot:latest
+    container_name: bookdock-certbot
+    restart: unless-stopped
+    volumes:
+      - ${NAS_CERT_PATH:-./certbot/conf}:/etc/letsencrypt:rw
+      - ${NAS_CERT_WWW_PATH:-./certbot/www}:/var/www/certbot:rw
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do sleep 6h; certbot renew; done &'"
+    networks:
+      - bookdock
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  bookdock:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.0.0/16
+
+# ---------------------------------------------------------------------------
+# Volumes (NAS: map these to host paths for persistence)
+# ---------------------------------------------------------------------------
+volumes:
+  postgres-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NAS_POSTGRES_PATH:-./data/postgres}
+  redis-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NAS_REDIS_PATH:-./data/redis}
+  tts-models:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NAS_TTS_MODELS_PATH:-./data/tts-models}
+  tts-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NAS_TTS_CACHE_PATH:-./data/tts-cache}
+  indexer-meta:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NAS_INDEXER_META_PATH:-./data/indexer-meta}
+  api-uploads:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NAS_UPLOADS_PATH:-./data/uploads}

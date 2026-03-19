@@ -1,0 +1,352 @@
+// =============================================================================
+// BookDock - Prisma Schema
+// =============================================================================
+// This schema maps to the PostgreSQL database defined in scripts/init-db.sql
+// Run `npx prisma generate` after modifying this file.
+// Run `npx prisma db push` to sync schema changes to the database.
+// Run `npx prisma migrate dev` to create migrations.
+// =============================================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["fullTextSearch", "fullTextIndex", "relationJunctionTableId"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// Enums (map to PostgreSQL ENUMs)
+// =============================================================================
+
+enum UserRole {
+  admin
+  user
+  guest
+}
+
+enum BookFormat {
+  epub
+  pdf
+  mobi
+  azw3
+  fb2
+  txt
+  djvu
+  other
+}
+
+enum ReadingStatus {
+  unread
+  reading
+  completed
+  abandoned
+}
+
+enum TtsJobStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+enum TtsVoiceGender {
+  male
+  female
+  neutral
+}
+
+// =============================================================================
+// Models
+// =============================================================================
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique @db.VarChar(255)
+  username      String    @unique @db.VarChar(100)
+  passwordHash  String    @map("password_hash") @db.VarChar(255)
+  displayName   String?   @map("display_name") @db.VarChar(200)
+  role          UserRole  @default(user)
+  avatarUrl     String?   @map("avatar_url")
+  preferences   Json      @default("{}")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  lastLoginAt   DateTime? @map("last_login_at") @db.Timestamptz
+  isActive      Boolean   @default(true) @map("is_active")
+
+  // Relations
+  collections        Collection[]
+  readingProgress    ReadingProgress[]
+  bookmarks          Bookmark[]
+  ttsJobs            TtsJob[]
+  ttsAudioFiles      TtsAudioFile[]
+  sessions           Session[]
+  apiKeys            ApiKey[]
+
+  @@map("users")
+}
+
+model Book {
+  id            String      @id @default(uuid()) @db.Uuid
+  title         String      @db.VarChar(500)
+  author        String?     @db.VarChar(500)
+  authorSort    String?     @map("author_sort") @db.VarChar(500)
+  description   String?     @db.Text
+  isbn          String?     @map("isbn") @db.VarChar(20)
+  publisher     String?     @db.VarChar(300)
+  publishedDate DateTime?   @map("published_date") @db.Date
+  language      String      @default("en") @db.VarChar(10)
+  format        BookFormat  @default(other)
+  filePath      String      @map("file_path") @db.Text
+  fileHash      String?     @map("file_hash") @db.VarChar(64)
+  fileSize      BigInt?     @map("file_size")
+  pageCount     Int?        @map("page_count")
+  coverUrl      String?     @map("cover_url") @db.Text
+  metadata      Json        @default("{}")
+  readCount     Int         @default(0) @map("read_count")
+  downloadCount Int         @default(0) @map("download_count")
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  isDeleted     Boolean     @default(false) @map("is_deleted")
+
+  // Full-text search (PostgreSQL tsvector - managed via raw SQL trigger)
+  // ftsVector     Unsupported("tsvector")?
+
+  // Relations
+  collectionItems CollectionItem[]
+  readingProgress ReadingProgress[]
+  bookmarks      Bookmark[]
+  ttsJobs        TtsJob[]
+  ttsAudioFiles  TtsAudioFile[]
+  bookTags       BookTag[]
+
+  @@index([title])
+  @@index([author])
+  @@index([authorSort])
+  @@index([format])
+  @@index([language])
+  @@index([createdAt(sort: Desc)])
+  @@index([fileHash])
+  @@map("books")
+}
+
+model Collection {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  name        String    @db.VarChar(200)
+  description String?   @db.Text
+  coverUrl    String?   @map("cover_url") @db.Text
+  isPublic    Boolean   @default(false) @map("is_public")
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items  CollectionItem[]
+
+  @@index([userId])
+  @@map("collections")
+}
+
+model CollectionItem {
+  id           String   @id @default(uuid()) @db.Uuid
+  collectionId String   @map("collection_id") @db.Uuid
+  bookId       String   @map("book_id") @db.Uuid
+  sortOrder    Int      @default(0) @map("sort_order")
+  addedAt      DateTime @default(now()) @map("added_at") @db.Timestamptz
+
+  // Relations
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  book       Book       @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, bookId])
+  @@index([collectionId])
+  @@index([bookId])
+  @@map("collection_items")
+}
+
+model ReadingProgress {
+  id            String        @id @default(uuid()) @db.Uuid
+  userId        String        @map("user_id") @db.Uuid
+  bookId        String        @map("book_id") @db.Uuid
+  status        ReadingStatus @default(unread)
+  // EPUB location
+  epubCfi       String?       @map("epub_cfi") @db.Text
+  // PDF location
+  pdfPage       Int?          @map("pdf_page")
+  // Mobi location
+  mobiLocation  Int?          @map("mobi_location")
+  // Progress
+  progressPct   Decimal       @default(0) @map("progress_pct") @db.Decimal(5, 2)
+  timeSpentSecs Int           @default(0) @map("time_spent_secs")
+  lastReadAt    DateTime?     @map("last_read_at") @db.Timestamptz
+  bookmarkNote  String?       @map("bookmark_note") @db.Text
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bookId])
+  @@index([userId])
+  @@index([bookId])
+  @@index([lastReadAt(sort: Desc)])
+  @@map("reading_progress")
+}
+
+model Bookmark {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  bookId         String    @map("book_id") @db.Uuid
+  title          String?   @db.VarChar(200)
+  location       String    @db.Text
+  locationType   String    @default("cfi") @map("location_type") @db.VarChar(20)
+  note           String?   @db.Text
+  highlightText  String?   @map("highlight_text") @db.Text
+  highlightColor String?   @map("highlight_color") @db.VarChar(20)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([bookId])
+  @@map("bookmarks")
+}
+
+model TtsJob {
+  id          String        @id @default(uuid()) @db.Uuid
+  userId      String?       @map("user_id") @db.Uuid
+  bookId      String?       @map("book_id") @db.Uuid
+  status      TtsJobStatus  @default(pending)
+  voice       String        @default("en_US-lessac-medium")
+  gender      TtsVoiceGender @default(neutral)
+  sampleRate  Int           @default(22050)
+  startCfi    String?       @map("start_cfi") @db.Text
+  endCfi      String?       @map("end_cfi") @db.Text
+  outputPath  String?       @map("output_path") @db.Text
+  outputUrl   String?       @map("output_url") @db.Text
+  fileSize    BigInt?       @map("file_size")
+  durationSecs Decimal?     @map("duration_secs") @db.Decimal(10, 2)
+  errorMessage String?      @map("error_message") @db.Text
+  retryCount  Int           @default(0) @map("retry_count")
+  maxRetries Int            @default(3) @map("max_retries")
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  startedAt   DateTime?     @map("started_at") @db.Timestamptz
+  completedAt DateTime?     @map("completed_at") @db.Timestamptz
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+  book Book? @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([bookId])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+  @@map("tts_jobs")
+}
+
+model TtsAudioFile {
+  id            String    @id @default(uuid()) @db.Uuid
+  bookId        String    @map("book_id") @db.Uuid
+  userId        String?   @map("user_id") @db.Uuid
+  filePath      String    @map("file_path") @db.Text
+  fileUrl       String?   @map("file_url") @db.Text
+  fileSize      BigInt?   @map("file_size")
+  durationSecs  Decimal?  @map("duration_secs") @db.Decimal(10, 2)
+  voice         String?   @db.VarChar(100)
+  sampleRate    Int?      @map("sample_rate")
+  startCfi      String?   @map("start_cfi") @db.Text
+  endCfi        String?   @map("end_cfi") @db.Text
+  contentHash   String?   @map("content_hash") @db.VarChar(64)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  book Book?  @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([bookId])
+  @@index([userId])
+  @@map("tts_audio_files")
+}
+
+model Tag {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String    @unique @db.VarChar(100)
+  color     String?   @db.VarChar(20)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  bookTags BookTag[]
+
+  @@map("tags")
+}
+
+model BookTag {
+  bookId String @map("book_id") @db.Uuid
+  tagId  String @map("tag_id") @db.Uuid
+
+  // Relations
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([bookId, tagId])
+  @@index([bookId])
+  @@index([tagId])
+  @@map("book_tags")
+}
+
+model Session {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  refreshToken String    @map("refresh_token") @db.VarChar(500)
+  userAgent    String?   @map("user_agent") @db.Text
+  ipAddress    String?   @map("ip_address") @db.Inet
+  expiresAt    DateTime  @map("expires_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([refreshToken])
+  @@map("sessions")
+}
+
+model ApiKey {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  name        String    @db.VarChar(200)
+  keyHash     String    @map("key_hash") @db.VarChar(64)
+  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz
+  expiresAt   DateTime? @map("expires_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  isActive    Boolean   @default(true) @map("is_active")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
+model IndexerJob {
+  id          String    @id @default(uuid()) @db.Uuid
+  filePath    String    @map("file_path") @db.Text
+  priority    Int       @default(0)
+  status      String    @default("pending") @db.VarChar(20)
+  attempts    Int       @default(0)
+  error       String?   @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  processedAt DateTime? @map("processed_at") @db.Timestamptz
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("indexer_jobs")
+}

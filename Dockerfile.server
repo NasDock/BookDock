@@ -1,0 +1,114 @@
+# =============================================================================
+# BookDock API Server - Multi-stage Dockerfile
+# =============================================================================
+# Build:  docker build -f Dockerfile.server -t bookdock-server .
+# Run:    docker run -d bookdock-server
+#
+# Targets:
+#   builder   - installs deps, compiles TypeScript
+#   runner    - production runtime image (default)
+# =============================================================================
+
+# ── Stage 1: Dependencies ────────────────────────────────────────────────────
+FROM node:22-alpine AS deps
+
+WORKDIR /app
+
+# Install build tools
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    # Sharp native dependencies for image processing
+    vips-dev \
+    # PDF processing
+    mupdf-tools \
+    # EPUB processing
+    unzip \
+    && rm -rf /var/cache/apk/*
+
+# Copy package files
+COPY package.json package-lock.json* ./
+
+# Install dependencies (prefer npm ci for reproducible builds)
+RUN npm ci --only=production --ignore-scripts || npm install --only=production --ignore-scripts
+
+
+# ── Stage 2: Builder ─────────────────────────────────────────────────────────
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+# Install build tools
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    vips-dev \
+    mupdf-tools \
+    unzip
+
+# Copy deps from previous stage (layer cache optimization)
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+
+# Prisma generate (before compile, so schema changes trigger rebuild)
+COPY apps/server/prisma ./apps/server/prisma
+RUN npx prisma generate
+
+# TypeScript compile
+COPY apps/server/src ./apps/server/src
+COPY tsconfig.json ./
+RUN npm run build --workspace=apps/server
+
+
+# ── Stage 3: Production Runner ──────────────────────────────────────────────
+FROM node:22-alpine AS runner
+
+LABEL org.opencontainers.image.title="BookDock API Server"
+LABEL org.opencontainers.image.description="BookDock e-book reader API"
+LABEL org.opencontainers.image.source="https://github.com/bookdock/bookdock"
+LABEL maintainer="BookDock Team"
+
+WORKDIR /app
+
+# Security: run as non-root user
+RUN addgroup -g 1001 -S bookdock && \
+    adduser -S bookdock -u 1001 -G bookdock
+
+# Install runtime dependencies only
+RUN apk add --no-cache \
+    vips \
+    mupdf \
+    tini \
+    && rm -rf /var/cache/apk/*
+
+# Copy built artifacts from builder
+COPY --from=builder /app/apps/server/dist ./dist
+COPY --from=builder /app/apps/server/prisma ./prisma
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=deps /app/node_modules ./node_modules_prod
+COPY --from=deps /app/package.json ./package.json
+COPY --from=deps /app/package-lock.json ./package-lock.json
+
+# Copy nginx config template (runtime substitution handled by entrypoint)
+COPY --chmod=644 nginx/nginx.conf nginx/conf.d 2>/dev/null || true
+
+# Create upload directory
+RUN mkdir -p /app/uploads /app/meta && chown -R bookdock:bookdock /app
+
+# Switch to non-root
+USER bookdock
+
+# Expose port
+EXPOSE 3000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget -q --spider http://localhost:3000/health || exit 1
+
+# Use tini as init system (handles zombie processes)
+ENTRYPOINT ["/sbin/tini", "--"]
+
+# Default command (can be overridden by docker-compose for workers)
+CMD ["node", "dist/server.js"]
