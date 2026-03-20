@@ -45,7 +45,7 @@ class NotificationService {
   async scheduleNotification(
     title: string,
     body: string,
-    trigger?: Notifications.NotificationTriggerInput,
+    trigger: Notifications.NotificationTriggerInput | null = null,
     data?: Record<string, unknown>
   ): Promise<string | null> {
     if (!this.permissionGranted) {
@@ -56,7 +56,7 @@ class NotificationService {
     try {
       const id = await Notifications.scheduleNotificationAsync({
         content: { title, body, data },
-        trigger,
+        trigger: trigger || null,
       });
       return id;
     } catch (error) {
@@ -203,7 +203,7 @@ class SharingService {
     });
   }
 
-  async shareText(text: string, title?: string): Promise<void> {
+  async shareText(text: string, _title?: string): Promise<void> {
     if (Platform.OS === 'web') {
       await WebBrowser.openBrowserAsync(
         `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`

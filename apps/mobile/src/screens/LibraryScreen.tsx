@@ -28,7 +28,7 @@ export function LibraryScreen() {
   const navigation = useNavigation<NavigationProp>();
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
-  const { books, localBooks, viewMode, searchQuery, setViewMode, setSearchQuery } = useLibraryStore();
+  const { books, localBooks, viewMode, setViewMode } = useLibraryStore();
   
   const [refreshing, setRefreshing] = useState(false);
   const [localSearchQuery, setLocalSearchQuery] = useState('');

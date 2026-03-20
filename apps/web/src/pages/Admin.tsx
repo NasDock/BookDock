@@ -794,7 +794,6 @@ function BooksManagement() {
     </div>
   );
 }
-
 // ==================== System Settings ====================
 function SystemSettings() {
   const [settings, setSettings] = useState({
@@ -802,7 +801,7 @@ function SystemSettings() {
     siteDescription: '您的私人电子书库',
     allowPublicRegistration: true,
     defaultMembership: 'free' as 'free' | 'premium',
-    maxStoragePerUser: 10 * 1024 * 1024 * 1024, // 10GB
+    maxStoragePerUser: 10 * 1024 * 1024 * 1024,
     enableTTS: true,
     ttsProvider: 'browser' as 'browser' | 'server',
   });
@@ -812,10 +811,7 @@ function SystemSettings() {
   const handleSave = async () => {
     setIsSaving(true);
     setSaveMessage(null);
-
-    // Simulate saving - in production, this would call an API
     await new Promise((resolve) => setTimeout(resolve, 1000));
-
     localStorage.setItem('bookdock_system_settings', JSON.stringify(settings));
     setSaveMessage('设置已保存');
     setIsSaving(false);
@@ -827,39 +823,21 @@ function SystemSettings() {
       <h2 className="text-xl font-semibold text-gray-900 dark:text-white">⚙️ 系统设置</h2>
 
       <Card>
-        <CardHeader>
-          <CardTitle>基本信息</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>基本信息</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              网站名称
-            </label>
-            <input
-              type="text"
-              value={settings.siteName}
-              onChange={(e) => setSettings({ ...settings, siteName: e.target.value })}
-              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">网站名称</label>
+            <input type="text" value={settings.siteName} onChange={(e) => setSettings({ ...settings, siteName: e.target.value })} className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              网站描述
-            </label>
-            <textarea
-              value={settings.siteDescription}
-              onChange={(e) => setSettings({ ...settings, siteDescription: e.target.value })}
-              rows={3}
-              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">网站描述</label>
+            <textarea value={settings.siteDescription} onChange={(e) => setSettings({ ...settings, siteDescription: e.target.value })} rows={3} className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
         </CardContent>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>用户设置</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>用户设置</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -867,20 +845,93 @@ function SystemSettings() {
               <p className="text-sm text-gray-500">允许新用户自行注册账户</p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={settings.allowPublicRegistration}
-                onChange={(e) => setSettings({ ...settings, allowPublicRegistration: e.target.checked })}
-                className="sr-only peer"
-              />
+              <input type="checkbox" checked={settings.allowPublicRegistration} onChange={(e) => setSettings({ ...settings, allowPublicRegistration: e.target.checked })} className="sr-only peer" />
               <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
             </label>
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              默认会员类型
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">默认会员类型</label>
+            <select value={settings.defaultMembership} onChange={(e) => setSettings({ ...settings, defaultMembership: e.target.value as 'free' | 'premium' })} className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+              <option value="free">免费</option><option value="premium">Premium</option>
+            </select>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle>TTS 设置</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-gray-900 dark:text-white">启用语音朗读</p>
+              <p className="text-sm text-gray-500">允许用户使用文字转语音功能</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" checked={settings.enableTTS} onChange={(e) => setSettings({ ...settings, enableTTS: e.target.checked })} className="sr-only peer" />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
             </label>
-            <select
-              value={settings.defaultMembership}
-              onChange={(e) => setSettings
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">TTS 提供商</label>
+            <select value={settings.ttsProvider} onChange={(e) => setSettings({ ...settings, ttsProvider: e.target.value as 'browser' | 'server' })} className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+              <option value="browser">浏览器 TTS</option><option value="server">服务器 TTS</option>
+            </select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {saveMessage && (
+        <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-xl text-green-600 dark:text-green-400 text-center">{saveMessage}</div>
+      )}
+      <Button onClick={handleSave} disabled={isSaving} className="w-full">
+        {isSaving ? '保存中...' : '💾 保存设置'}
+      </Button>
+    </div>
+  );
+}
+
+// ==================== Main Admin Component ====================
+export default function Admin() {
+  const location = useLocation();
+  const currentPath = location.pathname.replace('/admin', '') || '/';
+
+  const tabs = [
+    { path: '/admin', label: '📚 书源管理', exact: true },
+    { path: '/admin/users', label: '👥 用户管理' },
+    { path: '/admin/books', label: '📖 书籍管理' },
+    { path: '/admin/search', label: '🔍 公开搜索' },
+    { path: '/admin/settings', label: '⚙️ 系统设置' },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-3xl font-bold text-gray-900 dark:text-white">管理面板</h1>
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700 overflow-x-auto">
+        {tabs.map((tab) => (
+          <Link
+            key={tab.path}
+            to={tab.path}
+            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+              currentPath === tab.path
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            {tab.label}
+          </Link>
+        ))}
+      </div>
+
+      {/* Content */}
+      <Routes>
+        <Route path="/" element={<EbookSources />} />
+        <Route path="/users" element={<UserManagement />} />
+        <Route path="/books" element={<BooksManagement />} />
+        <Route path="/search" element={<OpenLibrarySearch />} />
+        <Route path="/settings" element={<SystemSettings />} />
+      </Routes>
+    </div>
+  );
+}

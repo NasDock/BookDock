@@ -7,16 +7,13 @@ import {
   SafeAreaView,
   StatusBar,
   ScrollView,
-  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { useTTSStore, useThemeStore, useLibraryStore } from '../stores';
+import { useTTSStore, useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import type { RootStackParamList } from '../navigation/types';
 import type { TTSVoice } from '@bookdock/api-client';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 type TTSScreenRouteProp = RouteProp<RootStackParamList, 'TTSScreen'>;
 
@@ -53,7 +50,6 @@ export function TTSScreen() {
   const theme = getTheme(actualTheme === 'dark');
 
   const ttsStore = useTTSStore();
-  const { books } = useLibraryStore();
 
   const [selectedChapter, setSelectedChapter] = useState('1');
   const [showVoices, setShowVoices] = useState(false);
@@ -255,7 +251,7 @@ export function TTSScreen() {
         {/* Chapters */}
         <View style={styles.chaptersSection}>
           <Text style={styles.chaptersTitle}>Chapters</Text>
-          {MOCK_CHAPTERS.map((chapter, index) => (
+          {MOCK_CHAPTERS.map((chapter) => (
             <TouchableOpacity
               key={chapter.id}
               style={[

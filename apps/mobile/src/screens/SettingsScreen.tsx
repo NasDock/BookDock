@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
-  useColorScheme,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore, useAuthStore, useReaderStore, useTTSStore } from '../stores';
@@ -24,8 +23,8 @@ export function SettingsScreen() {
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [readingReminder, setReadingReminder] = useState(false);
-  const [reminderHour, setReminderHour] = useState(20);
-  const [reminderMinute, setReminderMinute] = useState(0);
+  const [reminderHour] = useState(20);
+  const [reminderMinute] = useState(0);
 
   const theme = getTheme(actualTheme === 'dark');
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -73,7 +72,7 @@ export function SettingsScreen() {
           onPress: async () => {
             // Clear local books cache
             const downloadedBooks = await fileSystemService.listDownloadedBooks();
-            for (const book of downloadedBooks) {
+            for (const _book of downloadedBooks) {
               // Would delete actual files here
             }
             Alert.alert('Success', 'Cache cleared successfully');
@@ -178,7 +177,7 @@ export function SettingsScreen() {
           'text',
           'Font Size',
           `${readerStore.fontSize}px`,
-          null,
+          undefined,
           () => {
             Alert.alert(
               'Font Size',
@@ -194,7 +193,7 @@ export function SettingsScreen() {
           'document-text',
           'Default Theme',
           readerStore.mode.charAt(0).toUpperCase() + readerStore.mode.slice(1),
-          null,
+          undefined,
           () => {
             Alert.alert(
               'Default Theme',
@@ -250,7 +249,7 @@ export function SettingsScreen() {
           'headset',
           'Default Playback Speed',
           `${ttsStore.playbackRate}x`,
-          null,
+          undefined,
           () => {
             Alert.alert(
               'Playback Speed',
@@ -303,13 +302,13 @@ export function SettingsScreen() {
         {renderSettingRow(
           'document',
           'Terms of Service',
-          null,
+          undefined,
           <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
         )}
         {renderSettingRow(
           'shield-checkmark',
           'Privacy Policy',
-          null,
+          undefined,
           <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
         )}
       </View>
@@ -320,8 +319,8 @@ export function SettingsScreen() {
         {renderSettingRow(
           'log-out',
           'Log Out',
-          null,
-          null,
+          undefined,
+          undefined,
           handleLogout
         )}
       </View>

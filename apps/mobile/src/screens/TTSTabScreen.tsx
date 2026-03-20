@@ -1,16 +1,14 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import Slider from '@react-native-community/slider';
 import { useTTSStore, useThemeStore, useLibraryStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import type { Book } from '@bookdock/api-client';
