@@ -1,28 +1,28 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Delete,
-  Body,
-  Param,
-  Query,
-  UseGuards,
-  ParseUUIDPipe,
+    Body,
+    Controller,
+    Delete,
+    Get,
+    Param,
+    ParseUUIDPipe,
+    Post,
+    Put,
+    Query,
+    UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
-import { ReadingProgressService } from './reading-progress.service';
-import {
-  UpdateReadingProgressDto,
-  ReadingProgressQueryDto,
-  ReadingProgressResponseDto,
-  BookBookmarkDto,
-  BookmarkResponseDto,
-  SyncReadingDto,
-  ReadingStatsDto,
-} from './dto/reading-progress.dto';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import {
+    BookBookmarkDto,
+    BookmarkResponseDto,
+    ReadingProgressQueryDto,
+    ReadingProgressResponseDto,
+    ReadingStatsDto,
+    SyncReadingDto,
+    UpdateReadingProgressDto,
+} from './dto/reading-progress.dto';
+import { ReadingProgressService } from './reading-progress.service';
 
 @ApiTags('Reading Progress')
 @Controller('reading-progress')
@@ -88,7 +88,7 @@ export class ReadingProgressController {
     @Body() dto: BookBookmarkDto,
     @CurrentUser('sub') userId: string,
   ) {
-    return this.progressService.createBookmark(userId, dto.bookId as unknown as string || '', dto);
+    return this.progressService.createBookmark(userId, (dto as any).bookId || '', dto);
   }
 
   @Post('bookmarks/:bookId')

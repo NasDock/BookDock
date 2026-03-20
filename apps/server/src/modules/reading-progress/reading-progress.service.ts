@@ -1,17 +1,17 @@
 import {
-  Injectable,
-  Inject,
-  NotFoundException,
+    Inject,
+    Injectable,
+    NotFoundException,
 } from '@nestjs/common';
 import { PrismaClient, ReadingStatus } from '@prisma/client';
-import { PRISMA_CLIENT } from '../../../config/database.module';
+import { PRISMA_CLIENT } from '../../config/database.module';
 import {
-  UpdateReadingProgressDto,
-  ReadingProgressQueryDto,
-  ReadingProgressResponseDto,
-  BookBookmarkDto,
-  BookmarkResponseDto,
-  ReadingStatsDto,
+    BookBookmarkDto,
+    BookmarkResponseDto,
+    ReadingProgressQueryDto,
+    ReadingProgressResponseDto,
+    ReadingStatsDto,
+    UpdateReadingProgressDto,
 } from './dto/reading-progress.dto';
 
 @Injectable()

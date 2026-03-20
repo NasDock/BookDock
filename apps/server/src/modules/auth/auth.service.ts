@@ -1,17 +1,17 @@
 import {
-  Injectable,
-  Inject,
-  UnauthorizedException,
-  ConflictException,
-  BadRequestException,
+    BadRequestException,
+    ConflictException,
+    Inject,
+    Injectable,
+    UnauthorizedException,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { PrismaClient, User, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
-import { PRISMA_CLIENT } from '../../../config/database.module';
-import { RegisterDto, LoginDto, AuthResponseDto, UserInfoDto } from './dto/auth.dto';
+import { PRISMA_CLIENT } from '../../config/database.module';
+import { AuthResponseDto, LoginDto, RegisterDto, UserInfoDto } from './dto/auth.dto';
 
 @Injectable()
 export class AuthService {

@@ -1,27 +1,26 @@
-import {
-  Injectable,
-  Inject,
-  NotFoundException,
-  ForbiddenException,
-} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
-import { PrismaClient, UserRole } from '@prisma/client';
-import { ConfigService } from '@nestjs/config';
-import { readFileSync, writeFileSync, existsSync } from 'fs';
-import { join } from 'path';
-import { PRISMA_CLIENT } from '../../../config/database.module';
 import {
-  UserQueryDto,
-  UpdateUserDto,
-  AdminUserResponseDto,
-  CreateDataSourceDto,
-  DataSourceResponseDto,
-  TriggerSyncDto,
-  SyncJobResponseDto,
-  SystemStatsDto,
+    ForbiddenException,
+    Inject,
+    Injectable,
+    NotFoundException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PrismaClient, UserRole } from '@prisma/client';
+import { Queue } from 'bullmq';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
+import { PRISMA_CLIENT } from '../../config/database.module';
+import {
+    AdminUserResponseDto,
+    CreateDataSourceDto,
+    DataSourceResponseDto,
+    SyncJobResponseDto,
+    SystemStatsDto,
+    TriggerSyncDto,
+    UpdateUserDto,
+    UserQueryDto,
 } from './dto/admin.dto';
-import { readFile } from 'fs/promises';
 
 @Injectable()
 export class AdminService {

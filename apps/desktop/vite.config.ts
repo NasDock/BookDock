@@ -15,9 +15,13 @@ export default defineConfig({
       },
       {
         entry: 'electron/preload.ts',
-        onhook: {
-          reload() {
-            // When Preload-scripts build finish, reload the page
+        vite: {
+          build: {
+            lib: {
+              entry: 'electron/preload.ts',
+              formats: ['es'],
+              fileName: () => 'preload.mjs',
+            },
           },
         },
       },

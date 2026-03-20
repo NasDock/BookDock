@@ -8,5 +8,9 @@
     "dev:desktop": "pnpm --filter @bookdock/desktop dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint"
+  },
+  "devDependencies": {
+    "@tailwindcss/typography": "^0.5.19",
+    "babel-plugin-module-resolver": "^5.0.3"
   }
 }

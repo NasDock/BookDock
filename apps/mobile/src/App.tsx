@@ -1,10 +1,18 @@
-import React, { useEffect } from 'react';
-import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { initApiClient } from '@bookdock/api-client';
 import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
+import React, { useEffect } from 'react';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { RootNavigator } from './navigation';
-import { useThemeStore, useAuthStore } from './stores';
 import { notificationService } from './services';
+import { getAuthToken, useAuthStore, useThemeStore } from './stores';
+
+// Initialize API Client for mobile
+// Note: Use host machine's IP address instead of localhost for mobile devices
+initApiClient({
+  baseURL: 'http://10.79.233.188:3000/api',
+  getAuthToken: () => getAuthToken(),
+});
 
 // Keep splash screen visible while loading
 SplashScreen.preventAutoHideAsync();

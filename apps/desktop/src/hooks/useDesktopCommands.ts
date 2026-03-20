@@ -54,6 +54,7 @@ const listen = (channel: string, callback: (...args: any[]) => void) => {
 
 
 
+import { getApiClient } from '@bookdock/api-client';
 import { useCallback, useEffect } from 'react';
 import { useDesktopStore, type AppSettings, type LocalFile, type TtsState } from '../stores/desktopStore';
 
@@ -101,11 +102,36 @@ export async function getFileMetadata(filePath: string): Promise<LocalFile> {
 // ============================================================================
 
 export async function getBooks(): Promise<Book[]> {
-  return invoke<Book[]>('get_books');
+  const api = getApiClient();
+  const res = await api.getBooks();
+  if (res.success && res.data) {
+    // Convert API Book to UI Book
+    return res.data.books.map((b: any) => ({
+      id: b.id,
+      title: b.title,
+      author: b.author,
+      cover_url: b.coverUrl,
+      file_path: b.filePath,
+      file_type: b.fileType,
+      reading_progress: b.readingProgress,
+      total_pages: b.totalPages,
+      current_page: b.currentPage,
+      added_at: b.addedAt,
+      last_read_at: b.lastReadAt,
+    }));
+  }
+  return [];
 }
 
 export async function addBook(book: Book): Promise<void> {
-  return invoke('add_book', { book });
+  const api = getApiClient();
+  await api.addBook({
+    id: book.id,
+    title: book.title,
+    author: book.author,
+    filePath: book.file_path,
+    fileType: (book as any).fileType || (book as any).file_type,
+  });
 }
 
 export async function updateReadingProgress(
@@ -113,7 +139,8 @@ export async function updateReadingProgress(
   progress: number,
   currentPage?: number
 ): Promise<void> {
-  return invoke('update_reading_progress', { bookId, progress, currentPage });
+  const api = getApiClient();
+  await api.updateReadingProgress(bookId, progress, currentPage);
 }
 
 export async function importLocalBook(filePath: string): Promise<Book> {

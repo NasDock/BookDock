@@ -1,21 +1,20 @@
 import {
-  Injectable,
-  Inject,
-  NotFoundException,
-  ForbiddenException,
+    Inject,
+    Injectable,
+    NotFoundException
 } from '@nestjs/common';
-import { PrismaClient, Book, BookFormat } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
-import { createReadStream, statSync, existsSync } from 'fs';
+import { BookFormat, PrismaClient } from '@prisma/client';
+import { createReadStream, existsSync, statSync } from 'fs';
 import { join } from 'path';
-import { PRISMA_CLIENT } from '../../../config/database.module';
+import { PRISMA_CLIENT } from '../../config/database.module';
 import {
-  CreateBookDto,
-  UpdateBookDto,
-  BookQueryDto,
-  BookResponseDto,
-  PaginatedBooksDto,
-  BookStatsDto,
+    BookQueryDto,
+    BookResponseDto,
+    BookStatsDto,
+    CreateBookDto,
+    PaginatedBooksDto,
+    UpdateBookDto,
 } from './dto/books.dto';
 
 @Injectable()
@@ -41,7 +40,7 @@ export class BooksService {
       try {
         const crypto = await import('crypto');
         const hash = crypto.createHash('sha256');
-        return new Promise((resolve, reject) => {
+        await new Promise((resolve, reject) => {
           createReadStream(fullPath)
             .on('data', (chunk) => hash.update(chunk))
             .on('end', () => {
@@ -51,7 +50,7 @@ export class BooksService {
               resolve(null);
             })
             .on('error', reject);
-        }).then(() => undefined);
+        });
       } catch {
         // ignore hash errors
       }
@@ -162,7 +161,7 @@ export class BooksService {
   async getCover(id: string): Promise<{ stream: unknown; contentType: string }> {
     const book = await this.prisma.book.findUnique({
       where: { id, isDeleted: false },
-      select: { coverUrl: true, filePath: true },
+      select: { title: true, coverUrl: true, filePath: true },
     });
 
     if (!book) {

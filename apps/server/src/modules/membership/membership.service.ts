@@ -1,19 +1,18 @@
 import {
-  Injectable,
-  Inject,
-  NotFoundException,
-  BadRequestException,
+    Inject,
+    Injectable,
+    NotFoundException
 } from '@nestjs/common';
-import { PrismaClient, User } from '@prisma/client';
-import { PRISMA_CLIENT } from '../../../config/database.module';
+import { PrismaClient } from '@prisma/client';
+import { PRISMA_CLIENT } from '../../config/database.module';
 import {
-  MembershipPlan,
-  SubscriptionStatus,
-  MembershipPlanDto,
-  SubscriptionDto,
-  CreateSubscriptionDto,
-  UpdateSubscriptionDto,
-  UsageDto,
+    CreateSubscriptionDto,
+    MembershipPlan,
+    MembershipPlanDto,
+    SubscriptionDto,
+    SubscriptionStatus,
+    UpdateSubscriptionDto,
+    UsageDto,
 } from './dto/membership.dto';
 
 // Membership plans configuration

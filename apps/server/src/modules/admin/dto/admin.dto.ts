@@ -1,21 +1,19 @@
-import {
-  IsString,
-  IsOptional,
-  IsEnum,
-  IsInt,
-  Min,
-  Max,
-  IsBoolean,
-  IsArray,
-  IsUUID,
-  IsURL,
-  MinLength,
-  MaxLength,
-  IsDateString,
-} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import { UserRole } from '@prisma/client';
+import { Type } from 'class-transformer';
+import {
+    IsArray,
+    IsBoolean,
+    IsEnum,
+    IsInt,
+    IsOptional,
+    IsString,
+    IsUUID,
+    Max,
+    MaxLength,
+    Min,
+    MinLength
+} from 'class-validator';
 
 export class UserQueryDto {
   @ApiPropertyOptional({ default: 1 })

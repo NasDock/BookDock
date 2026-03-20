@@ -1,17 +1,17 @@
-import {
-  Injectable,
-  Inject,
-  NotFoundException,
-  BadRequestException,
-  Logger,
-} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
-import { PrismaClient, TtsJobStatus } from '@prisma/client';
+import {
+    BadRequestException,
+    Inject,
+    Injectable,
+    Logger,
+    NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PrismaClient, TtsJobStatus } from '@prisma/client';
 import axios from 'axios';
-import { PRISMA_CLIENT } from '../../../config/database.module';
-import { CreateTtsJobDto, TtsJobQueryDto, TtsJobResponseDto, TtsVoiceDto, TtsAudioFileResponseDto } from './dto/tts.dto';
+import { Queue } from 'bullmq';
+import { PRISMA_CLIENT } from '../../config/database.module';
+import { CreateTtsJobDto, TtsAudioFileResponseDto, TtsJobQueryDto, TtsJobResponseDto, TtsVoiceDto } from './dto/tts.dto';
 
 @Injectable()
 export class TtsService {

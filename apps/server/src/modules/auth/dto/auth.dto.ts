@@ -1,13 +1,13 @@
-import {
-  IsEmail,
-  IsString,
-  MinLength,
-  MaxLength,
-  IsOptional,
-  IsEnum,
-} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
+import {
+    IsEmail,
+    IsEnum,
+    IsOptional,
+    IsString,
+    MaxLength,
+    MinLength,
+} from 'class-validator';
 
 export class RegisterDto {
   @ApiProperty({ example: 'user@example.com' })
@@ -53,20 +53,6 @@ export class RefreshTokenDto {
   refreshToken: string;
 }
 
-export class AuthResponseDto {
-  @ApiProperty()
-  accessToken: string;
-
-  @ApiProperty()
-  refreshToken: string;
-
-  @ApiProperty()
-  expiresIn: number;
-
-  @ApiProperty()
-  user: UserInfoDto;
-}
-
 export class UserInfoDto {
   @ApiProperty()
   id: string;
@@ -88,4 +74,18 @@ export class UserInfoDto {
 
   @ApiProperty()
   createdAt: Date;
+}
+
+export class AuthResponseDto {
+  @ApiProperty()
+  accessToken: string;
+
+  @ApiProperty()
+  refreshToken: string;
+
+  @ApiProperty()
+  expiresIn: number;
+
+  @ApiProperty({ type: () => UserInfoDto })
+  user: UserInfoDto;
 }

@@ -8,16 +8,18 @@ process.env.DIST_ELECTRON = path.join(__dirname$1, "../dist-electron");
 process.env.DIST = path.join(__dirname$1, "../dist");
 process.env.VITE_PUBLIC = process.env.VITE_DEV_SERVER_URL ? path.join(__dirname$1, "../public") : process.env.DIST;
 let win = null;
-const preload = path.join(__dirname$1, "preload.js");
+const preload = path.join(__dirname$1, "preload.mjs");
 const url = process.env.VITE_DEV_SERVER_URL;
 const indexHtml = path.join(process.env.DIST, "index.html");
 let books = [];
+let windowStates = {};
 let settings = {
   theme: "system",
   fontSize: 16,
   autoPlayTts: false,
   ttsRate: 1,
-  ttsVolume: 1
+  ttsVolume: 1,
+  nasPaths: []
 };
 function createWindow() {
   console.log("Main process using preload script at:", preload);
@@ -71,11 +73,11 @@ ipcMain.handle("read_directory", async (_, dirPath) => {
     throw new Error(error.message);
   }
 });
-ipcMain.handle("get_books", async () => {
-  return books;
-});
-ipcMain.handle("add_book", async (_, book) => {
-  books.push(book);
+ipcMain.handle("add_book", async (_, payload) => {
+  const { book } = payload;
+  if (!books.find((b) => b.id === book.id)) {
+    books.push(book);
+  }
   return { success: true };
 });
 ipcMain.handle("get_home_directory", () => {
@@ -97,10 +99,68 @@ ipcMain.handle("open_file_dialog", async () => {
   });
   return result.filePaths[0] || null;
 });
+ipcMain.handle("open_folder_dialog", async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ["openDirectory"]
+  });
+  return result.filePaths[0] || null;
+});
 ipcMain.handle("load_settings", () => {
   return settings;
 });
 ipcMain.handle("save_settings", (_, newSettings) => {
   settings = { ...settings, ...newSettings };
+  return { success: true };
+});
+ipcMain.handle("save_window_state", (_, { label }) => {
+  if (win) {
+    const bounds = win.getBounds();
+    windowStates[label] = {
+      ...bounds,
+      maximized: win.isMaximized()
+    };
+  }
+  return { success: true };
+});
+ipcMain.handle("restore_window_state", (_, { label }) => {
+  return windowStates[label] || null;
+});
+ipcMain.handle("open_reader_window", async (_, { bookId, bookTitle }) => {
+  console.log("Open reader for:", bookId, bookTitle);
+  return { success: true };
+});
+ipcMain.handle("minimize_to_tray", () => {
+  if (win) win.hide();
+  return { success: true };
+});
+ipcMain.handle("show_main_window", () => {
+  if (win) win.show();
+  return { success: true };
+});
+ipcMain.handle("import_local_book", async (_, { filePath }) => {
+  const fileName = path.basename(filePath);
+  const book = {
+    id: Math.random().toString(36).substring(7),
+    title: fileName.replace(/\.[^/.]+$/, ""),
+    author: "本地书籍",
+    cover: null,
+    path: filePath,
+    format: path.extname(filePath).slice(1).toLowerCase(),
+    fileSize: fs.statSync(filePath).size,
+    lastRead: (/* @__PURE__ */ new Date()).toISOString(),
+    progress: 0
+  };
+  if (!books.find((b) => b.path === filePath)) {
+    books.push(book);
+  }
+  return book;
+});
+ipcMain.handle("update_reading_progress", async (_, { bookId, progress, currentPage }) => {
+  const book = books.find((b) => b.id === bookId);
+  if (book) {
+    book.progress = progress;
+    if (currentPage !== void 0) book.currentPage = currentPage;
+    book.lastRead = (/* @__PURE__ */ new Date()).toISOString();
+  }
   return { success: true };
 });

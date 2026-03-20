@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  isDesktop,
+  checkIsDesktop,
   loadSettings,
   minimizeToTray,
   openFolderDialog,
@@ -9,6 +9,7 @@ import {
 import { useDesktopStore } from '../stores/desktopStore';
 
 export function SettingsScreen() {
+  const isDesktopEnv = checkIsDesktop();
   const { settings, updateSettings, setTheme } = useDesktopStore();
   const [localSettings, setLocalSettings] = useState(settings);
   const [isSaving, setIsSaving] = useState(false);
@@ -154,14 +155,14 @@ export function SettingsScreen() {
 
           <button
             onClick={handleAddNasPath}
-            disabled={!isDesktop}
+            disabled={!isDesktopEnv}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              isDesktop 
+              isDesktopEnv 
                 ? 'bg-blue-500 hover:bg-blue-600 text-white' 
                 : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
             }`}
           >
-            {isDesktop ? '+ 添加路径' : '仅桌面端可用'}
+            {isDesktopEnv ? '+ 添加路径' : '仅桌面端可用'}
           </button>
         </section>
 
@@ -248,7 +249,7 @@ export function SettingsScreen() {
         </section>
 
         {/* Keyboard Shortcuts - desktop only */}
-        {isDesktop && (
+        {isDesktopEnv && (
           <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
               ⌨️ 全局快捷键
@@ -287,7 +288,7 @@ export function SettingsScreen() {
         )}
 
         {/* System - desktop only */}
-        {isDesktop && (
+        {isDesktopEnv && (
           <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
               🖥️ 系统

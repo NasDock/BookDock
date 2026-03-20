@@ -27,7 +27,6 @@ export function LibraryScreen() {
     setBooks,
     selectedBook,
     selectBook,
-    setIsReaderOpen,
     ttsState,
     isTtsMode,
     setIsTtsMode,
