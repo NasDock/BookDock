@@ -312,4 +312,4 @@ export async function createBookReader(
   }
 }
 
-export { EpubReader, PdfReader };
+

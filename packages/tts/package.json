@@ -8,6 +8,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "@bookdock/api-client": "workspace:*"
+  },
   "peerDependencies": {
     "react": "^18.2.0"
   },

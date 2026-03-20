@@ -9,7 +9,7 @@ interface ReaderState extends ReaderConfig {
   margin: number;
   mode: ReaderMode;
   textDirection: 'ltr' | 'rtl';
-  
+
   setFontSize: (size: number) => void;
   setFontFamily: (family: string) => void;
   setLineHeight: (height: number) => void;
@@ -46,3 +46,6 @@ export const useReaderStore = create<ReaderState>()(
     }
   )
 );
+
+// Alias for compatibility with App.tsx imports
+export const useThemeStore = useReaderStore;

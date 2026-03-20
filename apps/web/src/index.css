@@ -47,7 +47,8 @@ body {
 }
 
 .reading-container.sepia {
-  @apply bg-sepia-100 text-sepia-800;
+  background-color: #f5ebe0;
+  color: #3d3226;
 }
 
 /* Scrollbar styling */

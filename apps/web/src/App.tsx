@@ -13,7 +13,6 @@ import Login from './pages/Login';
 import Admin from './pages/Admin';
 
 // Stores
-import { useLibraryStore } from './stores/libraryStore';
 import { useThemeStore } from './stores/themeStore';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
@@ -75,7 +74,6 @@ function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
       <header className="sticky top-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -101,7 +99,6 @@ function Layout({ children }: { children: React.ReactNode }) {
                 ))}
               </nav>
             </div>
-
             <div className="flex items-center space-x-4">
               <button
                 onClick={toggleTheme}
@@ -110,7 +107,6 @@ function Layout({ children }: { children: React.ReactNode }) {
               >
                 {theme === 'dark' ? '☀️' : '🌙'}
               </button>
-
               <div className="flex items-center space-x-3">
                 <span className="text-sm text-gray-600 dark:text-gray-400">
                   {user?.username}
@@ -128,8 +124,6 @@ function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-
-      {/* Main content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {children}
       </main>
@@ -137,9 +131,7 @@ function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
-function AppContent() {
-  const { isAuthenticated } = useAuth();
-
+function AppRoutes() {
   return (
     <Layout>
       <Routes>
@@ -190,25 +182,31 @@ function AppContent() {
   );
 }
 
-export default function App() {
+function App() {
   const { token } = useAuth();
 
   useEffect(() => {
-    // Initialize API client
     initApiClient({
       baseURL: apiBaseUrl,
       getAuthToken: () => token || localStorage.getItem('bookdock_auth_token'),
       onAuthError: () => {
         localStorage.removeItem('bookdock_auth_token');
         localStorage.removeItem('bookdock_auth_user');
-        window.location.href = '/login';
       },
     });
   }, [token]);
 
   return (
-    <AuthProvider apiBaseUrl={apiBaseUrl}>
-      <AppContent />
+    <AuthProvider
+      apiBaseUrl={apiBaseUrl}
+      onAuthError={() => {
+        localStorage.removeItem('bookdock_auth_token');
+        localStorage.removeItem('bookdock_auth_user');
+      }}
+    >
+      <AppRoutes />
     </AuthProvider>
   );
 }
+
+export default App;

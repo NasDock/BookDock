@@ -65,3 +65,24 @@ if (typeof window !== 'undefined' && window.matchMedia) {
     }
   });
 }
+
+// Auth store placeholder (expand with real auth logic)
+interface AuthState {
+  user: { id: string; name: string; email: string } | null;
+  isAuthenticated: boolean;
+  login: (user: AuthState['user']) => void;
+  logout: () => void;
+}
+
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      user: null,
+      isAuthenticated: false,
+      login: (user) => set({ user, isAuthenticated: true }),
+      logout: () => set({ user: null, isAuthenticated: false }),
+    }),
+    { name: 'bookdock-auth' }
+  )
+);
+

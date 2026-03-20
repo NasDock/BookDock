@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@bookdock/api-client": "workspace:*",
     "epubjs": "^0.3.93",
     "pdfjs-dist": "^4.0.379"
   },

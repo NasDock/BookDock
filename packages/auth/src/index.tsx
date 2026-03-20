@@ -40,7 +40,11 @@ export function AuthProvider({ children, apiBaseUrl, onAuthError }: AuthProvider
   // Initialize API client with auth token getter
   useEffect(() => {
     if (apiBaseUrl) {
-      getApiClient(); // Ensure client is initialized
+      try {
+        getApiClient(); // Ensure client is initialized
+      } catch {
+        // Client not initialized yet; App.tsx will initialize it
+      }
     }
   }, [apiBaseUrl]);
 
