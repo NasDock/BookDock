@@ -1,13 +1,11 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useDesktopStore } from '../stores/desktopStore';
-import {
-  readFileContent,
-  readFileText,
-  updateReadingProgress,
-  openReaderWindow,
-} from '../hooks/useDesktopCommands';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { TTSControls } from '../components/TTSControls';
+import {
+    readFileText,
+    updateReadingProgress
+} from '../hooks/useDesktopCommands';
+import { useDesktopStore } from '../stores/desktopStore';
 
 // Simple EPUB renderer for desktop
 // In production, you'd use epub.js bundled with the app
@@ -145,7 +143,7 @@ BookDock 桌面版支持以下格式：
           } else {
             // Demo content
             setContent(`
-BookDock 桌面版阅读器
+BookDock 阅读器
 
 欢迎使用 BookDock！这是一个专门为 NAS 用户设计的电子书阅读器。
 

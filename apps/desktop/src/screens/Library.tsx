@@ -1,47 +1,38 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { useDesktopStore, type LocalFile } from '../stores/desktopStore';
+import { useEffect, useState } from 'react';
+import { FileBrowser } from '../components/FileBrowser';
+import { TTSControls } from '../components/TTSControls';
 import {
-  getBooks,
   addBook,
-  updateReadingProgress,
+  checkIsDesktop,
+  getBooks,
   importLocalBook,
+  minimizeToTray,
   openFileDialog,
   openFolderDialog,
   openReaderWindow,
-  minimizeToTray,
   useDesktopEvents,
   useFileBrowser,
-  useWindowState,
+  useWindowState
 } from '../hooks/useDesktopCommands';
-import { FileBrowser } from '../components/FileBrowser';
-import { TTSControls } from '../components/TTSControls';
+import { useDesktopStore } from '../stores/desktopStore';
 
-function formatDate(dateStr: string): string {
-  try {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('zh-CN');
-  } catch {
-    return dateStr;
-  }
-}
 
 export function LibraryScreen() {
   useDesktopEvents();
   useWindowState('main');
+  const isDesktop = checkIsDesktop();
 
   const {
     books,
     setBooks,
     selectedBook,
     selectBook,
-    isReaderOpen,
     setIsReaderOpen,
     ttsState,
     isTtsMode,
     setIsTtsMode,
     settings,
     updateSettings,
-    currentPath,
   } = useDesktopStore();
 
   const [activeTab, setActiveTab] = useState<'library' | 'local'>('library');
@@ -66,6 +57,7 @@ export function LibraryScreen() {
           currentPage: b.current_page,
           addedAt: b.added_at,
           lastReadAt: b.last_read_at,
+          fileSize: b.file_size ?? 0,
         }));
         setBooks(converted);
       })
@@ -89,6 +81,7 @@ export function LibraryScreen() {
           currentPage: book.current_page,
           addedAt: book.added_at,
           lastReadAt: book.last_read_at,
+          fileSize: (book as any).file_size ?? 0,
         };
         setBooks([apiBook, ...books]);
         await addBook(book);
@@ -117,10 +110,6 @@ export function LibraryScreen() {
     }
   };
 
-  const handleCloseReader = () => {
-    selectBook(null);
-    setIsReaderOpen(false);
-  };
 
   const filteredBooks = books.filter(
     (book) =>
@@ -148,8 +137,12 @@ export function LibraryScreen() {
                 <span className="text-3xl">📖</span>
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">BookDock</h1>
               </div>
-              <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full">
-                桌面版
+              <span className={`px-2 py-1 text-xs rounded-full ${
+                isDesktop 
+                  ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                  : 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300'
+              }`}>
+                {isDesktop ? '桌面版' : '网页版'}
               </span>
             </div>
 
@@ -181,14 +174,16 @@ export function LibraryScreen() {
                 🔊
               </button>
 
-              {/* Minimize to tray */}
-              <button
-                onClick={() => minimizeToTray().catch(console.error)}
-                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
-                title="最小化到托盘"
-              >
-                ⬇️
-              </button>
+              {/* Minimize to tray - only show on desktop */}
+              {isDesktop && (
+                <button
+                  onClick={() => minimizeToTray().catch(console.error)}
+                  className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
+                  title="最小化到托盘"
+                >
+                  ⬇️
+                </button>
+              )}
             </div>
           </div>
 

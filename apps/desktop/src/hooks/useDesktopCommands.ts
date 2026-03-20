@@ -1,8 +1,61 @@
-import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { open as openDialog } from '@tauri-apps/plugin-dialog';
-import { useEffect, useCallback } from 'react';
-import { useDesktopStore, type LocalFile, type AppSettings, type TtsState } from '../stores/desktopStore';
+// Electron bridge for IPC commands
+const getElectron = () => (window as any).electron;
+export const isDesktop = typeof window !== 'undefined' && !!(window as any).electron;
+
+// For more robust detection in components
+export function checkIsDesktop() {
+  return typeof window !== 'undefined' && !!(window as any).electron;
+}
+
+
+
+const invoke = async <T = any>(channel: string, ...args: any[]): Promise<T> => {
+  const electron = getElectron();
+  if (electron && electron.invoke) {
+    try {
+      return await electron.invoke(channel, ...args);
+    } catch (error) {
+      console.error(`Error invoking channel ${channel}:`, error);
+      throw error;
+    }
+  }
+  
+  console.warn(`Electron IPC not available for channel: ${channel}. Returning default fallback.`);
+  
+  // Provide safe defaults for common channels
+  if (channel === 'get_books' || channel === 'read_directory') {
+    return [] as any as T;
+  }
+  if (channel === 'load_settings') {
+    return {
+      theme: 'system',
+      fontSize: 16,
+      autoPlayTts: false,
+      ttsRate: 1.0,
+      ttsVolume: 1.0,
+      nasPaths: [],
+    } as any as T;
+  }
+  if (channel === 'get_home_directory') {
+    return '/' as any as T;
+  }
+  return null as any as T;
+};
+
+
+const listen = (channel: string, callback: (...args: any[]) => void) => {
+  const electron = getElectron();
+  if (electron && electron.on) {
+    return electron.on(channel, callback);
+  }
+  return () => {};
+};
+
+
+
+
+import { useCallback, useEffect } from 'react';
+import { useDesktopStore, type AppSettings, type LocalFile, type TtsState } from '../stores/desktopStore';
 
 // Book interface matching Rust backend
 interface Book {
@@ -147,24 +200,11 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
 // ============================================================================
 
 export async function openFileDialog(): Promise<string | null> {
-  const result = await openDialog({
-    multiple: false,
-    filters: [
-      {
-        name: 'E-books',
-        extensions: ['epub', 'pdf', 'mobi', 'txt'],
-      },
-    ],
-  });
-  return result as string | null;
+  return invoke('open_file_dialog');
 }
 
 export async function openFolderDialog(): Promise<string | null> {
-  const result = await openDialog({
-    directory: true,
-    multiple: false,
-  });
-  return result as string | null;
+  return invoke('open_folder_dialog');
 }
 
 // ============================================================================
@@ -175,38 +215,43 @@ export function useDesktopEvents() {
   const store = useDesktopStore();
 
   useEffect(() => {
-    const unlisteners: UnlistenFn[] = [];
+    const unlisteners: Array<() => void> = [];
 
     // Listen for global shortcut events
-    listen<string>('global-shortcut', (event) => {
-      console.log('Global shortcut:', event.payload);
-      if (event.payload === 'tts-toggle') {
-        store.setTtsState({ isPlaying: !store.ttsState.isPlaying });
-      } else if (event.payload === 'tts-next') {
-        // Handle next - would need more state management
-        console.log('TTS next');
-      } else if (event.payload === 'tts-prev') {
-        console.log('TTS prev');
-      }
-    }).then((unlisten) => unlisteners.push(unlisten));
+    unlisteners.push(
+      listen('global-shortcut', (payload) => {
+        console.log('Global shortcut:', payload);
+        if (payload === 'tts-toggle') {
+          store.setTtsState({ isPlaying: !store.ttsState.isPlaying });
+        } else if (payload === 'tts-next') {
+          console.log('TTS next');
+        } else if (payload === 'tts-prev') {
+          console.log('TTS prev');
+        }
+      })
+    );
 
-    // Listen for file open events (from file associations or deep links)
-    listen<string>('open-file', async (event) => {
-      const filePath = event.payload;
-      console.log('Opening file:', filePath);
-      try {
-        const book = await importLocalBook(filePath);
-        store.addBook(book as any);
-        await addBook(book);
-      } catch (error) {
-        console.error('Failed to import file:', error);
-      }
-    }).then((unlisten) => unlisteners.push(unlisten));
+    // Listen for file open events
+    unlisteners.push(
+      listen('open-file', async (payload) => {
+        const filePath = payload as string;
+        console.log('Opening file:', filePath);
+        try {
+          const book = await importLocalBook(filePath);
+          store.addBook(book as any);
+          await addBook(book);
+        } catch (error) {
+          console.error('Failed to import file:', error);
+        }
+      })
+    );
 
     // Listen for TTS mode request from tray
-    listen('start-tts-mode', () => {
-      store.setIsTtsMode(true);
-    }).then((unlisten) => unlisteners.push(unlisten));
+    unlisteners.push(
+      listen('start-tts-mode', () => {
+        store.setIsTtsMode(true);
+      })
+    );
 
     return () => {
       unlisteners.forEach((unlisten) => unlisten());
@@ -277,7 +322,7 @@ export function useFileBrowser() {
 }
 
 export function useTTS() {
-  const { ttsState, setTtsState, settings, updateSettings } = useDesktopStore();
+  const { ttsState, setTtsState, settings } = useDesktopStore();
 
   const speak = useCallback(
     async (text: string, bookId?: string) => {

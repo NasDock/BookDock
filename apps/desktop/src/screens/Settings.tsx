@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
-import { useDesktopStore } from '../stores/desktopStore';
+import { useEffect, useState } from 'react';
 import {
+  isDesktop,
   loadSettings,
-  saveSettings,
-  openFolderDialog,
   minimizeToTray,
+  openFolderDialog,
+  saveSettings
 } from '../hooks/useDesktopCommands';
+import { useDesktopStore } from '../stores/desktopStore';
 
 export function SettingsScreen() {
   const { settings, updateSettings, setTheme } = useDesktopStore();
@@ -153,9 +154,14 @@ export function SettingsScreen() {
 
           <button
             onClick={handleAddNasPath}
-            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors"
+            disabled={!isDesktop}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              isDesktop 
+                ? 'bg-blue-500 hover:bg-blue-600 text-white' 
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
+            }`}
           >
-            + 添加路径
+            {isDesktop ? '+ 添加路径' : '仅桌面端可用'}
           </button>
         </section>
 
@@ -241,88 +247,92 @@ export function SettingsScreen() {
           </div>
         </section>
 
-        {/* Keyboard Shortcuts */}
-        <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            ⌨️ 全局快捷键
-          </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            即使应用在后台运行，这些快捷键也可用。
-          </p>
+        {/* Keyboard Shortcuts - desktop only */}
+        {isDesktop && (
+          <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              ⌨️ 全局快捷键
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              即使应用在后台运行，这些快捷键也可用。
+            </p>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              <span className="text-sm text-gray-700 dark:text-gray-300">
-                播放/暂停听书
-              </span>
-              <kbd className="px-3 py-1 bg-gray-200 dark:bg-gray-600 rounded text-sm font-mono">
-                Ctrl+Shift+B
-              </kbd>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              <span className="text-sm text-gray-700 dark:text-gray-300">
-                下一段
-              </span>
-              <kbd className="px-3 py-1 bg-gray-200 dark:bg-gray-600 rounded text-sm font-mono">
-                Ctrl+Shift+N
-              </kbd>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              <span className="text-sm text-gray-700 dark:text-gray-300">
-                上一段
-              </span>
-              <kbd className="px-3 py-1 bg-gray-200 dark:bg-gray-600 rounded text-sm font-mono">
-                Ctrl+Shift+P
-              </kbd>
-            </div>
-          </div>
-        </section>
-
-        {/* System */}
-        <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            🖥️ 系统
-          </h2>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  开机自启
-                </p>
-                <p className="text-xs text-gray-500">
-                  系统启动时自动运行 BookDock
-                </p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <span className="text-sm text-gray-700 dark:text-gray-300">
+                  播放/暂停听书
+                </span>
+                <kbd className="px-3 py-1 bg-gray-200 dark:bg-gray-600 rounded text-sm font-mono">
+                  Ctrl+Shift+B
+                </kbd>
               </div>
-              <button
-                onClick={() => {
-                  // Would integrate with autostart plugin
-                  console.log('Toggle autostart');
-                }}
-                className="w-12 h-6 rounded-full bg-gray-300 transition-colors"
-              >
-                <div className="w-5 h-5 bg-white rounded-full shadow transform translate-x-0.5" />
-              </button>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  最小化到托盘
-                </p>
-                <p className="text-xs text-gray-500">
-                  关闭按钮最小化到系统托盘而非退出
-                </p>
+              <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <span className="text-sm text-gray-700 dark:text-gray-300">
+                  下一段
+                </span>
+                <kbd className="px-3 py-1 bg-gray-200 dark:bg-gray-600 rounded text-sm font-mono">
+                  Ctrl+Shift+N
+                </kbd>
               </div>
-              <button
-                onClick={handleMinimizeToTray}
-                className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm transition-colors"
-              >
-                测试托盘
-              </button>
+              <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <span className="text-sm text-gray-700 dark:text-gray-300">
+                  上一段
+                </span>
+                <kbd className="px-3 py-1 bg-gray-200 dark:bg-gray-600 rounded text-sm font-mono">
+                  Ctrl+Shift+P
+                </kbd>
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
+
+        {/* System - desktop only */}
+        {isDesktop && (
+          <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              🖥️ 系统
+            </h2>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    开机自启
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    系统启动时自动运行 BookDock
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    // Would integrate with autostart plugin
+                    console.log('Toggle autostart');
+                  }}
+                  className="w-12 h-6 rounded-full bg-gray-300 transition-colors"
+                >
+                  <div className="w-5 h-5 bg-white rounded-full shadow transform translate-x-0.5" />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    最小化到托盘
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    关闭按钮最小化到系统托盘而非退出
+                  </p>
+                </div>
+                <button
+                  onClick={handleMinimizeToTray}
+                  className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm transition-colors"
+                >
+                  测试托盘
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Save button */}
         <div className="flex items-center justify-between">
