@@ -1,111 +1,110 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "BookDock",
+  "version": "0.1.0",
+  "identifier": "com.bookdock.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build",
-    "devPath": "http://localhost:1424",
-    "distDir": "../dist",
+    "devUrl": "http://localhost:1424",
+    "frontendDist": "../dist",
     "devtools": true
   },
-  "package": {
-    "productName": "BookDock",
-    "version": "0.1.0"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "shell": {
-        "all": false,
-        "open": true
-      },
-      "dialog": {
-        "all": true,
-        "ask": true,
-        "confirm": true,
-        "message": true,
-        "open": true,
-        "save": true
-      },
-      "fs": {
-        "all": true,
-        "readFile": true,
-        "writeFile": true,
-        "readDir": true,
-        "createDir": true,
-        "removeDir": true,
-        "removeFile": true,
-        "renameFile": true,
-        "exists": true,
-        "scope": ["$APP/*", "$RESOURCE/*", "$HOME/**"]
-      },
-      "path": {
-        "all": true
-      },
-      "notification": {
-        "all": true
-      },
-      "globalShortcut": {
-        "all": true
-      },
-      "window": {
-        "all": true,
-        "create": true,
-        "close": true,
-        "setTitle": true,
-        "minimize": true,
-        "maximize": true,
-        "unmaximize": true,
-        "show": true,
-        "hide": true,
-        "setFullscreen": true,
-        "setFocus": true,
-        "setSize": true,
-        "setMinSize": true,
-        "setMaxSize": true,
-        "setPosition": true,
-        "setResizable": true,
-        "setDecorations": true,
-        "setAlwaysOnTop": true
-      }
-    },
-    "bundle": {
-      "active": true,
-      "targets": "all",
-      "identifier": "com.bookdock.app",
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
-      ],
-      "resources": [],
-      "externalBin": [],
-      "copyright": "Copyright 2024 BookDock",
-      "category": "Utility",
-      "shortDescription": "E-book reader for NAS users",
-      "longDescription": "BookDock is an e-book reader designed for NAS users, featuring TTS audio reading, offline support, and cross-device sync.",
-      "windows": {
-        "certificateThumbprint": null,
-        "digestAlgorithm": "sha256",
-        "timestampUrl": ""
-      }
-    },
-    "security": {
-      "csp": null
+  "app": {
+    "withGlobalTauri": true,
+    "trayIcon": {
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": true,
+      "menuOnLeftClick": false
     },
     "windows": [
       {
-        "fullscreen": false,
-        "resizable": true,
+        "label": "main",
         "title": "BookDock - 书仓",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
         "minHeight": 600,
         "center": true,
+        "resizable": true,
         "decorations": true,
-        "transparent": false
+        "transparent": false,
+        "visible": true,
+        "focus": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis", "dmg", "app"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [],
+    "copyright": "Copyright 2024 BookDock",
+    "category": "Utility",
+    "shortDescription": "E-book reader for NAS users",
+    "longDescription": "BookDock is an e-book reader designed for NAS users, featuring TTS audio reading, offline support, and cross-device sync.",
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": "",
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "headerImage": null,
+        "sidebarImage": null,
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"]
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.13",
+      "frameworks": [],
+      "entitlements": null
+    },
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false
+      },
+      "deb": {
+        "depends": []
+      }
+    },
+    "fileAssociations": [
+      {
+        "ext": ["epub"],
+        "name": "EPUB Document",
+        "description": "Electronic Publication",
+        "mimeType": "application/epub+zip",
+        "role": "Viewer"
+      },
+      {
+        "ext": ["pdf"],
+        "name": "PDF Document",
+        "description": "Portable Document Format",
+        "mimeType": "application/pdf",
+        "role": "Viewer"
       }
     ]
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["bookdock"]
+      }
+    },
+    "autostart": {
+      "macOSExtraLaunchAgentConfig": {}
+    }
   }
 }

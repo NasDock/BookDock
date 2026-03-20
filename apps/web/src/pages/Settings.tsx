@@ -1,14 +1,202 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@bookdock/auth';
-import { Button, Card, CardHeader, CardTitle, CardContent, CardFooter, Input } from '@bookdock/ui';
+import { Button, Card, CardHeader, CardTitle, CardContent, CardFooter } from '@bookdock/ui';
 import { useThemeStore } from '../stores/authStore';
 import { useReaderStore } from '../stores/themeStore';
+import { getApiClient } from '@bookdock/api-client';
 import type { ReaderMode } from '@bookdock/ebook-reader';
 
+// ==================== Password Change Section ====================
+function PasswordChangeSection() {
+  const { user } = useAuth();
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMessage(null);
+
+    if (newPassword.length < 6) {
+      setMessage({ type: 'error', text: '新密码长度至少为6位' });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setMessage({ type: 'error', text: '两次输入的密码不一致' });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const apiClient = getApiClient();
+      const response = await apiClient.updateUser(user!.id, { password: newPassword });
+      if (response.success) {
+        setMessage({ type: 'success', text: '密码修改成功' });
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmPassword('');
+      } else {
+        setMessage({ type: 'error', text: response.error || '修改失败' });
+      }
+    } catch {
+      setMessage({ type: 'error', text: '修改失败，请稍后重试' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>🔐 修改密码</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleChangePassword} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              当前密码
+            </label>
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="输入当前密码"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              新密码
+            </label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="输入新密码（至少6位）"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              确认新密码
+            </label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="再次输入新密码"
+            />
+          </div>
+          {message && (
+            <div className={`p-3 rounded-lg text-sm ${message.type === 'success' ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>
+              {message.text}
+            </div>
+          )}
+          <Button type="submit" disabled={isLoading} className="w-full">
+            {isLoading ? '修改中...' : '修改密码'}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ==================== Storage Section ====================
+function StorageSection() {
+  const { user } = useAuth();
+  const [storageInfo, setStorageInfo] = useState<{ used: number; limit: number } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStorage = async () => {
+      setIsLoading(true);
+      try {
+        const apiClient = getApiClient();
+        const response = await apiClient.getStorageInfo();
+        if (response.success && response.data) {
+          setStorageInfo(response.data);
+        } else {
+          // Fallback to user data
+          if (user?.storageUsed !== undefined && user?.storageLimit !== undefined) {
+            setStorageInfo({ used: user.storageUsed, limit: user.storageLimit });
+          }
+        }
+      } catch {
+        if (user?.storageUsed !== undefined && user?.storageLimit !== undefined) {
+          setStorageInfo({ used: user.storageUsed, limit: user.storageLimit });
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchStorage();
+  }, [user]);
+
+  const usedGB = storageInfo ? (storageInfo.used / 1024 / 1024 / 1024) : 0;
+  const limitGB = storageInfo ? (storageInfo.limit / 1024 / 1024 / 1024) : 0;
+  const usedPercent = limitGB > 0 ? (usedGB / limitGB) * 100 : 0;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>💾 存储空间</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="animate-pulse space-y-3">
+            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
+            <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+              <span className="text-gray-600 dark:text-gray-400">已使用</span>
+              <span className="font-medium text-gray-900 dark:text-white">
+                {usedGB > 0 ? `${usedGB.toFixed(2)} GB` : '0 GB'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+              <span className="text-gray-600 dark:text-gray-400">存储上限</span>
+              <span className="font-medium text-gray-900 dark:text-white">
+                {limitGB > 0 ? `${limitGB.toFixed(0)} GB` : '无限制'}
+              </span>
+            </div>
+            {limitGB > 0 && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between text-sm mb-2">
+                  <span className="text-gray-500 dark:text-gray-400">使用率</span>
+                  <span className={`font-medium ${usedPercent > 90 ? 'text-red-500' : usedPercent > 70 ? 'text-amber-500' : 'text-gray-900 dark:text-white'}`}>
+                    {usedPercent.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      usedPercent > 90 ? 'bg-red-500' : usedPercent > 70 ? 'bg-amber-500' : 'bg-blue-500'
+                    }`}
+                    style={{ width: `${Math.min(usedPercent, 100)}%` }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ==================== Main Settings Component ====================
 export default function Settings() {
   const { user, logout, membership } = useAuth();
-  const { theme, setTheme, actualTheme } = useThemeStore();
+  const { theme, setTheme } = useThemeStore();
   const readerConfig = useReaderStore();
+  const navigate = useNavigate();
 
   const [ttsVoice, setTtsVoice] = useState<string>('');
   const [ttsRate, setTtsRate] = useState<number>(1);
@@ -16,7 +204,7 @@ export default function Settings() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
-  // Load saved settings
+  // Load saved TTS settings
   useEffect(() => {
     const loadSettings = () => {
       try {
@@ -25,7 +213,7 @@ export default function Settings() {
           const config = JSON.parse(ttsConfig);
           if (config.voiceId) setTtsVoice(config.voiceId);
           if (config.rate) setTtsRate(config.rate);
-          if (config.volume) setTtsVolume(config.volume);
+          if (config.volume !== undefined) setTtsVolume(config.volume);
         }
       } catch {
         // Ignore
@@ -71,6 +259,11 @@ export default function Settings() {
     </button>
   );
 
+  const handleUpgrade = () => {
+    // In production, this would redirect to a payment page
+    alert('会员升级功能即将上线，敬请期待！');
+  };
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <h1 className="text-3xl font-bold text-gray-900 dark:text-white">设置</h1>
@@ -84,7 +277,7 @@ export default function Settings() {
           <div className="space-y-4">
             <div className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
               <span className="text-gray-600 dark:text-gray-400">用户名</span>
-              <span className="font-medium text-gray-900 dark:text-white">{user?.username}</span>
+              <span className="font-medium text-gray-900 dark:text-white">{user?.username || '未设置'}</span>
             </div>
             {user?.email && (
               <div className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
@@ -116,7 +309,7 @@ export default function Settings() {
         </CardContent>
         {membership !== 'premium' && (
           <CardFooter>
-            <Button className="w-full bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 border-0">
+            <Button onClick={handleUpgrade} className="w-full bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 border-0">
               ⭐ 升级到 Premium
             </Button>
           </CardFooter>
@@ -170,7 +363,7 @@ export default function Settings() {
                         ? 'bg-white text-gray-800 border border-gray-200'
                         : mode === 'dark'
                         ? 'bg-gray-900 text-gray-100'
-                        : 'bg-sepia-100 text-sepia-800'
+                        : 'bg-amber-50 text-amber-900'
                     }`}
                   >
                     <span className="text-2xl">
@@ -276,7 +469,7 @@ export default function Settings() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                默认语速
+                默认语速: {ttsRate}x
               </label>
               <div className="flex items-center gap-4">
                 <input
@@ -294,7 +487,7 @@ export default function Settings() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                默认音量
+                默认音量: {Math.round(ttsVolume * 100)}%
               </label>
               <div className="flex items-center gap-4">
                 <input
@@ -326,43 +519,10 @@ export default function Settings() {
       </Card>
 
       {/* Storage Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle>💾 存储空间</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
-              <span className="text-gray-600 dark:text-gray-400">已使用</span>
-              <span className="font-medium text-gray-900 dark:text-white">
-                {user?.storageUsed ? `${(user.storageUsed / 1024 / 1024 / 1024).toFixed(2)} GB` : '0 GB'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
-              <span className="text-gray-600 dark:text-gray-400">存储上限</span>
-              <span className="font-medium text-gray-900 dark:text-white">
-                {user?.storageLimit ? `${(user.storageLimit / 1024 / 1024 / 1024).toFixed(0)} GB` : '∞'}
-              </span>
-            </div>
-            {user?.storageLimit && user?.storageUsed && (
-              <div className="mt-4">
-                <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${
-                      user.storageUsed / user.storageLimit > 0.9
-                        ? 'bg-red-500'
-                        : user.storageUsed / user.storageLimit > 0.7
-                        ? 'bg-amber-500'
-                        : 'bg-blue-500'
-                    }`}
-                    style={{ width: `${Math.min((user.storageUsed / user.storageLimit) * 100, 100)}%` }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      <StorageSection />
+
+      {/* Password Change */}
+      {user && <PasswordChangeSection />}
 
       {/* About Section */}
       <Card>
