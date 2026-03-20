@@ -6,9 +6,14 @@
   "build": {
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build",
+<<<<<<< HEAD
     "devUrl": "http://localhost:1424",
     "frontendDist": "../dist",
     "devtools": true
+=======
+    "devPath": "http://localhost:1424",
+    "distDir": "../dist"
+>>>>>>> da738d0 (feat: 修改启动问题)
   },
   "app": {
     "withGlobalTauri": true,
