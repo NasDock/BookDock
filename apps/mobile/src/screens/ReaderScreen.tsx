@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
-  useWindowDimensions,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,7 +19,7 @@ import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { sharingService } from '../services';
 import type { RootStackParamList } from '../navigation/types';
 import type { Book } from '@bookdock/api-client';
-import type { ReaderPosition, ReaderMode } from '@bookdock/ebook-reader';
+import type { ReaderMode } from '@bookdock/ebook-reader';
 
 type ReaderRouteProp = RouteProp<RootStackParamList, 'Reader'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -128,7 +127,6 @@ export function ReaderScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ReaderRouteProp>();
   const { book } = route.params;
-  const { width, height } = useWindowDimensions();
   
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
@@ -138,13 +136,13 @@ export function ReaderScreen() {
   
   const [showControls, setShowControls] = useState(true);
   const [currentPosition, setCurrentPosition] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
+  const [totalPages] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   
   const webViewRef = useRef<WebView>(null);
 
-  const styles = useMemo(() => createStyles(theme, showControls), [theme, showControls]);
+  const styles = useMemo(() => createStyles(theme), [theme]);
 
   const html = useMemo(() => {
     return createReaderHTML(book, {
@@ -314,7 +312,7 @@ export function ReaderScreen() {
           javaScriptEnabled={true}
           domStorageEnabled={true}
           allowFileAccess={true}
-          allowInlineMediaPlayback={true}
+          allowsInlineMediaPlayback={true}
           mediaPlaybackRequiresUserAction={true}
         />
         {isLoading && (
@@ -374,7 +372,7 @@ export function ReaderScreen() {
   );
 }
 
-function createStyles(theme: ReturnType<typeof getTheme>, showControls: boolean) {
+function createStyles(theme: ReturnType<typeof getTheme>) {
   return StyleSheet.create({
     container: {
       flex: 1,

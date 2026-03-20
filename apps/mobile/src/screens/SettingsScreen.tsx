@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
-  useColorScheme,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore, useAuthStore, useReaderStore, useTTSStore } from '../stores';
@@ -24,8 +23,8 @@ export function SettingsScreen() {
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [readingReminder, setReadingReminder] = useState(false);
-  const [reminderHour, setReminderHour] = useState(20);
-  const [reminderMinute, setReminderMinute] = useState(0);
+  const [reminderHour] = useState(20);
+  const [reminderMinute] = useState(0);
 
   const theme = getTheme(actualTheme === 'dark');
   const styles = useMemo(() => createStyles(theme), [theme]);

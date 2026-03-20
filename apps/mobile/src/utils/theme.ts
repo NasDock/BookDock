@@ -1,5 +1,3 @@
-import { useColorScheme } from 'react-native';
-
 export interface ThemeColors {
   primary: string;
   secondary: string;

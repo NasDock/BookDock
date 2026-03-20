@@ -255,7 +255,7 @@ export function TTSScreen() {
         {/* Chapters */}
         <View style={styles.chaptersSection}>
           <Text style={styles.chaptersTitle}>Chapters</Text>
-          {MOCK_CHAPTERS.map((chapter, index) => (
+          {MOCK_CHAPTERS.map((chapter) => (
             <TouchableOpacity
               key={chapter.id}
               style={[

@@ -1,11 +1,10 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Image,
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,7 +20,7 @@ interface StatItem {
 export function ProfileScreen() {
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
-  const { user, isAuthenticated } = useAuthStore();
+  const { user } = useAuthStore();
   const { books, localBooks } = useLibraryStore();
 
   const styles = useMemo(() => createStyles(theme), [theme]);
