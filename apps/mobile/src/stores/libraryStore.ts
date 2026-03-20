@@ -83,7 +83,7 @@ export const useLibraryStore = create<LibraryState>()(
 
       clearError: () => set({ error: null }),
 
-      getReadingProgress: (bookId) => {
+      getReadingProgress: (_bookId) => {
         // Reading progress is stored in AsyncStorage, not in localBooks
         // This would need to call loadReadingProgress separately
         return null;

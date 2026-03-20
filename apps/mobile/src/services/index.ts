@@ -45,7 +45,7 @@ class NotificationService {
   async scheduleNotification(
     title: string,
     body: string,
-    trigger?: Notifications.NotificationTriggerInput,
+    trigger: Notifications.NotificationTriggerInput | null = null,
     data?: Record<string, unknown>
   ): Promise<string | null> {
     if (!this.permissionGranted) {
@@ -56,7 +56,7 @@ class NotificationService {
     try {
       const id = await Notifications.scheduleNotificationAsync({
         content: { title, body, data },
-        trigger,
+        trigger: trigger || null,
       });
       return id;
     } catch (error) {
