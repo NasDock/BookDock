@@ -203,7 +203,7 @@ class SharingService {
     });
   }
 
-  async shareText(text: string, title?: string): Promise<void> {
+  async shareText(text: string, _title?: string): Promise<void> {
     if (Platform.OS === 'web') {
       await WebBrowser.openBrowserAsync(
         `data:text/plain;charset=utf-8,${encodeURIComponent(text)}`
