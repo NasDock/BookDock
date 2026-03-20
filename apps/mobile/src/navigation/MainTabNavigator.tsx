@@ -2,7 +2,7 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { LibraryScreen } from '../screens/LibraryScreen';
-import { TTSTabScreen } from '../screens/TTSScreen';
+import { TTSTabScreen } from '../screens/TTSTabScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { useThemeStore } from '../stores';

@@ -1,6 +1,6 @@
 // Re-export types from api-client for mobile-specific usage
-export type { Book, User, ApiResponse, ReaderConfig, ReaderMode } from '@bookdock/api-client';
-export type { ReaderPosition, ReaderFormat } from '@bookdock/ebook-reader';
+export type { Book, User, ApiResponse } from '@bookdock/api-client';
+export type { ReaderPosition, ReaderConfig, ReaderMode, ReaderFormat } from '@bookdock/ebook-reader';
 
 // Mobile-specific types
 export interface LocalBook extends Book {

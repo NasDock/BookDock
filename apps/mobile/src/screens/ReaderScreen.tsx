@@ -1,14 +1,12 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Dimensions,
   SafeAreaView,
   StatusBar,
   ActivityIndicator,
-  ScrollView,
   Modal,
   Pressable,
   useWindowDimensions,
@@ -17,15 +15,12 @@ import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import Slider from '@react-native-community/slider';
 import { useReaderStore, useThemeStore, useLibraryStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { sharingService } from '../services';
 import type { RootStackParamList } from '../navigation/types';
-import type { Book, ReaderPosition } from '@bookdock/api-client';
-import type { ReaderMode } from '@bookdock/ebook-reader';
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+import type { Book } from '@bookdock/api-client';
+import type { ReaderPosition, ReaderMode } from '@bookdock/ebook-reader';
 
 type ReaderRouteProp = RouteProp<RootStackParamList, 'Reader'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -39,8 +34,7 @@ function createReaderHTML(
     lineHeight: number;
     margin: number;
     mode: ReaderMode;
-  },
-  initialPosition?: ReaderPosition
+  }
 ): string {
   const bgColors: Record<ReaderMode, string> = {
     light: '#ffffff',

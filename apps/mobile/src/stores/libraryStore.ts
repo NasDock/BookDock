@@ -2,11 +2,11 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system';
-import type { Book, ReaderPosition } from '@bookdock/api-client';
+import type { Book } from '@bookdock/api-client';
+import type { ReaderPosition } from '@bookdock/ebook-reader';
 import type { LocalBook, ReadingState } from '../types';
 
 // Storage keys
-const LOCAL_BOOKS_KEY = 'bookdock-local-books';
 const READING_PROGRESS_KEY = 'bookdock-reading-progress';
 
 interface LibraryState {
@@ -84,18 +84,9 @@ export const useLibraryStore = create<LibraryState>()(
       clearError: () => set({ error: null }),
 
       getReadingProgress: (bookId) => {
-        const progressStr = useLibraryStore.getState().localBooks.find(
-          (b) => b.id === bookId
-        )?.localPath;
-        
-        if (!progressStr) return null;
-        
-        try {
-          const progressJson = progressStr; // This is actually stored in AsyncStorage under reading progress
-          return null; // Will be retrieved from reading progress
-        } catch {
-          return null;
-        }
+        // Reading progress is stored in AsyncStorage, not in localBooks
+        // This would need to call loadReadingProgress separately
+        return null;
       },
 
       saveReadingProgress: async (bookId, position) => {

@@ -26,12 +26,6 @@ export function RootNavigator() {
           border: theme.colors.border,
           notification: theme.colors.error,
         },
-        fonts: {
-          regular: { fontFamily: 'System', fontWeight: '400' },
-          medium: { fontFamily: 'System', fontWeight: '500' },
-          bold: { fontFamily: 'System', fontWeight: '700' },
-          heavy: { fontFamily: 'System', fontWeight: '800' },
-        },
       }}
     >
       <Stack.Navigator

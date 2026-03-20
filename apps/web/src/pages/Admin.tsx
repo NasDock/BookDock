@@ -1,38 +1,210 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { getApiClient, User, EbookSource, Book } from '@bookdock/api-client';
 import { Button, Card, CardHeader, CardTitle, CardContent, Input } from '@bookdock/ui';
 
-const formatDate = (dateString?: string): string => {
-  if (!dateString) return '-';
-  return new Date(dateString).toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
+// ==================== Open Library Search ====================
+interface OLSearchResult {
+  key: string;
+  title: string;
+  author_name?: string[];
+  cover_i?: number;
+  first_publish_year?: number;
+  isbn?: string[];
+  publisher?: string[];
+}
 
-const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-};
+function OpenLibrarySearch() {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<OLSearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [addingIds, setAddingIds] = useState<Set<string>>(new Set());
+  const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
 
-// Ebook Sources Management
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!query.trim()) return;
+
+    setIsSearching(true);
+    setError(null);
+
+    try {
+      // Search Open Library API
+      const response = await fetch(
+        `https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=20&fields=key,title,author_name,cover_i,first_publish_year,isbn,publisher`
+      );
+      const data = await response.json();
+
+      if (data.docs) {
+        setResults(data.docs);
+      } else {
+        setResults([]);
+      }
+    } catch (err) {
+      setError('搜索失败，请稍后重试');
+      setResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleAddBook = async (result: OLSearchResult) => {
+    setAddingIds((prev) => new Set(prev).add(result.key));
+
+    try {
+      const apiClient = getApiClient();
+      const bookData: Partial<Book> = {
+        title: result.title,
+        author: result.author_name?.[0] || '未知作者',
+        fileType: 'epub', // Default to epub, user can change later
+        filePath: `ol://${result.key}`,
+        fileSize: 0,
+        language: 'en',
+        isbn: result.isbn?.[0],
+        publisher: result.publisher?.[0],
+        addedAt: new Date().toISOString(),
+      };
+
+      const response = await apiClient.addBook(bookData);
+      if (response.success) {
+        setAddedIds((prev) => new Set(prev).add(result.key));
+      }
+    } catch (err) {
+      console.error('Failed to add book:', err);
+    } finally {
+      setAddingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(result.key);
+        return next;
+      });
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-white">🔍 搜索公开书籍</h2>
+        <a
+          href="https://openlibrary.org"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm text-blue-500 hover:text-blue-600"
+        >
+          Open Library ↗
+        </a>
+      </div>
+
+      {/* Search form */}
+      <form onSubmit={handleSearch} className="flex gap-3">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="搜索书名、作者、ISBN..."
+          className="flex-1 px-4 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+        <Button type="submit" disabled={isSearching}>
+          {isSearching ? (
+            <span className="flex items-center gap-2">
+              <span className="animate-spin">⟳</span>
+              搜索中...
+            </span>
+          ) : (
+            '🔍 搜索'
+          )}
+        </Button>
+      </form>
+
+      {/* Error message */}
+      {error && (
+        <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-xl text-red-600 dark:text-red-400">
+          {error}
+        </div>
+      )}
+
+      {/* Results */}
+      {results.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {results.map((result) => (
+            <Card key={result.key}>
+              <CardContent className="flex gap-4">
+                {/* Cover */}
+                <div className="w-16 h-20 bg-gray-100 dark:bg-gray-700 rounded overflow-hidden flex-shrink-0">
+                  {result.cover_i ? (
+                    <img
+                      src={`https://covers.openlibrary.org/b/id/${result.cover_i}-M.jpg`}
+                      alt={result.title}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-600">
+                      <span className="text-gray-400">📖</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-gray-900 dark:text-white truncate">{result.title}</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                    {result.author_name?.[0] || '未知作者'}
+                  </p>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {result.first_publish_year && (
+                      <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs">
+                        {result.first_publish_year}
+                      </span>
+                    )}
+                    {result.isbn?.[0] && (
+                      <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs">
+                        ISBN: {result.isbn[0]}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Add button */}
+                <div className="flex-shrink-0">
+                  {addedIds.has(result.key) ? (
+                    <span className="text-green-500 text-sm">✓ 已添加</span>
+                  ) : (
+                    <Button
+                      size="sm"
+                      onClick={() => handleAddBook(result)}
+                      disabled={addingIds.has(result.key)}
+                    >
+                      {addingIds.has(result.key) ? '添加中...' : '➕ 添加'}
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : query && !isSearching ? (
+        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+          <div className="text-5xl mb-4">🔍</div>
+          <p>未找到相关书籍</p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ==================== Ebook Sources Management ====================
 function EbookSources() {
   const [sources, setSources] = useState<EbookSource[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
 
-  // Form state
   const [newSource, setNewSource] = useState({
     name: '',
-    type: 'local' as const,
+    type: 'local' as 'local' | 'webdav' | 'smb' | 'ftp',
     url: '',
     path: '',
   });
@@ -76,9 +248,10 @@ function EbookSources() {
     setSyncingId(id);
     try {
       const apiClient = getApiClient();
-      await apiClient.syncEbookSource(id);
-      // Refresh sources
-      await fetchSources();
+      const result = await apiClient.syncEbookSource(id);
+      if (result.success) {
+        await fetchSources();
+      }
     } catch (error) {
       console.error('Failed to sync source:', error);
     } finally {
@@ -98,6 +271,16 @@ function EbookSources() {
     }
   };
 
+  const handleToggleEnabled = async (id: string, enabled: boolean) => {
+    try {
+      const apiClient = getApiClient();
+      await apiClient.updateEbookSource(id, { enabled: !enabled });
+      setSources(sources.map((s) => (s.id === id ? { ...s, enabled: !enabled } : s)));
+    } catch (error) {
+      console.error('Failed to toggle source:', error);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -105,7 +288,6 @@ function EbookSources() {
         <Button onClick={() => setShowAddForm(true)}>➕ 添加书源</Button>
       </div>
 
-      {/* Add form */}
       {showAddForm && (
         <Card className="border-blue-200 dark:border-blue-800">
           <CardHeader>
@@ -125,7 +307,7 @@ function EbookSources() {
                 </label>
                 <select
                   value={newSource.type}
-                  onChange={(e) => setNewSource({ ...newSource, type: e.target.value as any })}
+                  onChange={(e) => setNewSource({ ...newSource, type: e.target.value as typeof newSource.type })}
                   className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
                 >
                   <option value="local">本地文件夹</option>
@@ -135,10 +317,16 @@ function EbookSources() {
                 </select>
               </div>
               <Input
-                label="路径/URL"
+                label={newSource.type === 'local' ? '文件夹路径' : 'URL/地址'}
                 placeholder={newSource.type === 'local' ? '/mnt/books' : 'https://...'}
                 value={newSource.url}
                 onChange={(e) => setNewSource({ ...newSource, url: e.target.value })}
+              />
+              <Input
+                label="子目录 (可选)"
+                placeholder="/ebooks"
+                value={newSource.path}
+                onChange={(e) => setNewSource({ ...newSource, path: e.target.value })}
               />
             </div>
             <div className="flex gap-3 mt-4">
@@ -151,7 +339,6 @@ function EbookSources() {
         </Card>
       )}
 
-      {/* Source list */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
@@ -172,31 +359,31 @@ function EbookSources() {
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="font-semibold text-gray-900 dark:text-white">{source.name}</h3>
-                    <span className="inline-block px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs mt-1">
-                      {source.type.toUpperCase()}
+                    <span className="inline-block px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs mt-1 uppercase">
+                      {source.type}
                     </span>
                   </div>
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-xs ${
-                      source.enabled
-                        ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500'
-                    }`}
-                  >
-                    {source.enabled ? '已启用' : '已禁用'}
-                  </span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={source.enabled}
+                      onChange={() => handleToggleEnabled(source.id, source.enabled)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+                  </label>
                 </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 truncate">
                   {source.path || source.url || '-'}
                 </p>
                 {source.lastSyncAt && (
                   <p className="text-xs text-gray-400 mt-2">
-                    最后同步: {formatDate(source.lastSyncAt)}
+                    最后同步: {new Date(source.lastSyncAt).toLocaleDateString('zh-CN')}
                   </p>
                 )}
                 <div className="flex gap-2 mt-4">
-                  <Button size="sm" onClick={() => handleSync(source.id)} disabled={syncingId === source.id}>
-                    {syncingId === source.id ? '同步中...' : '🔄 同步'}
+                  <Button size="sm" onClick={() => handleSync(source.id)} disabled={syncingId === source.id || !source.enabled}>
+                    {syncingId === source.id ? '🔄 同步中...' : '🔄 同步'}
                   </Button>
                   <Button size="sm" variant="danger" onClick={() => handleDelete(source.id)}>
                     🗑️
@@ -211,7 +398,7 @@ function EbookSources() {
   );
 }
 
-// User Management
+// ==================== User Management ====================
 function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -259,6 +446,15 @@ function UserManagement() {
     } catch (error) {
       console.error('Failed to delete user:', error);
     }
+  };
+
+  const formatDate = (dateString?: string): string => {
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleDateString('zh-CN', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
   };
 
   return (
@@ -366,7 +562,6 @@ function UserManagement() {
         </Card>
       )}
 
-      {/* Edit modal */}
       {editingUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-6">
@@ -422,10 +617,11 @@ function UserManagement() {
   );
 }
 
-// Books Management
+// ==================== Books Management ====================
 function BooksManagement() {
   const [books, setBooks] = useState<Book[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [filter, setFilter] = useState<'all' | 'epub' | 'pdf' | 'txt'>('all');
 
   useEffect(() => {
     fetchBooks();
@@ -435,7 +631,7 @@ function BooksManagement() {
     setIsLoading(true);
     try {
       const apiClient = getApiClient();
-      const response = await apiClient.getBooks();
+      const response = await apiClient.getBooks({ limit: 100 });
       if (response.success && response.data) {
         setBooks(response.data.books);
       }
@@ -458,19 +654,48 @@ function BooksManagement() {
     }
   };
 
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  const filteredBooks = filter === 'all' ? books : books.filter((b) => b.fileType === filter);
+
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-semibold text-gray-900 dark:text-white">📖 书籍管理</h2>
+
+      {/* Filter */}
+      <div className="flex gap-2">
+        {(['all', 'epub', 'pdf', 'txt'] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              filter === f
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}
+          >
+            {f === 'all' ? '全部' : f.toUpperCase()}
+          </button>
+        ))}
+      </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
         </div>
-      ) : books.length === 0 ? (
+      ) : filteredBooks.length === 0 ? (
         <Card>
           <CardContent className="text-center py-12">
             <div className="text-5xl mb-4">📚</div>
-            <p className="text-gray-500 dark:text-gray-400">暂无书籍</p>
+            <p className="text-gray-500 dark:text-gray-400">
+              {filter === 'all' ? '暂无书籍' : `暂无${filter.toUpperCase()}格式的书籍`}
+            </p>
           </CardContent>
         </Card>
       ) : (
@@ -501,7 +726,7 @@ function BooksManagement() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {books.map((book) => (
+                  {filteredBooks.map((book) => (
                     <tr key={book.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
@@ -570,44 +795,92 @@ function BooksManagement() {
   );
 }
 
-// Main Admin Component
-export default function Admin() {
-  const location = useLocation();
-  const currentPath = location.pathname.replace('/admin', '') || '/';
+// ==================== System Settings ====================
+function SystemSettings() {
+  const [settings, setSettings] = useState({
+    siteName: '书仓',
+    siteDescription: '您的私人电子书库',
+    allowPublicRegistration: true,
+    defaultMembership: 'free' as 'free' | 'premium',
+    maxStoragePerUser: 10 * 1024 * 1024 * 1024, // 10GB
+    enableTTS: true,
+    ttsProvider: 'browser' as 'browser' | 'server',
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
-  const tabs = [
-    { path: '/admin', label: '📚 书源管理', exact: true },
-    { path: '/admin/users', label: '👥 用户管理' },
-    { path: '/admin/books', label: '📖 书籍管理' },
-  ];
+  const handleSave = async () => {
+    setIsSaving(true);
+    setSaveMessage(null);
+
+    // Simulate saving - in production, this would call an API
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    localStorage.setItem('bookdock_system_settings', JSON.stringify(settings));
+    setSaveMessage('设置已保存');
+    setIsSaving(false);
+    setTimeout(() => setSaveMessage(null), 3000);
+  };
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-gray-900 dark:text-white">管理面板</h1>
+      <h2 className="text-xl font-semibold text-gray-900 dark:text-white">⚙️ 系统设置</h2>
 
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
-        {tabs.map((tab) => (
-          <Link
-            key={tab.path}
-            to={tab.path}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              currentPath === tab.path
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-            }`}
-          >
-            {tab.label}
-          </Link>
-        ))}
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>基本信息</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              网站名称
+            </label>
+            <input
+              type="text"
+              value={settings.siteName}
+              onChange={(e) => setSettings({ ...settings, siteName: e.target.value })}
+              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              网站描述
+            </label>
+            <textarea
+              value={settings.siteDescription}
+              onChange={(e) => setSettings({ ...settings, siteDescription: e.target.value })}
+              rows={3}
+              className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* Content */}
-      <Routes>
-        <Route path="/" element={<EbookSources />} />
-        <Route path="/users" element={<UserManagement />} />
-        <Route path="/books" element={<BooksManagement />} />
-      </Routes>
-    </div>
-  );
-}
+      <Card>
+        <CardHeader>
+          <CardTitle>用户设置</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-gray-900 dark:text-white">允许公开注册</p>
+              <p className="text-sm text-gray-500">允许新用户自行注册账户</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={settings.allowPublicRegistration}
+                onChange={(e) => setSettings({ ...settings, allowPublicRegistration: e.target.checked })}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 dark:peer-focus:ring-blue-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-blue-600"></div>
+            </label>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              默认会员类型
+            </label>
+            <select
+              value={settings.defaultMembership}
+              onChange={(e) => setSettings
