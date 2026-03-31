@@ -1,5 +1,5 @@
 {
-  "name": "BookDock",
+  "name": "BookDock - 书仓",
   "short_name": "书仓",
   "description": "专为NAS用户打造的电子书阅读器，支持TTS语音朗读",
   "start_url": "/",
@@ -7,6 +7,7 @@
   "background_color": "#ffffff",
   "theme_color": "#3b82f6",
   "orientation": "portrait-primary",
+  "categories": ["books", "education", "productivity"],
   "icons": [
     {
       "src": "/icons/icon-72x72.png",
@@ -34,7 +35,7 @@
       "type": "image/png"
     },
     {
-      "src": "/icons/icon-192x192.png",
+      "src": "/icons/icon-192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
@@ -44,10 +45,22 @@
       "type": "image/png"
     },
     {
-      "src": "/icons/icon-512x512.png",
+      "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
     }
   ],
-  "categories": ["books", "education", "productivity"]
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "我的书库",
+      "url": "/",
+      "description": "打开我的电子书库"
+    },
+    {
+      "name": "阅读设置",
+      "url": "/settings",
+      "description": "调整阅读器设置"
+    }
+  ]
 }

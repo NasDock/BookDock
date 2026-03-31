@@ -11,6 +11,8 @@
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.19",
-    "babel-plugin-module-resolver": "^5.0.3"
+    "babel-plugin-module-resolver": "^5.0.3",
+    "vite-plugin-pwa": "^1.2.0",
+    "workbox-window": "^7.4.0"
   }
 }

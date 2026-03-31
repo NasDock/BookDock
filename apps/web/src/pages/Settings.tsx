@@ -3,9 +3,42 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@bookdock/auth';
 import { Button, Card, CardHeader, CardTitle, CardContent, CardFooter } from '@bookdock/ui';
 import { useThemeStore } from '../stores/authStore';
-import { useReaderStore } from '../stores/themeStore';
+import { useReaderStore, useReaderStore as useReaderStore2 } from '../stores/themeStore';
 import { getApiClient } from '@bookdock/api-client';
 import type { ReaderMode } from '@bookdock/ebook-reader';
+
+// ==================== Page Turn Mode ====================
+type PageTurnMode = 'swipe' | 'click' | 'scroll';
+
+const PAGE_TURN_PRESETS: Record<PageTurnMode, { icon: string; label: string; desc: string }> = {
+  swipe: { icon: '👆', label: '滑动翻页', desc: '左右滑动或点击屏幕边缘翻页' },
+  click: { icon: '🖱️', label: '点击翻页', desc: '点击屏幕中央或边缘翻页' },
+  scroll: { icon: '📜', label: '滚动模式', desc: '滚动阅读，支持自动滚动' },
+};
+
+// ==================== Font Size Preset ====================
+type FontSizePreset = 'small' | 'medium' | 'large' | 'xlarge';
+const FONT_SIZE_PRESETS: Record<FontSizePreset, { label: string; size: number }> = {
+  small: { label: '小', size: 14 },
+  medium: { label: '中', size: 18 },
+  large: { label: '大', size: 22 },
+  xlarge: { label: '特大', size: 26 },
+};
+
+// ==================== Line Height Preset ====================
+type LineHeightPreset = 'compact' | 'normal' | 'spacious';
+const LINE_HEIGHT_PRESETS: Record<LineHeightPreset, { label: string; height: number }> = {
+  compact: { label: '紧凑', height: 1.4 },
+  normal: { label: '标准', height: 1.8 },
+  spacious: { label: '宽松', height: 2.2 },
+};
+
+// ==================== Reader Theme Preset ====================
+const READER_THEME_PRESETS: Record<ReaderMode, { icon: string; label: string; bg: string; text: string }> = {
+  light: { icon: '☀️', label: '浅色', bg: '#ffffff', text: '#333333' },
+  dark: { icon: '🌙', label: '深色', bg: '#1a1a1a', text: '#e0e0e0' },
+  sepia: { icon: '📜', label: '护眼', bg: '#f5ebe0', text: '#5c4b37' },
+};
 
 // ==================== Password Change Section ====================
 function PasswordChangeSection() {
@@ -121,7 +154,6 @@ function StorageSection() {
         if (response.success && response.data) {
           setStorageInfo(response.data);
         } else {
-          // Fallback to user data
           if (user?.storageUsed !== undefined && user?.storageLimit !== undefined) {
             setStorageInfo({ used: user.storageUsed, limit: user.storageLimit });
           }
@@ -195,31 +227,47 @@ function StorageSection() {
 export default function Settings() {
   const { user, logout, membership } = useAuth();
   const { theme, setTheme } = useThemeStore();
-  const readerConfig = useReaderStore();
+  const readerConfig = useReaderStore2();
   const navigate = useNavigate();
 
+  // TTS settings
   const [ttsVoice, setTtsVoice] = useState<string>('');
   const [ttsRate, setTtsRate] = useState<number>(1);
   const [ttsVolume, setTtsVolume] = useState<number>(1);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
-  // Load saved TTS settings
+  // Page turn mode (persisted)
+  const [pageTurnMode, setPageTurnMode] = useState<PageTurnMode>(() => {
+    return (localStorage.getItem('bookdock_page_turn_mode') as PageTurnMode) || 'swipe';
+  });
+
+  // Load saved settings
   useEffect(() => {
-    const loadSettings = () => {
-      try {
-        const ttsConfig = localStorage.getItem('bookdock-tts-config');
-        if (ttsConfig) {
-          const config = JSON.parse(ttsConfig);
-          if (config.voiceId) setTtsVoice(config.voiceId);
-          if (config.rate) setTtsRate(config.rate);
-          if (config.volume !== undefined) setTtsVolume(config.volume);
-        }
-      } catch {
-        // Ignore
+    // Load TTS config
+    try {
+      const ttsConfig = localStorage.getItem('bookdock-tts-config');
+      if (ttsConfig) {
+        const config = JSON.parse(ttsConfig);
+        if (config.voiceId) setTtsVoice(config.voiceId);
+        if (config.rate) setTtsRate(config.rate);
+        if (config.volume !== undefined) setTtsVolume(config.volume);
       }
+    } catch {
+      // Ignore
+    }
+
+    // Load available voices
+    const loadVoices = () => {
+      const voices = window.speechSynthesis?.getVoices() || [];
+      setAvailableVoices(voices);
     };
-    loadSettings();
+    loadVoices();
+    window.speechSynthesis?.addEventListener('voiceschanged', loadVoices);
+    return () => {
+      window.speechSynthesis?.removeEventListener('voiceschanged', loadVoices);
+    };
   }, []);
 
   const handleSaveTTS = () => {
@@ -237,8 +285,25 @@ export default function Settings() {
     }
   };
 
+  const handlePageTurnModeChange = (mode: PageTurnMode) => {
+    setPageTurnMode(mode);
+    localStorage.setItem('bookdock_page_turn_mode', mode);
+  };
+
   const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
     setTheme(newTheme);
+  };
+
+  const handleFontSizePreset = (preset: FontSizePreset) => {
+    readerConfig.setFontSize(FONT_SIZE_PRESETS[preset].size);
+  };
+
+  const handleLineHeightPreset = (preset: LineHeightPreset) => {
+    readerConfig.setLineHeight(LINE_HEIGHT_PRESETS[preset].height);
+  };
+
+  const handleReaderThemePreset = (mode: ReaderMode) => {
+    readerConfig.setMode(mode);
   };
 
   const renderThemeOption = (
@@ -260,7 +325,6 @@ export default function Settings() {
   );
 
   const handleUpgrade = () => {
-    // In production, this would redirect to a payment page
     alert('会员升级功能即将上线，敬请期待！');
   };
 
@@ -344,73 +408,139 @@ export default function Settings() {
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
-            {/* Reading mode */}
+            {/* Page turn mode */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                翻页模式
+              </label>
+              <div className="flex gap-3">
+                {(Object.entries(PAGE_TURN_PRESETS) as [PageTurnMode, typeof PAGE_TURN_PRESETS[PageTurnMode]][]).map(([mode, info]) => (
+                  <button
+                    key={mode}
+                    onClick={() => handlePageTurnModeChange(mode)}
+                    className={`flex-1 py-3 px-4 rounded-xl flex flex-col items-center gap-1 transition-all ${
+                      pageTurnMode === mode
+                        ? 'ring-2 ring-blue-500'
+                        : ''
+                    } ${
+                      pageTurnMode === mode
+                        ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700'
+                        : 'bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <span className="text-xl">{info.icon}</span>
+                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{info.label}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                {PAGE_TURN_PRESETS[pageTurnMode].desc}
+              </p>
+            </div>
+
+            {/* Reader theme presets */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
                 阅读主题
               </label>
               <div className="flex gap-3">
-                {(['light', 'dark', 'sepia'] as ReaderMode[]).map((mode) => (
+                {(Object.entries(READER_THEME_PRESETS) as [ReaderMode, typeof READER_THEME_PRESETS[ReaderMode]][]).map(([mode, info]) => (
                   <button
                     key={mode}
-                    onClick={() => readerConfig.setMode(mode)}
+                    onClick={() => handleReaderThemePreset(mode)}
                     className={`flex-1 py-3 px-4 rounded-xl flex flex-col items-center gap-2 transition-all ${
                       readerConfig.mode === mode
                         ? 'ring-2 ring-blue-500'
                         : ''
-                    } ${
-                      mode === 'light'
-                        ? 'bg-white text-gray-800 border border-gray-200'
-                        : mode === 'dark'
-                        ? 'bg-gray-900 text-gray-100'
-                        : 'bg-amber-50 text-amber-900'
                     }`}
+                    style={{
+                      backgroundColor: info.bg,
+                      color: info.text,
+                    }}
                   >
-                    <span className="text-2xl">
-                      {mode === 'light' ? '☀️' : mode === 'dark' ? '🌙' : '📜'}
-                    </span>
-                    <span className="text-xs font-medium">
-                      {mode === 'light' ? '浅色' : mode === 'dark' ? '深色' : '护眼'}
-                    </span>
+                    <span className="text-2xl">{info.icon}</span>
+                    <span className="text-xs font-medium">{info.label}</span>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Font size */}
+            {/* Font size presets */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                字体大小: {readerConfig.fontSize}px
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                字体大小
               </label>
-              <input
-                type="range"
-                min="12"
-                max="28"
-                value={readerConfig.fontSize}
-                onChange={(e) => readerConfig.setFontSize(parseInt(e.target.value))}
-                className="w-full accent-blue-500"
-              />
-              <div className="flex justify-between text-xs text-gray-400 mt-1">
-                <span>小</span>
-                <span>中</span>
-                <span>大</span>
+              <div className="flex gap-3">
+                {(Object.entries(FONT_SIZE_PRESETS) as [FontSizePreset, typeof FONT_SIZE_PRESETS[FontSizePreset]][]).map(([preset, info]) => (
+                  <button
+                    key={preset}
+                    onClick={() => handleFontSizePreset(preset)}
+                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                      readerConfig.fontSize === info.size
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {info.label}
+                    <span className="block text-xs opacity-70">{info.size}px</span>
+                  </button>
+                ))}
+              </div>
+              {/* Font size slider */}
+              <div className="mt-2">
+                <input
+                  type="range"
+                  min="12"
+                  max="28"
+                  value={readerConfig.fontSize}
+                  onChange={(e) => readerConfig.setFontSize(parseInt(e.target.value))}
+                  className="w-full accent-blue-500"
+                />
+                <div className="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>12px</span>
+                  <span className="text-blue-500 font-medium">{readerConfig.fontSize}px</span>
+                  <span>28px</span>
+                </div>
               </div>
             </div>
 
-            {/* Line height */}
+            {/* Line height presets */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                行间距: {readerConfig.lineHeight}
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                行间距
               </label>
-              <input
-                type="range"
-                min="1.2"
-                max="2.2"
-                step="0.1"
-                value={readerConfig.lineHeight}
-                onChange={(e) => readerConfig.setLineHeight(parseFloat(e.target.value))}
-                className="w-full accent-blue-500"
-              />
+              <div className="flex gap-3">
+                {(Object.entries(LINE_HEIGHT_PRESETS) as [LineHeightPreset, typeof LINE_HEIGHT_PRESETS[LineHeightPreset]][]).map(([preset, info]) => (
+                  <button
+                    key={preset}
+                    onClick={() => handleLineHeightPreset(preset)}
+                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                      Math.abs(readerConfig.lineHeight - info.height) < 0.05
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {info.label}
+                    <span className="block text-xs opacity-70">{info.height}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2">
+                <input
+                  type="range"
+                  min="1.2"
+                  max="2.5"
+                  step="0.1"
+                  value={readerConfig.lineHeight}
+                  onChange={(e) => readerConfig.setLineHeight(parseFloat(e.target.value))}
+                  className="w-full accent-blue-500"
+                />
+                <div className="flex justify-between text-xs text-gray-400 mt-1">
+                  <span>紧凑</span>
+                  <span className="text-blue-500 font-medium">{readerConfig.lineHeight.toFixed(1)}</span>
+                  <span>宽松</span>
+                </div>
+              </div>
             </div>
 
             {/* Font family */}
@@ -428,6 +558,8 @@ export default function Settings() {
                 <option value="system-ui, sans-serif">系统字体</option>
                 <option value="Arial, sans-serif">Arial</option>
                 <option value="Tahoma, sans-serif">Tahoma</option>
+                <option value="'Noto Serif SC', serif">思源宋体</option>
+                <option value="'Noto Sans SC', sans-serif">思源黑体</option>
               </select>
             </div>
 
@@ -467,6 +599,33 @@ export default function Settings() {
               配置语音朗读（Text-to-Speech）的默认设置。您也可以在听书页面调整这些设置。
             </p>
 
+            {/* Voice selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                选择语音
+              </label>
+              <select
+                value={ttsVoice}
+                onChange={(e) => setTtsVoice(e.target.value)}
+                className="w-full px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">默认语音</option>
+                {availableVoices
+                  .filter((v) => v.lang.startsWith('zh') || v.lang.startsWith('en'))
+                  .map((voice) => (
+                    <option key={voice.voiceURI} value={voice.voiceURI}>
+                      {voice.name} ({voice.lang})
+                      {voice.localService ? ' [本地]' : ''}
+                    </option>
+                  ))}
+              </select>
+              {availableVoices.length === 0 && (
+                <p className="text-xs text-gray-400 mt-1">
+                  加载中...如果列表为空，请确保浏览器支持语音合成
+                </p>
+              )}
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 默认语速: {ttsRate}x
@@ -482,6 +641,11 @@ export default function Settings() {
                   className="flex-1 accent-blue-500"
                 />
                 <span className="w-12 text-center font-medium">{ttsRate}x</span>
+              </div>
+              <div className="flex justify-between text-xs text-gray-400 mt-1">
+                <span>慢</span>
+                <span>正常</span>
+                <span>快</span>
               </div>
             </div>
 
@@ -502,6 +666,25 @@ export default function Settings() {
                 <span className="w-12 text-center font-medium">{Math.round(ttsVolume * 100)}%</span>
               </div>
             </div>
+
+            {/* Test TTS */}
+            <button
+              onClick={() => {
+                if ('speechSynthesis' in window) {
+                  const utterance = new SpeechSynthesisUtterance('这是一个测试语音');
+                  if (ttsVoice) {
+                    const voice = availableVoices.find((v) => v.voiceURI === ttsVoice);
+                    if (voice) utterance.voice = voice;
+                  }
+                  utterance.rate = ttsRate;
+                  utterance.volume = ttsVolume;
+                  window.speechSynthesis.speak(utterance);
+                }
+              }}
+              className="text-sm text-blue-500 hover:text-blue-600 underline"
+            >
+              🔊 试听当前设置
+            </button>
 
             <Button
               onClick={handleSaveTTS}

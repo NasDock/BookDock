@@ -6,6 +6,65 @@ import { useReaderStore } from '../stores/themeStore';
 import { Button } from '@bookdock/ui';
 import type { ReaderMode, ReaderPosition } from '@bookdock/ebook-reader';
 
+// ==================== Reading Progress (localStorage + API) ====================
+interface StoredProgress {
+  bookId: string;
+  percentage: number;
+  currentPage?: number;
+  cfi?: string;
+  timestamp: number;
+  totalPages?: number;
+}
+
+const PROGRESS_KEY = 'bookdock_reading_progress';
+
+function saveProgressLocal(progress: StoredProgress): void {
+  try {
+    const all = JSON.parse(localStorage.getItem(PROGRESS_KEY) || '{}') as Record<string, StoredProgress>;
+    const existing = all[progress.bookId];
+    // Only save if newer or significantly different position
+    if (!existing || progress.percentage !== existing.percentage || progress.timestamp - existing.timestamp > 30000) {
+      all[progress.bookId] = progress;
+      localStorage.setItem(PROGRESS_KEY, JSON.stringify(all));
+    }
+  } catch {
+    // Ignore
+  }
+}
+
+function getProgressLocal(bookId: string): StoredProgress | null {
+  try {
+    const all = JSON.parse(localStorage.getItem(PROGRESS_KEY) || '{}') as Record<string, StoredProgress>;
+    return all[bookId] || null;
+  } catch {
+    return null;
+  }
+}
+
+// ==================== Format Compatibility Tips ====================
+const FORMAT_TIPS: Record<string, { icon: string; tip: string; supported: boolean }> = {
+  epub: {
+    icon: '📖',
+    tip: 'EPUB 格式完整支持，支持目录、书签、字号调整、听书',
+    supported: true,
+  },
+  pdf: {
+    icon: '📄',
+    tip: 'PDF 格式支持，支持翻页、缩放。复杂排版或加密PDF可能有兼容性问题',
+    supported: true,
+  },
+  mobi: {
+    icon: '📱',
+    tip: 'MOBI 格式通过亚马逊 Kindle 解析库支持。部分复杂格式可能显示异常',
+    supported: true,
+  },
+  txt: {
+    icon: '📝',
+    tip: '纯文本格式支持，自动检测编码（UTF-8/GBK）。图片和复杂排版不可用',
+    supported: true,
+  },
+};
+
 // ==================== Bookmark ====================
 interface Bookmark {
   id: string;
@@ -390,7 +449,6 @@ function ReaderControls({
               value={position.percentage}
               onChange={(e) => {
                 const pct = parseInt(e.target.value);
-                // Convert percentage to approximate page
                 if (position.totalPages) {
                   const targetPage = Math.round((pct / 100) * position.totalPages);
                   onGoToPage(targetPage);
@@ -429,6 +487,7 @@ export default function Reader() {
   const [showSettings, setShowSettings] = useState(false);
   const [isAutoScroll, setIsAutoScroll] = useState(false);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const [showFormatTip, setShowFormatTip] = useState(false);
   const autoScrollTimerRef = useRef<NodeJS.Timeout | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -513,6 +572,14 @@ export default function Reader() {
 
         if (response.success && response.data) {
           setBook(response.data);
+          // Show format tip for first time or occasionally
+          const tipKey = `bookdock_format_tip_shown_${response.data.fileType}`;
+          if (!localStorage.getItem(tipKey)) {
+            setShowFormatTip(true);
+            localStorage.setItem(tipKey, 'true');
+            // Auto-hide after 5s
+            setTimeout(() => setShowFormatTip(false), 5000);
+          }
         } else {
           setError(response.error || '加载书籍失败');
         }
@@ -527,9 +594,18 @@ export default function Reader() {
   }, [id]);
 
   const handlePositionChange = useCallback((pos: ReaderPosition) => {
-    // Progress is auto-saved by useBookReader hook
-    console.log('Position changed:', pos);
-  }, []);
+    // Auto-save to localStorage immediately
+    if (id && book) {
+      saveProgressLocal({
+        bookId: id,
+        percentage: pos.percentage,
+        currentPage: pos.currentPage,
+        cfi: pos.cfi,
+        timestamp: Date.now(),
+        totalPages: pos.totalPages,
+      });
+    }
+  }, [id, book]);
 
   const {
     containerRef: readerContainerRef,
@@ -545,9 +621,30 @@ export default function Reader() {
     onPositionChange: handlePositionChange,
   });
 
+  // Restore position from localStorage on mount
+  useEffect(() => {
+    if (id && position.percentage === 0) {
+      const saved = getProgressLocal(id);
+      if (saved && saved.percentage > 0) {
+        goToPosition({
+          percentage: saved.percentage,
+          currentPage: saved.currentPage,
+          cfi: saved.cfi,
+        });
+      }
+    }
+  }, [id, position.percentage, goToPosition]);
+
   const handleGoBack = useCallback(() => {
+    // Save progress before going back
+    if (book && position.percentage > 0) {
+      const apiClient = getApiClient();
+      apiClient.updateReadingProgress(book.id, position.percentage, position.currentPage).catch(() => {
+        // Ignore errors on navigate away
+      });
+    }
     navigate(-1);
-  }, [navigate]);
+  }, [navigate, book, position]);
 
   const handleModeChange = useCallback((newMode: ReaderMode) => {
     setMode(newMode);
@@ -579,7 +676,6 @@ export default function Reader() {
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't handle if user is typing in an input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
@@ -606,6 +702,7 @@ export default function Reader() {
           break;
         case 'Escape':
           setShowSettings(false);
+          setShowFormatTip(false);
           break;
         case 'b':
           if (e.ctrlKey || e.metaKey) {
@@ -714,6 +811,8 @@ export default function Reader() {
     );
   }
 
+  const formatInfo = FORMAT_TIPS[book.fileType];
+
   return (
     <div
       className={`min-h-screen ${
@@ -743,6 +842,38 @@ export default function Reader() {
         onToggleSettings={() => setShowSettings(!showSettings)}
         settingsPanel={settingsPanel}
       />
+
+      {/* Format compatibility tip toast */}
+      {showFormatTip && formatInfo && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 animate-slideUp">
+          <div className={`px-4 py-3 rounded-xl shadow-lg border max-w-sm text-sm ${
+            formatInfo.supported
+              ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700 text-blue-800 dark:text-blue-200'
+              : 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-700 text-amber-800 dark:text-amber-200'
+          }`}>
+            <div className="flex items-start gap-2">
+              <span className="text-lg">{formatInfo.icon}</span>
+              <div>
+                <p className="font-medium capitalize">{book.fileType} 格式</p>
+                <p className="text-xs opacity-80 mt-0.5">{formatInfo.tip}</p>
+              </div>
+              <button
+                onClick={() => setShowFormatTip(false)}
+                className="ml-2 opacity-60 hover:opacity-100"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Format indicator in reader */}
+      <div className="fixed top-14 left-4 z-30">
+        <span className="px-2 py-1 bg-black/40 rounded text-xs text-white uppercase">
+          {book.fileType}
+        </span>
+      </div>
 
       {/* Reader container */}
       <div

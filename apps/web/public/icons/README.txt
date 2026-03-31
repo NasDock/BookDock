@@ -1,0 +1,1 @@
+Replace these with actual PNG icons. Use icon-192.svg and icon-512.svg as reference to generate PNGs.
