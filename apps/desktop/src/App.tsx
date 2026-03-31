@@ -4,10 +4,12 @@ import { useDesktopEvents } from './hooks/useDesktopCommands';
 import { LibraryScreen } from './screens/Library';
 import { ReaderScreen } from './screens/Reader';
 import { SettingsScreen } from './screens/Settings';
+import { SourceManageScreen } from './screens/SourceManageScreen';
 import { MemberLoginScreen } from './screens/MemberLoginScreen';
 import { MemberBenefitsScreen } from './screens/MemberBenefitsScreen';
 import { MemberDetailScreen } from './screens/MemberDetailScreen';
 import { MemberPaymentSuccessScreen } from './screens/MemberPaymentSuccessScreen';
+import { AdminUsersScreen } from './screens/AdminUsersScreen';
 import { useDesktopStore } from './stores/desktopStore';
 import './styles.css';
 
@@ -130,6 +132,8 @@ function DesktopApp() {
         <Route path="/member-benefits" element={<MemberBenefitsScreen />} />
         <Route path="/member-detail" element={<MemberDetailScreen />} />
         <Route path="/member-payment-success" element={<MemberPaymentSuccessScreen />} />
+        <Route path="/admin-users" element={<AdminUsersScreen />} />
+        <Route path="/sources" element={<SourceManageScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>

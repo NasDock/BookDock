@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,14 @@ import {
   Dimensions,
   Pressable,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useLibraryStore, useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
-import { apiClient } from '../services/api';
+import { apiClient, type EbookSource } from '../services/api';
 import type { Book } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -45,6 +46,16 @@ export function LibraryScreen() {
   const [sortOption, setSortOption] = useState<SortOption>('addedAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [showSortModal, setShowSortModal] = useState(false);
+  const [sources, setSources] = useState<EbookSource[]>([]);
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const [showSourceModal, setShowSourceModal] = useState(false);
+
+  // Load sources
+  useEffect(() => {
+    apiClient.sources.getSources().then((res) => {
+      if (res.success && res.data) setSources(res.data);
+    }).catch(console.error);
+  }, []);
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
@@ -57,6 +68,13 @@ export function LibraryScreen() {
             book.author.toLowerCase().includes(query)
         )
       : [...books];
+
+    // Source filter - currently all books shown; source filtering
+    // requires server-side sourceId on books
+    if (selectedSourceId) {
+      // Placeholder: in future, filter by book.sourceId === selectedSourceId
+      // For now, show all books with a source badge
+    }
 
     // Apply sorting
     result.sort((a, b) => {
@@ -119,6 +137,7 @@ export function LibraryScreen() {
   const renderGridItem = useCallback(({ item }: { item: Book }) => {
     const localBook = localBooks.find((b) => b.id === item.id);
     const isDownloaded = !!localBook?.isDownloaded;
+    const source = selectedSourceId ? sources.find((s) => s.id === selectedSourceId) : null;
 
     return (
       <Pressable
@@ -135,6 +154,11 @@ export function LibraryScreen() {
           {isDownloaded && (
             <View style={styles.downloadBadge}>
               <Ionicons name="cloud-done" size={12} color="#fff" />
+            </View>
+          )}
+          {source && (
+            <View style={[styles.sourceBadge, { backgroundColor: theme.colors.primary }]}>
+              <Ionicons name="server" size={10} color="#fff" />
             </View>
           )}
         </View>
@@ -236,6 +260,28 @@ export function LibraryScreen() {
           {SORT_OPTIONS.find((o) => o.value === sortOption)?.label || 'Sort'}
         </Text>
       </TouchableOpacity>
+      {/* Source filter button */}
+      <TouchableOpacity
+        style={[
+          styles.sortButton,
+          { backgroundColor: theme.colors.surface },
+          selectedSourceId && { backgroundColor: theme.colors.primary + '15' },
+        ]}
+        onPress={() => setShowSourceModal(true)}
+      >
+        <Ionicons name="server" size={18} color={selectedSourceId ? theme.colors.primary : theme.colors.textSecondary} />
+        <Text
+          style={[
+            styles.sortButtonText,
+            { color: selectedSourceId ? theme.colors.primary : theme.colors.textSecondary },
+          ]}
+          numberOfLines={1}
+        >
+          {selectedSourceId
+            ? (sources.find((s) => s.id === selectedSourceId)?.name || 'Source')
+            : 'All Sources'}
+        </Text>
+      </TouchableOpacity>
       <View style={styles.viewToggle}>
         <TouchableOpacity
           style={[
@@ -321,6 +367,90 @@ export function LibraryScreen() {
     </Modal>
   );
 
+  const renderSourceModal = () => (
+    <Modal
+      visible={showSourceModal}
+      animationType="fade"
+      transparent
+      onRequestClose={() => setShowSourceModal(false)}
+    >
+      <Pressable style={styles.sortModalOverlay} onPress={() => setShowSourceModal(false)}>
+        <View style={[styles.sortModalContent, { backgroundColor: theme.colors.surface }]}>
+          <Text style={styles.sortModalTitle}>Filter by Source</Text>
+          <TouchableOpacity
+            style={[
+              styles.sortOption,
+              selectedSourceId === null && { backgroundColor: theme.colors.primary + '20' },
+            ]}
+            onPress={() => {
+              setSelectedSourceId(null);
+              setShowSourceModal(false);
+            }}
+          >
+            <View style={styles.sortOptionLeft}>
+              <Ionicons name="library" size={20} color={selectedSourceId === null ? theme.colors.primary : theme.colors.textSecondary} />
+              <Text style={[styles.sortOptionText, selectedSourceId === null && { color: theme.colors.primary }]}>
+                All Sources ({books.length})
+              </Text>
+            </View>
+            {selectedSourceId === null && (
+              <Ionicons name="checkmark" size={18} color={theme.colors.primary} />
+            )}
+          </TouchableOpacity>
+          {sources.length === 0 ? (
+            <View style={{ padding: spacing.md, alignItems: 'center' }}>
+              <Text style={[styles.sortOptionText, { color: theme.colors.textSecondary }]}>
+                No sources configured
+              </Text>
+              <Text style={[styles.sortOptionText, { color: theme.colors.textSecondary, fontSize: fontSizes.xs }]}>
+                Add sources in the Sources tab
+              </Text>
+            </View>
+          ) : (
+            sources.map((source) => (
+              <TouchableOpacity
+                key={source.id}
+                style={[
+                  styles.sortOption,
+                  selectedSourceId === source.id && { backgroundColor: theme.colors.primary + '20' },
+                ]}
+                onPress={() => {
+                  setSelectedSourceId(source.id);
+                  setShowSourceModal(false);
+                }}
+              >
+                <View style={styles.sortOptionLeft}>
+                  <Ionicons
+                    name={source.type === 'webdav' ? 'cloud' : source.type === 'smb' ? 'folder' : 'server'}
+                    size={20}
+                    color={selectedSourceId === source.id ? theme.colors.primary : theme.colors.textSecondary}
+                  />
+                  <View>
+                    <Text style={[styles.sortOptionText, selectedSourceId === source.id && { color: theme.colors.primary }]}>
+                      {source.name}
+                    </Text>
+                    <Text style={[styles.sortOptionText, { fontSize: fontSizes.xs, color: theme.colors.textSecondary }]}>
+                      {source.bookCount} books · {source.type.toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+                {selectedSourceId === source.id && (
+                  <Ionicons name="checkmark" size={18} color={theme.colors.primary} />
+                )}
+              </TouchableOpacity>
+            ))
+          )}
+          <TouchableOpacity
+            style={[styles.sortModalClose, { borderTopColor: theme.colors.border }]}
+            onPress={() => setShowSourceModal(false)}
+          >
+            <Text style={styles.sortModalCloseText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <FlatList
@@ -348,6 +478,7 @@ export function LibraryScreen() {
         }
       />
       {renderSortModal()}
+      {renderSourceModal()}
     </View>
   );
 }
@@ -486,6 +617,13 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       top: spacing.xs,
       right: spacing.xs,
       backgroundColor: theme.colors.success,
+      borderRadius: borderRadius.full,
+      padding: spacing.xs,
+    },
+    sourceBadge: {
+      position: 'absolute',
+      bottom: spacing.xs,
+      right: spacing.xs,
       borderRadius: borderRadius.full,
       padding: spacing.xs,
     },

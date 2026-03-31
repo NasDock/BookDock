@@ -10,6 +10,7 @@ import { MemberLoginScreen } from '../screens/MemberLoginScreen';
 import { MemberBenefitsScreen } from '../screens/MemberBenefitsScreen';
 import { MemberDetailScreen } from '../screens/MemberDetailScreen';
 import { MemberPaymentSuccessScreen } from '../screens/MemberPaymentSuccessScreen';
+import { SourceManageScreen } from '../screens/SourceManageScreen';
 import { useAuthStore, useThemeStore } from '../stores';
 import { getTheme } from '../utils/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -118,6 +119,14 @@ export function RootNavigator() {
               options={{
                 headerShown: false,
                 presentation: 'fullScreenModal',
+              }}
+            />
+            <Stack.Screen
+              name="SourceManage"
+              component={SourceManageScreen}
+              options={{
+                title: '书源管理',
+                headerBackTitle: 'Back',
               }}
             />
           </>

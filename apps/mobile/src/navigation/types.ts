@@ -1,4 +1,5 @@
 import type { Book } from '@bookdock/api-client';
+import type { EbookSource } from '../services/api';
 
 // Root stack param list
 export type RootStackParamList = {
@@ -12,6 +13,7 @@ export type RootStackParamList = {
   MemberBenefits: undefined;
   MemberDetail: undefined;
   MemberPaymentSuccess: undefined;
+  SourceManage: undefined;
 };
 
 // Tab navigator param list
@@ -20,6 +22,7 @@ export type MainTabParamList = {
   TTS: undefined;
   Profile: undefined;
   Settings: undefined;
+  Sources: undefined;
 };
 
 // Navigation prop types

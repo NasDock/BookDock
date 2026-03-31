@@ -15,6 +15,7 @@ import {
   useWindowState
 } from '../hooks/useDesktopCommands';
 import { useDesktopStore } from '../stores/desktopStore';
+import { getApiClient, type EbookSource } from '@bookdock/api-client';
 
 // Types
 type ProgressFilter = 'all' | 'unread' | 'reading' | 'completed';
@@ -75,6 +76,15 @@ export function LibraryScreen() {
   const [sortBy, setSortBy] = useState<SortOption>('addedAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [sources, setSources] = useState<EbookSource[]>([]);
+  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+
+  // Load sources
+  useEffect(() => {
+    getApiClient().getSources().then((res) => {
+      if (res.success && res.data) setSources(res.data);
+    }).catch(console.error);
+  }, []);
 
   // Debounce search inputs
   const debouncedSearch = useDebounce(searchQuery, 300);
@@ -360,6 +370,37 @@ export function LibraryScreen() {
             {/* Separator */}
             <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
 
+            {/* Source filter dropdown */}
+            <div className="relative">
+              <select
+                value={selectedSourceId || ''}
+                onChange={(e) => setSelectedSourceId(e.target.value || null)}
+                className="pl-3 pr-8 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500 appearance-none cursor-pointer"
+              >
+                <option value="">📡 所有书源</option>
+                {sources.map((source) => (
+                  <option key={source.id} value={source.id}>
+                    {source.name} ({source.bookCount})
+                  </option>
+                ))}
+              </select>
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400 text-xs">
+                ▼
+              </span>
+            </div>
+
+            {/* Source manage link */}
+            <a
+              href="#/sources"
+              className="px-2 py-1 text-xs rounded-lg text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+              title="管理书源"
+            >
+              ⚙️
+            </a>
+
+            {/* Separator */}
+            <div className="w-px h-6 bg-gray-300 dark:bg-gray-600 mx-1" />
+
             {/* Format filter buttons */}
             <div className="flex gap-1">
               <button
@@ -628,6 +669,12 @@ export function LibraryScreen() {
                         <div className="absolute top-1.5 right-1.5 px-1.5 py-0.5 bg-black/50 rounded text-[10px] text-white uppercase font-medium">
                           {book.fileType}
                         </div>
+                        {/* Source badge */}
+                        {selectedSourceId && (
+                          <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-blue-500/80 rounded text-[10px] text-white font-medium flex items-center gap-0.5">
+                            📡
+                          </div>
+                        )}
                         {/* Progress bar - show for reading/completed */}
                         {book.readingProgress !== undefined && book.readingProgress > 0 && (
                           <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-white/30">

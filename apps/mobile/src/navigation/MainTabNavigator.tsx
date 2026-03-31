@@ -5,6 +5,7 @@ import { LibraryScreen } from '../screens/LibraryScreen';
 import { TTSTabScreen } from '../screens/TTSTabScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
+import { SourceManageScreen } from '../screens/SourceManageScreen';
 import { useThemeStore } from '../stores';
 import { getTheme } from '../utils/theme';
 import type { MainTabParamList } from './types';
@@ -75,6 +76,17 @@ export function MainTabNavigator() {
             <Ionicons name="settings" size={size} color={color} />
           ),
           headerTitle: 'Settings',
+        }}
+      />
+      <Tab.Screen
+        name="Sources"
+        component={SourceManageScreen}
+        options={{
+          title: 'Sources',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="server" size={size} color={color} />
+          ),
+          headerShown: false,
         }}
       />
     </Tab.Navigator>

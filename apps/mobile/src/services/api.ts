@@ -638,6 +638,139 @@ const vipApi = {
   },
 };
 
+// ============ Source (NAS) API ============
+
+export type SourceType = 'local' | 'webdav' | 'smb' | 'ftp';
+
+export interface WebDAVConfig {
+  url: string;
+  username?: string;
+  password?: string;
+  rejectUnauthorized?: boolean;
+  basePath?: string;
+}
+
+export interface SMBConfig {
+  share: string;
+  username?: string;
+  password?: string;
+  domain?: string;
+  port?: number;
+  basePath?: string;
+}
+
+export interface FTPConfig {
+  host: string;
+  port?: number;
+  username?: string;
+  password?: string;
+  secure?: boolean;
+  rejectUnauthorized?: boolean;
+  basePath?: string;
+}
+
+export interface EbookSource {
+  id: string;
+  name: string;
+  type: SourceType;
+  url?: string;
+  host?: string;
+  basePath?: string;
+  username?: string;
+  enabled: boolean;
+  autoSync: boolean;
+  syncIntervalSecs: number;
+  formats: string[];
+  lastSyncAt?: string;
+  lastError?: string;
+  bookCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SourceFileItem {
+  path: string;
+  name: string;
+  size: number;
+  lastModified: string;
+  isDirectory: boolean;
+}
+
+export interface SyncResult {
+  sourceId: string;
+  status: 'success' | 'partial' | 'failed';
+  booksAdded: number;
+  booksUpdated: number;
+  booksFailed: number;
+  errors?: string[];
+  syncedAt: string;
+}
+
+export interface ConnectionTestResult {
+  success: boolean;
+  message?: string;
+  serverInfo?: string;
+  error?: string;
+}
+
+export interface CreateSourceInput {
+  name: string;
+  type: SourceType;
+  webdavConfig?: WebDAVConfig;
+  smbConfig?: SMBConfig;
+  ftpConfig?: FTPConfig;
+  autoSync?: boolean;
+  syncIntervalSecs?: number;
+  formats?: string[];
+}
+
+const sourceApi = {
+  getSources: async (): Promise<ApiResponse<EbookSource[]>> => {
+    return apiFetch<EbookSource[]>('/sources');
+  },
+
+  getSource: async (id: string): Promise<ApiResponse<EbookSource>> => {
+    return apiFetch<EbookSource>(`/sources/${id}`);
+  },
+
+  createSource: async (source: CreateSourceInput): Promise<ApiResponse<EbookSource>> => {
+    return apiFetch<EbookSource>('/sources', {
+      method: 'POST',
+      body: JSON.stringify(source),
+    });
+  },
+
+  updateSource: async (id: string, source: Partial<CreateSourceInput>): Promise<ApiResponse<EbookSource>> => {
+    return apiFetch<EbookSource>(`/sources/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(source),
+    });
+  },
+
+  deleteSource: async (id: string): Promise<ApiResponse<void>> => {
+    return apiFetch(`/sources/${id}`, { method: 'DELETE' });
+  },
+
+  testSourceConnection: async (id: string): Promise<ApiResponse<ConnectionTestResult>> => {
+    return apiFetch<ConnectionTestResult>(`/sources/${id}/test`, { method: 'POST' });
+  },
+
+  testSourceConfig: async (source: CreateSourceInput): Promise<ApiResponse<ConnectionTestResult>> => {
+    return apiFetch<ConnectionTestResult>('/sources/test-config', {
+      method: 'POST',
+      body: JSON.stringify(source),
+    });
+  },
+
+  getSourceFiles: async (id: string, path: string = '/'): Promise<ApiResponse<SourceFileItem[]>> => {
+    return apiFetch<SourceFileItem[]>(`/sources/${id}/files?path=${encodeURIComponent(path)}`);
+  },
+
+  syncSource: async (id: string): Promise<ApiResponse<SyncResult>> => {
+    return apiFetch<SyncResult>(`/sources/${id}/sync`, { method: 'POST' });
+  },
+};
+
 // ============ Export API Client ============
 
 export const apiClient = {
@@ -649,6 +782,7 @@ export const apiClient = {
   collections: collectionsApi,
   highlights: highlightsApi,
   vip: vipApi,
+  sources: sourceApi,
 
   // Utility methods
   invalidateCache,

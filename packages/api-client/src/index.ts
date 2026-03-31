@@ -94,6 +94,35 @@ export interface SyncResult {
   syncedAt: string;
 }
 
+// ─── Bookmark & Highlight Types ──────────────────────────────────────────────
+
+export interface Bookmark {
+  id: string;
+  userId: string;
+  bookId: string;
+  chapterId?: string;
+  cfi?: string;
+  percentage?: number;
+  note?: string;
+  color?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Highlight {
+  id: string;
+  userId: string;
+  bookId: string;
+  chapterId?: string;
+  cfi: string;
+  startOffset: number;
+  endOffset: number;
+  text: string;
+  color?: string;
+  note?: string;
+  createdAt: string;
+}
+
 export interface ConnectionTestResult {
   success: boolean;
   message?: string;
@@ -478,6 +507,70 @@ class ApiClient {
 
   async syncSource(id: string): Promise<ApiResponse<SyncResult>> {
     const { data } = await this.client.post(`/sources/${id}/sync`);
+    return data;
+  }
+
+  // ─── Bookmark & Highlight endpoints ────────────────────────────────────────
+
+  async getBookmarks(bookId: string): Promise<ApiResponse<Bookmark[]>> {
+    const { data } = await this.client.get(`/bookmarks/${bookId}`);
+    return data;
+  }
+
+  async createBookmark(bookmark: {
+    bookId: string;
+    chapterId?: string;
+    cfi?: string;
+    percentage?: number;
+    note?: string;
+    color?: string;
+  }): Promise<ApiResponse<Bookmark>> {
+    const { data } = await this.client.post('/bookmarks', bookmark);
+    return data;
+  }
+
+  async updateBookmark(
+    bookmarkId: string,
+    update: { note?: string; color?: string },
+  ): Promise<ApiResponse<Bookmark>> {
+    const { data } = await this.client.put(`/bookmarks/${bookmarkId}`, update);
+    return data;
+  }
+
+  async deleteBookmark(bookmarkId: string): Promise<ApiResponse> {
+    const { data } = await this.client.delete(`/bookmarks/${bookmarkId}`);
+    return data;
+  }
+
+  async getHighlights(bookId: string): Promise<ApiResponse<Highlight[]>> {
+    const { data } = await this.client.get(`/highlights/${bookId}`);
+    return data;
+  }
+
+  async createHighlight(highlight: {
+    bookId: string;
+    chapterId?: string;
+    cfi: string;
+    startOffset: number;
+    endOffset: number;
+    text: string;
+    color?: string;
+    note?: string;
+  }): Promise<ApiResponse<Highlight>> {
+    const { data } = await this.client.post('/highlights', highlight);
+    return data;
+  }
+
+  async updateHighlight(
+    highlightId: string,
+    update: { note?: string; color?: string },
+  ): Promise<ApiResponse<Highlight>> {
+    const { data } = await this.client.put(`/highlights/${highlightId}`, update);
+    return data;
+  }
+
+  async deleteHighlight(highlightId: string): Promise<ApiResponse> {
+    const { data } = await this.client.delete(`/highlights/${highlightId}`);
     return data;
   }
 }
