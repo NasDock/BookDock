@@ -62,9 +62,83 @@ export interface EbookSource {
   name: string;
   type: 'local' | 'webdav' | 'smb' | 'ftp';
   url?: string;
-  path?: string;
+  host?: string;
+  basePath?: string;
+  username?: string;
   enabled: boolean;
+  autoSync: boolean;
+  syncIntervalSecs: number;
+  formats: string[];
   lastSyncAt?: string;
+  lastError?: string;
+  bookCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SourceFileItem {
+  path: string;
+  name: string;
+  size: number;
+  lastModified: string;
+  isDirectory: boolean;
+}
+
+export interface SyncResult {
+  sourceId: string;
+  status: 'success' | 'partial' | 'failed';
+  booksAdded: number;
+  booksUpdated: number;
+  booksFailed: number;
+  errors?: string[];
+  syncedAt: string;
+}
+
+export interface ConnectionTestResult {
+  success: boolean;
+  message?: string;
+  serverInfo?: string;
+  error?: string;
+}
+
+export type SourceType = 'webdav' | 'smb' | 'ftp';
+
+export interface WebDAVConfig {
+  url: string;
+  username?: string;
+  password?: string;
+  rejectUnauthorized?: boolean;
+  basePath?: string;
+}
+
+export interface SMBConfig {
+  share: string;
+  username?: string;
+  password?: string;
+  domain?: string;
+  port?: number;
+  basePath?: string;
+}
+
+export interface FTPConfig {
+  host: string;
+  port?: number;
+  username?: string;
+  password?: string;
+  secure?: boolean;
+  rejectUnauthorized?: boolean;
+  basePath?: string;
+}
+
+export interface CreateSourceInput {
+  name: string;
+  type: SourceType;
+  webdavConfig?: WebDAVConfig;
+  smbConfig?: SMBConfig;
+  ftpConfig?: FTPConfig;
+  autoSync?: boolean;
+  syncIntervalSecs?: number;
+  formats?: string[];
 }
 
 // ─── Membership Types ────────────────────────────────────────────────────────
@@ -357,6 +431,53 @@ class ApiClient {
   // Storage info
   async getStorageInfo(): Promise<ApiResponse<{ used: number; limit: number }>> {
     const { data } = await this.client.get('/storage/info');
+    return data;
+  }
+
+  // ─── Source (NAS) Management ────────────────────────────────────────────────
+
+  async getSources(): Promise<ApiResponse<EbookSource[]>> {
+    const { data } = await this.client.get('/sources');
+    return data;
+  }
+
+  async getSource(id: string): Promise<ApiResponse<EbookSource>> {
+    const { data } = await this.client.get(`/sources/${id}`);
+    return data;
+  }
+
+  async createSource(source: CreateSourceInput): Promise<ApiResponse<EbookSource>> {
+    const { data } = await this.client.post('/sources', source);
+    return data;
+  }
+
+  async updateSource(id: string, source: Partial<CreateSourceInput>): Promise<ApiResponse<EbookSource>> {
+    const { data } = await this.client.put(`/sources/${id}`, source);
+    return data;
+  }
+
+  async deleteSource(id: string): Promise<ApiResponse> {
+    const { data } = await this.client.delete(`/sources/${id}`);
+    return data;
+  }
+
+  async testSourceConnection(id: string): Promise<ApiResponse<ConnectionTestResult>> {
+    const { data } = await this.client.post(`/sources/${id}/test`);
+    return data;
+  }
+
+  async testSourceConfig(source: CreateSourceInput): Promise<ApiResponse<ConnectionTestResult>> {
+    const { data } = await this.client.post('/sources/test-config', source);
+    return data;
+  }
+
+  async getSourceFiles(id: string, path: string = '/'): Promise<ApiResponse<SourceFileItem[]>> {
+    const { data } = await this.client.get(`/sources/${id}/files`, { params: { path } });
+    return data;
+  }
+
+  async syncSource(id: string): Promise<ApiResponse<SyncResult>> {
+    const { data } = await this.client.post(`/sources/${id}/sync`);
     return data;
   }
 }

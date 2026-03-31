@@ -3,7 +3,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useLibraryStore, selectRecentlyRead, selectBooksByProgress } from '../stores/libraryStore';
 import { useAuthStore } from '../stores/authStore';
 import { Button, Input, Card, CardContent } from '@bookdock/ui';
-import type { Book } from '@bookdock/api-client';
+import { getApiClient, EbookSource, Book } from '@bookdock/api-client';
+
+// Extended book type with source info for NAS books
+interface BookWithSource extends Book {
+  _sourceId?: string;
+  _sourceType?: 'local' | 'webdav' | 'smb' | 'ftp';
+}
 
 const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 B';
@@ -28,6 +34,9 @@ type ProgressFilter = 'all' | 'unread' | 'reading' | 'completed';
 type SortOption = 'title' | 'author' | 'lastRead' | 'addedAt';
 
 const BookCard: React.FC<{ book: Book; onSelect: () => void }> = ({ book, onSelect }) => {
+  const nasBook = book as BookWithSource;
+  const isNas = !!nasBook._sourceId;
+
   return (
     <Card
       className="group cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-105"
@@ -43,6 +52,13 @@ const BookCard: React.FC<{ book: Book; onSelect: () => void }> = ({ book, onSele
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500">
             <span className="text-4xl text-white font-bold">{book.title.charAt(0)}</span>
+          </div>
+        )}
+
+        {/* NAS source badge */}
+        {isNas && (
+          <div className="absolute top-2 left-2 px-2 py-0.5 bg-orange-500/80 rounded text-[10px] text-white uppercase flex items-center gap-1">
+            ☁️ NAS
           </div>
         )}
 
@@ -84,10 +100,19 @@ const BookDetailModal: React.FC<{ book: Book; onClose: () => void }> = ({ book, 
   const navigate = useNavigate();
   const { deleteBook } = useLibraryStore();
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+
+  const nasBook = book as BookWithSource;
+  const isNas = !!nasBook._sourceId;
 
   const handleRead = () => {
     onClose();
-    navigate(`/book/${book.id}`);
+    if (isNas) {
+      // For NAS books, we need to download first or open a streaming reader
+      navigate(`/book/${book.id}?source=${nasBook._sourceId}&path=${encodeURIComponent(book.filePath)}`);
+    } else {
+      navigate(`/book/${book.id}`);
+    }
   };
 
   const handleTTS = () => {
@@ -155,6 +180,12 @@ const BookDetailModal: React.FC<{ book: Book; onClose: () => void }> = ({ book, 
             </p>
           )}
 
+          {isNas && (
+            <div className="mt-3 p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg text-xs text-orange-600 dark:text-orange-300">
+              ☁️ 来自 NAS 书源 · {nasBook._sourceType?.toUpperCase()}
+            </div>
+          )}
+
           {book.readingProgress !== undefined && book.readingProgress > 0 && (
             <div className="mt-4">
               <div className="flex items-center justify-between text-sm mb-1">
@@ -200,6 +231,12 @@ export default function Library() {
   const [selectedBook, setSelectedBook] = useState<Book | null>(null);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
+  // Source filter state
+  const [sources, setSources] = useState<EbookSource[]>([]);
+  const [selectedSourceId, setSelectedSourceId] = useState<string>('all');
+  const [sourcesLoading, setSourcesLoading] = useState(false);
+  const [nasBooks, setNasBooks] = useState<BookWithSource[]>([]);
+
   // Advanced filters
   const [filterFormat, setFilterFormat] = useState<Book['fileType'] | 'all'>('all');
   const [filterProgress, setFilterProgress] = useState<ProgressFilter>('all');
@@ -207,13 +244,87 @@ export default function Library() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [authorSearch, setAuthorSearch] = useState('');
 
+  // Fetch sources on mount
+  useEffect(() => {
+    const loadSources = async () => {
+      try {
+        const apiClient = getApiClient();
+        const response = await apiClient.getSources();
+        if (response.success && response.data) {
+          const enabledSources = response.data.filter((s) => s.enabled);
+          setSources(enabledSources);
+        }
+      } catch { /* ignore - sources are optional */ }
+    };
+    loadSources();
+  }, []);
+
+  // Load NAS books when source changes
+  useEffect(() => {
+    const loadNasBooks = async () => {
+      if (selectedSourceId === 'all') {
+        setNasBooks([]);
+        return;
+      }
+
+      setSourcesLoading(true);
+      try {
+        const apiClient = getApiClient();
+        const response = await apiClient.getSourceFiles(selectedSourceId, '/');
+        if (response.success && response.data) {
+          const booksFromSource = sources.find((s) => s.id === selectedSourceId);
+          const sourceType = booksFromSource?.type || 'webdav';
+
+          // Filter to ebook files only
+          const supportedExts = ['epub', 'pdf', 'mobi', 'txt', 'azw3', 'fb2', 'djvu'];
+          const nasBooksWithSource: BookWithSource[] = (response.data)
+            .filter((f: { isDirectory: boolean; name: string }) => !f.isDirectory && supportedExts.some(ext => f.name.toLowerCase().endsWith(`.${ext}`)))
+            .map((f: { path: string; name: string; size: number; lastModified: string }) => {
+              const ext = f.name.split('.').pop()?.toLowerCase() || 'other';
+              return {
+                id: `nas_${selectedSourceId}_${f.path}`,
+                title: f.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' '),
+                author: '未知作者',
+                fileType: ext as Book['fileType'],
+                filePath: f.path,
+                fileSize: f.size,
+                addedAt: f.lastModified,
+                _sourceId: selectedSourceId,
+                _sourceType: sourceType as BookWithSource['_sourceType'],
+                // Mark as from NAS
+                coverUrl: undefined,
+              } as BookWithSource;
+            });
+
+          setNasBooks(nasBooksWithSource);
+        }
+      } catch { /* ignore */ } finally {
+        setSourcesLoading(false);
+      }
+    };
+
+    if (selectedSourceId !== 'all') {
+      loadNasBooks();
+    } else {
+      setNasBooks([]);
+    }
+  }, [selectedSourceId, sources]);
+
+  // Merge local books with NAS books when viewing "all"
+  const allBooks = useMemo(() => {
+    if (selectedSourceId === 'all') {
+      return [...books, ...nasBooks] as Book[];
+    }
+    return nasBooks as Book[];
+  }, [books, nasBooks, selectedSourceId]);
+
   useEffect(() => {
     fetchBooks();
   }, [fetchBooks]);
 
   // Filter, search and sort books
   const filteredBooks = useMemo(() => {
-    let result = [...books];
+    let result = [...allBooks];
 
     // Author search
     if (authorSearch.trim()) {
@@ -273,10 +384,10 @@ export default function Library() {
     });
 
     return result;
-  }, [books, searchQuery, authorSearch, filterFormat, filterProgress, sortBy, sortOrder]);
+  }, [allBooks, searchQuery, authorSearch, filterFormat, filterProgress, sortBy, sortOrder]);
 
-  const recentlyRead = useMemo(() => selectRecentlyRead(books, 5), [books]);
-  const inProgress = useMemo(() => selectBooksByProgress(books), [books]);
+  const recentlyRead = useMemo(() => selectRecentlyRead(allBooks, 5), [allBooks]);
+  const inProgress = useMemo(() => selectBooksByProgress(allBooks), [allBooks]);
 
   const handleSearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -300,14 +411,16 @@ export default function Library() {
     );
   }
 
+  const isAnyLoading = isLoading || (selectedSourceId !== 'all' && sourcesLoading);
+
   // Stats
   const stats = useMemo(() => {
-    const total = books.length;
-    const unread = books.filter((b) => !b.readingProgress || b.readingProgress === 0).length;
-    const reading = books.filter((b) => b.readingProgress && b.readingProgress > 0 && b.readingProgress < 100).length;
-    const completed = books.filter((b) => b.readingProgress && b.readingProgress >= 100).length;
+    const total = allBooks.length;
+    const unread = allBooks.filter((b) => !b.readingProgress || b.readingProgress === 0).length;
+    const reading = allBooks.filter((b) => b.readingProgress && b.readingProgress > 0 && b.readingProgress < 100).length;
+    const completed = allBooks.filter((b) => b.readingProgress && b.readingProgress >= 100).length;
     return { total, unread, reading, completed };
-  }, [books]);
+  }, [allBooks]);
 
   return (
     <div className="space-y-8">
@@ -326,7 +439,27 @@ export default function Library() {
           </p>
         </div>
 
-        <Button onClick={() => navigate('/admin')}>📚 添加书籍</Button>
+        <div className="flex items-center gap-3">
+          {/* Source selector */}
+          {sources.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500 dark:text-gray-400">📂</span>
+              <select
+                value={selectedSourceId}
+                onChange={(e) => setSelectedSourceId(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="all">全部书源</option>
+                {sources.map((source) => (
+                  <option key={source.id} value={source.id}>
+                    {source.name} ({source.bookCount || 0}本)
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <Button onClick={() => navigate('/admin')}>📚 添加书籍</Button>
+        </div>
       </div>
 
       {/* Search and Filters Row */}
@@ -493,7 +626,7 @@ export default function Library() {
           </span>
         </h2>
 
-        {isLoading ? (
+        {isAnyLoading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             {Array.from({ length: 12 }).map((_, i) => (
               <div key={i} className="animate-pulse">
@@ -508,7 +641,7 @@ export default function Library() {
             <div className="text-6xl mb-4">📭</div>
             <h3 className="text-xl font-medium text-gray-900 dark:text-white">暂无书籍</h3>
             <p className="text-gray-500 dark:text-gray-400 mt-2">
-              {books.length === 0 ? '点击上方按钮添加您的第一本书' : '没有找到符合条件的书籍'}
+              {allBooks.length === 0 ? '点击上方按钮添加您的第一本书，或在管理面板配置 NAS 书源' : '没有找到符合条件的书籍'}
             </p>
           </div>
         ) : viewMode === 'grid' ? (

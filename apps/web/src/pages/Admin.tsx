@@ -309,63 +309,277 @@ function EbookSources() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [expandedSource, setExpandedSource] = useState<string | null>(null);
-  const [newSource, setNewSource] = useState({ name: '', type: 'local' as const, url: '', path: '' });
+  const [testingId, setTestingId] = useState<string | null>(null);
+  const [testingConfig, setTestingConfig] = useState<{ testing: boolean; result?: { success: boolean; error?: string; serverInfo?: string } }>({ testing: false });
+
+  type SourceType = 'webdav' | 'smb' | 'ftp';
+  const [newSource, setNewSource] = useState({
+    name: '',
+    type: 'webdav' as SourceType,
+    // WebDAV
+    webdavUrl: '',
+    webdavUsername: '',
+    webdavPassword: '',
+    webdavBasePath: '/',
+    webdavRejectUnauthorized: false,
+    // SMB
+    smbShare: '',
+    smbUsername: '',
+    smbPassword: '',
+    smbDomain: 'WORKGROUP',
+    smbBasePath: '/',
+    // FTP
+    ftpHost: '',
+    ftpPort: 21,
+    ftpUsername: '',
+    ftpPassword: '',
+    ftpSecure: false,
+    ftpBasePath: '/',
+    // Options
+    formats: 'epub,pdf,mobi,txt',
+    autoSync: true,
+    syncIntervalSecs: 3600,
+  });
 
   useEffect(() => { fetchSources(); }, []);
+
   const fetchSources = async () => {
     setIsLoading(true);
     try {
       const apiClient = getApiClient();
-      const response = await apiClient.getEbookSources();
+      const response = await apiClient.getSources();
       if (response.success && response.data) setSources(response.data);
     } catch { /* ignore */ } finally { setIsLoading(false); }
   };
+
+  const buildSourcePayload = () => {
+    const { name, type, formats, autoSync, syncIntervalSecs,
+      webdavUrl, webdavUsername, webdavPassword, webdavBasePath, webdavRejectUnauthorized,
+      smbShare, smbUsername, smbPassword, smbDomain, smbBasePath,
+      ftpHost, ftpPort, ftpUsername, ftpPassword, ftpSecure, ftpBasePath } = newSource;
+
+    return {
+      name,
+      type,
+      formats: formats.split(',').map((f) => f.trim()).filter(Boolean),
+      autoSync,
+      syncIntervalSecs,
+      webdavConfig: type === 'webdav' ? {
+        url: webdavUrl,
+        username: webdavUsername || undefined,
+        password: webdavPassword || undefined,
+        basePath: webdavBasePath || '/',
+        rejectUnauthorized: webdavRejectUnauthorized,
+      } : undefined,
+      smbConfig: type === 'smb' ? {
+        share: smbShare,
+        username: smbUsername || undefined,
+        password: smbPassword || undefined,
+        domain: smbDomain || 'WORKGROUP',
+        basePath: smbBasePath || '/',
+      } : undefined,
+      ftpConfig: type === 'ftp' ? {
+        host: ftpHost,
+        port: ftpPort,
+        username: ftpUsername || undefined,
+        password: ftpPassword || undefined,
+        secure: ftpSecure,
+        basePath: ftpBasePath || '/',
+      } : undefined,
+    };
+  };
+
   const handleAddSource = async () => {
     if (!newSource.name) return;
     try {
       const apiClient = getApiClient();
-      const response = await apiClient.addEbookSource(newSource);
-      if (response.success && response.data) { setSources([...sources, response.data]); setShowAddForm(false); setNewSource({ name: '', type: 'local', url: '', path: '' }); }
+      const response = await apiClient.createSource(buildSourcePayload());
+      if (response.success && response.data) {
+        setSources([...sources, response.data]);
+        setShowAddForm(false);
+        resetForm();
+      }
     } catch { /* ignore */ }
   };
-  const handleSync = async (id: string) => { setSyncingId(id); try { const apiClient = getApiClient(); await apiClient.syncEbookSource(id); await fetchSources(); } catch { /* ignore */ } finally { setSyncingId(null); } };
-  const handleDelete = async (id: string) => { if (!window.confirm('确定要删除此电子书源吗？')) return; try { const apiClient = getApiClient(); await apiClient.deleteEbookSource(id); setSources(sources.filter((s) => s.id !== id)); } catch { /* ignore */ } };
-  const handleToggleEnabled = async (id: string, enabled: boolean) => { try { const apiClient = getApiClient(); await apiClient.updateEbookSource(id, { enabled: !enabled }); setSources(sources.map((s) => s.id === id ? { ...s, enabled: !enabled } : s)); } catch { /* ignore */ } };
-  const sourceTypeIcon: Record<string, string> = { local: '💻', webdav: '☁️', smb: '📁', ftp: '🌐' };
+
+  const handleTestConfig = async () => {
+    setTestingConfig({ testing: true });
+    try {
+      const apiClient = getApiClient();
+      const response = await apiClient.testSourceConfig(buildSourcePayload());
+      setTestingConfig({ testing: false, result: response.data as { success: boolean; error?: string; serverInfo?: string } });
+    } catch (err) {
+      setTestingConfig({ testing: false, result: { success: false, error: String(err) } });
+    }
+  };
+
+  const handleSync = async (id: string) => {
+    setSyncingId(id);
+    try {
+      const apiClient = getApiClient();
+      await apiClient.syncSource(id);
+      await fetchSources();
+    } catch { /* ignore */ } finally { setSyncingId(null); }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('确定要删除此书源吗？')) return;
+    try {
+      const apiClient = getApiClient();
+      await apiClient.deleteSource(id);
+      setSources(sources.filter((s) => s.id !== id));
+    } catch { /* ignore */ }
+  };
+
+  const handleToggleEnabled = async (id: string, enabled: boolean) => {
+    try {
+      const apiClient = getApiClient();
+      await apiClient.updateSource(id, { enabled: !enabled });
+      setSources(sources.map((s) => s.id === id ? { ...s, enabled: !enabled } : s));
+    } catch { /* ignore */ }
+  };
+
+  const resetForm = () => {
+    setNewSource({
+      name: '', type: 'webdav',
+      webdavUrl: '', webdavUsername: '', webdavPassword: '', webdavBasePath: '/', webdavRejectUnauthorized: false,
+      smbShare: '', smbUsername: '', smbPassword: '', smbDomain: 'WORKGROUP', smbBasePath: '/',
+      ftpHost: '', ftpPort: 21, ftpUsername: '', ftpPassword: '', ftpSecure: false, ftpBasePath: '/',
+      formats: 'epub,pdf,mobi,txt', autoSync: true, syncIntervalSecs: 3600,
+    });
+    setTestingConfig({ testing: false });
+  };
+
+  const sourceTypeIcon: Record<string, string> = { webdav: '☁️', smb: '📁', ftp: '🌐' };
+  const typeLabels: Record<string, string> = { webdav: 'WebDAV', smb: 'SMB/共享', ftp: 'FTP' };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold text-gray-900 dark:text-white">📚 电子书源管理</h2>
-        <Button onClick={() => setShowAddForm(true)}>➕ 添加书源</Button>
+        <Button onClick={() => { setShowAddForm(true); resetForm(); }}>➕ 添加书源</Button>
       </div>
+
+      {/* Add Form */}
       {showAddForm && (
         <Card className="border-blue-200 dark:border-blue-800">
           <CardHeader><CardTitle>添加新书源</CardTitle></CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Basic Info */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               <Input label="名称" placeholder="我的NAS书库" value={newSource.name} onChange={(e) => setNewSource({ ...newSource, name: e.target.value })} />
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">类型</label>
-                <select value={newSource.type} onChange={(e) => setNewSource({ ...newSource, type: e.target.value as typeof newSource.type })} className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
-                  <option value="local">本地文件夹</option><option value="webdav">WebDAV</option><option value="smb">SMB/共享</option><option value="ftp">FTP</option>
+                <select value={newSource.type} onChange={(e) => setNewSource({ ...newSource, type: e.target.value as SourceType })} className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                  <option value="webdav">☁️ WebDAV (Nextcloud, Synology等)</option>
+                  <option value="smb">📁 SMB/共享 (Windows, QNAP等)</option>
+                  <option value="ftp">🌐 FTP/FTPS</option>
                 </select>
               </div>
-              <Input label={newSource.type === 'local' ? '文件夹路径' : 'URL/地址'} placeholder={newSource.type === 'local' ? '/mnt/books' : 'https://...'} value={newSource.url} onChange={(e) => setNewSource({ ...newSource, url: e.target.value })} />
-              <Input label="子目录 (可选)" placeholder="/ebooks" value={newSource.path} onChange={(e) => setNewSource({ ...newSource, path: e.target.value })} />
             </div>
-            {newSource.type === 'webdav' && <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm text-blue-700 dark:text-blue-300">💡 WebDAV 配置：请确保提供完整的 URL，包含协议前缀（如 https://）</div>}
+
+            {/* WebDAV Config */}
+            {newSource.type === 'webdav' && (
+              <div className="space-y-4 p-4 bg-blue-50/50 dark:bg-blue-900/10 rounded-xl mb-4">
+                <h4 className="font-medium text-blue-700 dark:text-blue-300">WebDAV 配置</h4>
+                <Input label="服务器地址" placeholder="https://nas.example.com/dav" value={newSource.webdavUrl} onChange={(e) => setNewSource({ ...newSource, webdavUrl: e.target.value })} />
+                <div className="grid grid-cols-2 gap-4">
+                  <Input label="用户名" placeholder="admin" value={newSource.webdavUsername} onChange={(e) => setNewSource({ ...newSource, webdavUsername: e.target.value })} />
+                  <Input label="密码" type="password" placeholder="••••••••" value={newSource.webdavPassword} onChange={(e) => setNewSource({ ...newSource, webdavPassword: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <Input label="书籍目录" placeholder="/" value={newSource.webdavBasePath} onChange={(e) => setNewSource({ ...newSource, webdavBasePath: e.target.value })} />
+                  <div className="flex items-center gap-2 pt-6">
+                    <input type="checkbox" id="wd-reject" checked={newSource.webdavRejectUnauthorized} onChange={(e) => setNewSource({ ...newSource, webdavRejectUnauthorized: e.target.checked })} className="w-4 h-4" />
+                    <label htmlFor="wd-reject" className="text-sm text-gray-600 dark:text-gray-400">忽略 SSL 证书错误（自签名）</label>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* SMB Config */}
+            {newSource.type === 'smb' && (
+              <div className="space-y-4 p-4 bg-green-50/50 dark:bg-green-900/10 rounded-xl mb-4">
+                <h4 className="font-medium text-green-700 dark:text-green-300">SMB 配置</h4>
+                <Input label="共享路径" placeholder="smb://192.168.1.100/library" value={newSource.smbShare} onChange={(e) => setNewSource({ ...newSource, smbShare: e.target.value })} />
+                <div className="grid grid-cols-2 gap-4">
+                  <Input label="用户名" placeholder="admin" value={newSource.smbUsername} onChange={(e) => setNewSource({ ...newSource, smbUsername: e.target.value })} />
+                  <Input label="密码" type="password" placeholder="••••••••" value={newSource.smbPassword} onChange={(e) => setNewSource({ ...newSource, smbPassword: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <Input label="域 (可选)" placeholder="WORKGROUP" value={newSource.smbDomain} onChange={(e) => setNewSource({ ...newSource, smbDomain: e.target.value })} />
+                  <Input label="书籍目录" placeholder="/" value={newSource.smbBasePath} onChange={(e) => setNewSource({ ...newSource, smbBasePath: e.target.value })} />
+                </div>
+              </div>
+            )}
+
+            {/* FTP Config */}
+            {newSource.type === 'ftp' && (
+              <div className="space-y-4 p-4 bg-orange-50/50 dark:bg-orange-900/10 rounded-xl mb-4">
+                <h4 className="font-medium text-orange-700 dark:text-orange-300">FTP 配置</h4>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="md:col-span-2">
+                    <Input label="主机" placeholder="192.168.1.100" value={newSource.ftpHost} onChange={(e) => setNewSource({ ...newSource, ftpHost: e.target.value })} />
+                  </div>
+                  <Input label="端口" placeholder="21" value={String(newSource.ftpPort)} onChange={(e) => setNewSource({ ...newSource, ftpPort: parseInt(e.target.value) || 21 })} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <Input label="用户名" placeholder="ftpuser" value={newSource.ftpUsername} onChange={(e) => setNewSource({ ...newSource, ftpUsername: e.target.value })} />
+                  <Input label="密码" type="password" placeholder="••••••••" value={newSource.ftpPassword} onChange={(e) => setNewSource({ ...newSource, ftpPassword: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <Input label="书籍目录" placeholder="/" value={newSource.ftpBasePath} onChange={(e) => setNewSource({ ...newSource, ftpBasePath: e.target.value })} />
+                  <div className="flex items-center gap-2 pt-6">
+                    <input type="checkbox" id="ftp-secure" checked={newSource.ftpSecure} onChange={(e) => setNewSource({ ...newSource, ftpSecure: e.target.checked })} className="w-4 h-4" />
+                    <label htmlFor="ftp-secure" className="text-sm text-gray-600 dark:text-gray-400">使用 FTPS (TLS)</label>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Common Options */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <Input label="支持格式" placeholder="epub,pdf,mobi,txt" value={newSource.formats} onChange={(e) => setNewSource({ ...newSource, formats: e.target.value })} />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">同步间隔</label>
+                <select value={newSource.syncIntervalSecs} onChange={(e) => setNewSource({ ...newSource, syncIntervalSecs: parseInt(e.target.value) })} className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white">
+                  <option value={3600}>1 小时</option>
+                  <option value={7200}>2 小时</option>
+                  <option value={14400}>4 小时</option>
+                  <option value={86400}>每天</option>
+                </select>
+              </div>
+              <div className="flex items-center gap-2 pt-6">
+                <input type="checkbox" id="auto-sync" checked={newSource.autoSync} onChange={(e) => setNewSource({ ...newSource, autoSync: e.target.checked })} className="w-4 h-4" />
+                <label htmlFor="auto-sync" className="text-sm text-gray-600 dark:text-gray-400">自动同步新书</label>
+              </div>
+            </div>
+
+            {/* Test Result */}
+            {testingConfig.result && (
+              <div className={`p-3 rounded-lg mb-4 text-sm ${testingConfig.result.success ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>
+                {testingConfig.result.success
+                  ? `✅ 连接成功！${testingConfig.result.serverInfo ? `服务器: ${testingConfig.result.serverInfo}` : ''}`
+                  : `❌ 连接失败: ${testingConfig.result.error}`}
+              </div>
+            )}
+
             <div className="flex gap-3 mt-4">
-              <Button onClick={handleAddSource}>保存</Button>
-              <Button variant="secondary" onClick={() => setShowAddForm(false)}>取消</Button>
+              <Button onClick={handleAddSource} disabled={!newSource.name}>💾 保存</Button>
+              <Button variant="secondary" onClick={handleTestConfig} disabled={testingConfig.testing || !newSource.name}>
+                {testingConfig.testing ? '🔄 测试中...' : '🔗 测试连接'}
+              </Button>
+              <Button variant="ghost" onClick={() => { setShowAddForm(false); resetForm(); }}>取消</Button>
             </div>
           </CardContent>
         </Card>
       )}
+
+      {/* Source List */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div></div>
       ) : sources.length === 0 ? (
-        <Card><CardContent className="text-center py-12"><div className="text-5xl mb-4">📂</div><p className="text-gray-500 dark:text-gray-400">暂无电子书源</p><p className="text-sm text-gray-400 mt-1">点击上方按钮添加第一个书源</p></CardContent></Card>
+        <Card><CardContent className="text-center py-12"><div className="text-5xl mb-4">📂</div><p className="text-gray-500 dark:text-gray-400">暂无电子书源</p><p className="text-sm text-gray-400 mt-1">点击上方按钮添加 NAS/远程书源</p></CardContent></Card>
       ) : (
         <div className="space-y-3">
           {sources.map((source) => (
@@ -377,10 +591,16 @@ function EbookSources() {
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold text-gray-900 dark:text-white">{source.name}</h3>
-                        <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs uppercase">{source.type}</span>
+                        <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs uppercase">{typeLabels[source.type] || source.type}</span>
+                        {source.lastError && <span className="px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded text-xs">⚠️ 错误</span>}
                       </div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate max-w-md">{source.path || source.url || '-'}</p>
-                      {source.lastSyncAt && <p className="text-xs text-gray-400 mt-1">最后同步: {new Date(source.lastSyncAt).toLocaleDateString('zh-CN')}</p>}
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 truncate max-w-md">
+                        {source.host ? `${source.host} ` : ''}{source.basePath || source.url || '-'}
+                      </p>
+                      <div className="flex gap-4 mt-1 text-xs text-gray-400">
+                        {source.lastSyncAt && <span>最后同步: {new Date(source.lastSyncAt).toLocaleDateString('zh-CN')}</span>}
+                        {source.bookCount > 0 && <span>{source.bookCount} 本书</span>}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -391,15 +611,22 @@ function EbookSources() {
                     <span className="text-gray-400">{expandedSource === source.id ? '▲' : '▼'}</span>
                   </div>
                 </div>
+
                 {expandedSource === source.id && (
                   <div className="border-t border-gray-100 dark:border-gray-700 p-4 bg-gray-50 dark:bg-gray-800/50">
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div><span className="text-gray-500">类型</span><p className="font-medium text-gray-900 dark:text-white capitalize">{source.type}</p></div>
-                      <div><span className="text-gray-500">地址</span><p className="font-medium text-gray-900 dark:text-white break-all">{source.url || source.path || '-'}</p></div>
-                      {source.path && <div><span className="text-gray-500">子目录</span><p className="font-medium text-gray-900 dark:text-white">{source.path}</p></div>}
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div><span className="text-gray-500">类型</span><p className="font-medium text-gray-900 dark:text-white">{typeLabels[source.type] || source.type}</p></div>
+                      <div><span className="text-gray-500">用户名</span><p className="font-medium text-gray-900 dark:text-white">{source.username || '-'}</p></div>
+                      <div><span className="text-gray-500">自动同步</span><p className="font-medium text-gray-900 dark:text-white">{source.autoSync ? '✅' : '❌'}</p></div>
+                      <div><span className="text-gray-500">同步间隔</span><p className="font-medium text-gray-900 dark:text-white">{source.syncIntervalSecs >= 3600 ? `${source.syncIntervalSecs / 3600}h` : `${source.syncIntervalSecs / 60}m`}</p></div>
                     </div>
+                    {source.lastError && (
+                      <div className="mt-3 p-2 bg-red-50 dark:bg-red-900/20 rounded text-xs text-red-600 dark:text-red-400">错误: {source.lastError}</div>
+                    )}
                     <div className="flex gap-2 mt-4">
-                      <Button size="sm" onClick={() => handleSync(source.id)} disabled={syncingId === source.id || !source.enabled}>{syncingId === source.id ? '🔄 同步中...' : '🔄 同步'}</Button>
+                      <Button size="sm" onClick={() => handleSync(source.id)} disabled={syncingId === source.id || !source.enabled}>
+                        {syncingId === source.id ? '🔄 同步中...' : '🔄 同步书籍'}
+                      </Button>
                       <Button size="sm" variant="danger" onClick={() => handleDelete(source.id)}>🗑️ 删除</Button>
                     </div>
                   </div>
