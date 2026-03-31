@@ -228,3 +228,9 @@ class SharingService {
 }
 
 export const sharingService = new SharingService();
+
+// Export API client
+export { apiClient } from './api';
+export type { BooksQuery, UserSettings } from './api';
+export type { TTSBookMeta, TTSChapter, TTSChapterContent } from './api';
+export type { Collection, Highlight } from './api';

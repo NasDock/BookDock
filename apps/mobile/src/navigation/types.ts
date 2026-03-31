@@ -5,6 +5,7 @@ export type RootStackParamList = {
   Main: undefined;
   Reader: { book: Book };
   TTSScreen: { book: Book };
+  TTSReader: { book: Book };
   BookDetails: { book: Book };
   Login: undefined;
 };

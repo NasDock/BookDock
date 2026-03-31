@@ -9,12 +9,14 @@ import {
   RefreshControl,
   Dimensions,
   Pressable,
+  Modal,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useLibraryStore, useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
+import { apiClient } from '../services/api';
 import type { Book } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -22,28 +24,62 @@ const { width } = Dimensions.get('window');
 const GRID_COLUMNS = 3;
 const ITEM_WIDTH = (width - spacing.md * 2 - spacing.sm * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
 
+type SortOption = 'title' | 'author' | 'addedAt' | 'lastReadAt';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+const SORT_OPTIONS: { value: SortOption; label: string; icon: string }[] = [
+  { value: 'title', label: 'Title', icon: 'text' },
+  { value: 'author', label: 'Author', icon: 'person' },
+  { value: 'addedAt', label: 'Date Added', icon: 'calendar' },
+  { value: 'lastReadAt', label: 'Recently Read', icon: 'time' },
+];
 
 export function LibraryScreen() {
   const navigation = useNavigation<NavigationProp>();
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
-  const { books, localBooks, viewMode, setViewMode } = useLibraryStore();
+  const { books, localBooks, viewMode, setViewMode, setBooks, setLoading } = useLibraryStore();
   
   const [refreshing, setRefreshing] = useState(false);
   const [localSearchQuery, setLocalSearchQuery] = useState('');
+  const [sortOption, setSortOption] = useState<SortOption>('addedAt');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [showSortModal, setShowSortModal] = useState(false);
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
   const filteredBooks = useMemo(() => {
     const query = localSearchQuery.toLowerCase();
-    if (!query) return books;
-    return books.filter(
-      (book) =>
-        book.title.toLowerCase().includes(query) ||
-        book.author.toLowerCase().includes(query)
-    );
-  }, [books, localSearchQuery]);
+    let result = query
+      ? books.filter(
+          (book) =>
+            book.title.toLowerCase().includes(query) ||
+            book.author.toLowerCase().includes(query)
+        )
+      : [...books];
+
+    // Apply sorting
+    result.sort((a, b) => {
+      let comparison = 0;
+      switch (sortOption) {
+        case 'title':
+          comparison = a.title.localeCompare(b.title);
+          break;
+        case 'author':
+          comparison = a.author.localeCompare(b.author);
+          break;
+        case 'addedAt':
+          comparison = new Date(a.addedAt || 0).getTime() - new Date(b.addedAt || 0).getTime();
+          break;
+        case 'lastReadAt':
+          comparison = new Date(a.lastReadAt || 0).getTime() - new Date(b.lastReadAt || 0).getTime();
+          break;
+      }
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    return result;
+  }, [books, localSearchQuery, sortOption, sortOrder]);
 
   const handleBookPress = useCallback((book: Book) => {
     navigation.navigate('Reader', { book });
@@ -55,10 +91,30 @@ export function LibraryScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    // Simulate refresh
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    setRefreshing(false);
-  }, []);
+    setLoading(true);
+    try {
+      const response = await apiClient.books.getBooks({ sort: sortOption, order: sortOrder });
+      if (response.success && response.data) {
+        setBooks(response.data.books);
+      }
+    } catch (error) {
+      console.error('Failed to refresh library:', error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [sortOption, sortOrder, setBooks, setLoading]);
+
+  const handleSortChange = useCallback((option: SortOption) => {
+    if (option === sortOption) {
+      // Toggle order if same option
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortOption(option);
+      setSortOrder('asc');
+    }
+    setShowSortModal(false);
+  }, [sortOption]);
 
   const renderGridItem = useCallback(({ item }: { item: Book }) => {
     const localBook = localBooks.find((b) => b.id === item.id);
@@ -170,6 +226,16 @@ export function LibraryScreen() {
           </TouchableOpacity>
         )}
       </View>
+      {/* Sort Button */}
+      <TouchableOpacity
+        style={[styles.sortButton, { backgroundColor: theme.colors.surface }]}
+        onPress={() => setShowSortModal(true)}
+      >
+        <Ionicons name="swap-vertical" size={18} color={theme.colors.primary} />
+        <Text style={[styles.sortButtonText, { color: theme.colors.primary }]}>
+          {SORT_OPTIONS.find((o) => o.value === sortOption)?.label || 'Sort'}
+        </Text>
+      </TouchableOpacity>
       <View style={styles.viewToggle}>
         <TouchableOpacity
           style={[
@@ -201,6 +267,60 @@ export function LibraryScreen() {
     </View>
   );
 
+  const renderSortModal = () => (
+    <Modal
+      visible={showSortModal}
+      animationType="fade"
+      transparent
+      onRequestClose={() => setShowSortModal(false)}
+    >
+      <Pressable style={styles.sortModalOverlay} onPress={() => setShowSortModal(false)}>
+        <View style={[styles.sortModalContent, { backgroundColor: theme.colors.surface }]}>
+          <Text style={styles.sortModalTitle}>Sort By</Text>
+          {SORT_OPTIONS.map((option) => (
+            <TouchableOpacity
+              key={option.value}
+              style={[
+                styles.sortOption,
+                sortOption === option.value && { backgroundColor: theme.colors.primary + '20' },
+              ]}
+              onPress={() => handleSortChange(option.value)}
+            >
+              <View style={styles.sortOptionLeft}>
+                <Ionicons
+                  name={option.icon as any}
+                  size={20}
+                  color={sortOption === option.value ? theme.colors.primary : theme.colors.textSecondary}
+                />
+                <Text
+                  style={[
+                    styles.sortOptionText,
+                    sortOption === option.value && { color: theme.colors.primary },
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </View>
+              {sortOption === option.value && (
+                <Ionicons
+                  name={sortOrder === 'asc' ? 'arrow-up' : 'arrow-down'}
+                  size={18}
+                  color={theme.colors.primary}
+                />
+              )}
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity
+            style={[styles.sortModalClose, { borderTopColor: theme.colors.border }]}
+            onPress={() => setShowSortModal(false)}
+          >
+            <Text style={styles.sortModalCloseText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </Pressable>
+    </Modal>
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <FlatList
@@ -227,6 +347,7 @@ export function LibraryScreen() {
           </View>
         }
       />
+      {renderSortModal()}
     </View>
   );
 }
@@ -265,6 +386,18 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontSize: fontSizes.md,
       color: theme.colors.text,
     },
+    sortButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.sm,
+      borderRadius: borderRadius.md,
+      gap: spacing.xs,
+    },
+    sortButtonText: {
+      fontSize: fontSizes.xs,
+      fontWeight: '500',
+    },
     viewToggle: {
       flexDirection: 'row',
       gap: spacing.xs,
@@ -273,6 +406,51 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       padding: spacing.sm,
       borderRadius: borderRadius.md,
       backgroundColor: theme.colors.surface,
+    },
+    sortModalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    sortModalContent: {
+      width: '80%',
+      borderRadius: borderRadius.xl,
+      padding: spacing.lg,
+    },
+    sortModalTitle: {
+      fontSize: fontSizes.xl,
+      fontWeight: '600',
+      color: theme.colors.text,
+      marginBottom: spacing.md,
+      textAlign: 'center',
+    },
+    sortOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: spacing.md,
+      borderRadius: borderRadius.md,
+      marginBottom: spacing.xs,
+    },
+    sortOptionLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    sortOptionText: {
+      fontSize: fontSizes.md,
+      color: theme.colors.text,
+    },
+    sortModalClose: {
+      marginTop: spacing.md,
+      paddingTop: spacing.md,
+      borderTopWidth: 1,
+      alignItems: 'center',
+    },
+    sortModalCloseText: {
+      fontSize: fontSizes.md,
+      color: theme.colors.textSecondary,
     },
     listContentContainer: {
       paddingHorizontal: spacing.md,
