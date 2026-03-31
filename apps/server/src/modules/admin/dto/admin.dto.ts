@@ -67,6 +67,17 @@ export class UpdateUserDto {
   @IsString()
   @IsOptional()
   preferences?: string; // JSON string
+
+  // VIP Membership management
+  @ApiPropertyOptional({ description: 'VIP level: free, year, lifetime' })
+  @IsString()
+  @IsOptional()
+  vipLevel?: string;
+
+  @ApiPropertyOptional({ description: 'VIP expiry date (ISO string), null = never expires' })
+  @IsString()
+  @IsOptional()
+  vipExpiredAt?: string | null;
 }
 
 export class AdminUserResponseDto {
@@ -103,6 +114,13 @@ export class AdminUserResponseDto {
     readingProgress: number;
     bookmarks: number;
   };
+
+  // VIP Membership fields
+  @ApiPropertyOptional()
+  vipLevel?: string;
+
+  @ApiPropertyOptional()
+  vipExpiredAt?: Date | null;
 }
 
 // ── Data Source Management ────────────────────────────────────────────────────

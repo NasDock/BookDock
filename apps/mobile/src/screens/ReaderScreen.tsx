@@ -139,8 +139,23 @@ export function ReaderScreen() {
   const [totalPages] = useState(1);
   const [showSettings, setShowSettings] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  
+  const [bookmarks, setBookmarks] = useState<any[]>([]);
+  const [showBookmarkList, setShowBookmarkList] = useState(false);
+
   const webViewRef = useRef<WebView>(null);
+
+  // Handle add bookmark
+  const handleAddBookmark = useCallback(() => {
+    const newBookmark = {
+      id: Date.now().toString(),
+      percentage: currentPosition,
+      createdAt: new Date().toISOString(),
+    };
+    setBookmarks((prev) => [...prev, newBookmark]);
+    const key = `bookdock_bookmarks_${book.id}`;
+    const existing = JSON.parse(localStorage.getItem(key) || '[]');
+    localStorage.setItem(key, JSON.stringify([...existing, newBookmark]));
+  }, [book?.id, currentPosition]);
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
@@ -291,9 +306,24 @@ export function ReaderScreen() {
             <Ionicons name="chevron-back" size={24} color={theme.colors.text} />
           </TouchableOpacity>
           <Text style={styles.headerTitle} numberOfLines={1}>{book.title}</Text>
-          <TouchableOpacity onPress={handleShare} style={styles.headerButton}>
-            <Ionicons name="share-outline" size={24} color={theme.colors.text} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity onPress={handleAddBookmark} style={styles.headerButton}>
+              <Ionicons name="bookmark-outline" size={22} color={theme.colors.text} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowBookmarkList(true)} style={styles.headerButton}>
+              <View>
+                <Ionicons name="bookmarks-outline" size={22} color={theme.colors.text} />
+                {bookmarks.length > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{bookmarks.length}</Text>
+                  </View>
+                )}
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleShare} style={styles.headerButton}>
+              <Ionicons name="share-outline" size={24} color={theme.colors.text} />
+            </TouchableOpacity>
+          </View>
         </View>
       )}
       
@@ -368,15 +398,46 @@ export function ReaderScreen() {
       </View>
       
       {renderSettingsModal()}
+
+      {/* Bookmark List Modal */}
+      <Modal visible={showBookmarkList} animationType="slide" transparent>
+        <Pressable style={styles.modalOverlay} onPress={() => setShowBookmarkList(false)}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>书签列表 ({bookmarks.length})</Text>
+              <TouchableOpacity onPress={() => setShowBookmarkList(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.bookmarkList}>
+              {bookmarks.length === 0 ? (
+                <View style={styles.emptyBookmarks}>
+                  <Text style={styles.emptyText}>暂无书签</Text>
+                </View>
+              ) : (
+                bookmarks.map((bookmark) => (
+                  <TouchableOpacity key={bookmark.id} style={styles.bookmarkItem}>
+                    <View style={styles.bookmarkInfo}>
+                      <Text style={styles.bookmarkText}>书签 - {bookmark.percentage}%</Text>
+                      <Text style={styles.bookmarkDate}>
+                        {new Date(bookmark.createdAt).toLocaleDateString('zh-CN')}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => setBookmarks((prev) => prev.filter((b) => b.id !== bookmark.id))}
+                    >
+                      <Ionicons name="trash-outline" size={20} color="#ef4444" />
+                    </TouchableOpacity>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
-
-function createStyles(theme: ReturnType<typeof getTheme>) {
-  return StyleSheet.create({
-    container: {
-      flex: 1,
-    },
     header: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -395,6 +456,26 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       color: theme.colors.text,
       textAlign: 'center',
       marginHorizontal: spacing.sm,
+    },
+    headerActions: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    badge: {
+      position: 'absolute',
+      top: 2,
+      right: 2,
+      backgroundColor: '#3b82f6',
+      borderRadius: 6,
+      minWidth: 14,
+      height: 14,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    badgeText: {
+      color: '#fff',
+      fontSize: 9,
+      fontWeight: 'bold',
     },
     readerContainer: {
       flex: 1,
@@ -551,6 +632,48 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontSize: fontSizes.md,
       fontWeight: '600',
       color: '#fff',
+    },
+    modalHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    bookmarkList: {
+      flex: 1,
+    },
+    emptyBookmarks: {
+      padding: spacing.xl,
+      alignItems: 'center',
+    },
+    emptyText: {
+      color: theme.colors.textSecondary,
+      fontSize: fontSizes.md,
+    },
+    bookmarkItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    bookmarkInfo: {
+      flex: 1,
+    },
+    bookmarkText: {
+      fontSize: fontSizes.md,
+      color: theme.colors.text,
+      fontWeight: '500',
+    },
+    bookmarkDate: {
+      fontSize: fontSizes.xs,
+      color: theme.colors.textSecondary,
+      marginTop: 2,
     },
   });
 }

@@ -4,6 +4,7 @@ import { AppConfig } from './config/app.config';
 import { DatabaseModule } from './config/database.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BookmarkModule } from './modules/bookmark/bookmark.module';
 import { BooksModule } from './modules/books/books.module';
 import { MembershipModule } from './modules/membership/membership.module';
 import { VipModule } from './modules/vip/vip.module';
@@ -31,6 +32,7 @@ import { HealthController } from './health.controller';
     MembershipModule,
     VipModule,
     SourceModule,
+    BookmarkModule,
   ],
   controllers: [HealthController],
 })

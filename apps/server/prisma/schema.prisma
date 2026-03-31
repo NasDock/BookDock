@@ -204,6 +204,14 @@ model Bookmark {
   id             String    @id @default(uuid()) @db.Uuid
   userId         String    @map("user_id") @db.Uuid
   bookId         String    @map("book_id") @db.Uuid
+  chapterId      String?   @map("chapter_id") @db.Uuid
+  cfi            String?   @db.Text
+  percentage     Decimal?  @map("percentage") @db.Decimal(5, 2)
+  // For highlights
+  startOffset    Int?      @map("start_offset")
+  endOffset      Int?      @map("end_offset")
+  text           String?   @db.Text
+  // Legacy fields (kept for backwards compat)
   title          String?   @db.VarChar(200)
   location       String    @db.Text
   locationType   String    @default("cfi") @map("location_type") @db.VarChar(20)
@@ -211,6 +219,7 @@ model Bookmark {
   highlightText  String?   @map("highlight_text") @db.Text
   highlightColor String?   @map("highlight_color") @db.VarChar(20)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)

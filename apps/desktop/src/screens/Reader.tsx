@@ -96,6 +96,8 @@ export function ReaderScreen({ bookId: propBookId, onBack }: ReaderScreenProps) 
   const [mode, setMode] = useState<'light' | 'dark' | 'sepia'>('light');
   const [fontSize, setFontSize] = useState(16);
   const [showControls, setShowControls] = useState(true);
+  const [bookmarks, setBookmarks] = useState<any[]>([]);
+  const [showBookmarkList, setShowBookmarkList] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<SimpleEpubRenderer | null>(null);
@@ -330,6 +332,50 @@ BookDock 阅读器
                 🔊
               </button>
 
+              {/* Bookmark button */}
+              <button
+                onClick={() => {
+                  // Add current position as bookmark
+                  const progress = rendererRef.current?.getProgress();
+                  if (progress) {
+                    const newBookmark = {
+                      id: Date.now().toString(),
+                      percentage: progress.percentage,
+                      createdAt: new Date().toISOString(),
+                    };
+                    setBookmarks((prev) => [...prev, newBookmark]);
+                    // Save to localStorage
+                    if (book?.id) {
+                      const key = `bookdock_bookmarks_${book.id}`;
+                      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+                      localStorage.setItem(key, JSON.stringify([...existing, newBookmark]));
+                    }
+                  }
+                }}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                title="添加书签"
+              >
+                🔖
+              </button>
+
+              {/* Bookmark list toggle */}
+              <button
+                onClick={() => setShowBookmarkList(!showBookmarkList)}
+                className={`relative p-2 rounded-lg transition-colors ${
+                  showBookmarkList
+                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-600'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+                title="书签列表"
+              >
+                📑
+                {bookmarks.length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 text-white text-[10px] rounded-full flex items-center justify-center">
+                    {bookmarks.length}
+                  </span>
+                )}
+              </button>
+
               {/* Settings */}
               <div className="relative">
                 <button
@@ -415,6 +461,43 @@ BookDock 阅读器
             bookId={book?.id}
             onClose={() => setIsTtsMode(false)}
           />
+        </div>
+      )}
+
+      {/* Bookmark list panel */}
+      {showBookmarkList && (
+        <div className="fixed top-14 right-4 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden z-50 max-h-[60vh] flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+            <h3 className="font-medium text-gray-900 dark:text-white">书签列表 ({bookmarks.length})</h3>
+            <button onClick={() => setShowBookmarkList(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">✕</button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3">
+            {bookmarks.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                <div className="text-3xl mb-2">🔖</div>
+                <p className="text-sm">暂无书签</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {bookmarks.map((bookmark) => (
+                  <div key={bookmark.id} className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg group">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">书签 - {bookmark.percentage}%</p>
+                        <p className="text-xs text-gray-500">{new Date(bookmark.createdAt).toLocaleDateString('zh-CN')}</p>
+                      </div>
+                      <button
+                        onClick={() => setBookmarks((prev) => prev.filter((b) => b.id !== bookmark.id))}
+                        className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

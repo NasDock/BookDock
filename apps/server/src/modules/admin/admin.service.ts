@@ -59,6 +59,7 @@ export class AdminService {
         orderBy: { createdAt: 'desc' },
         include: {
           _count: { select: { collections: true, readingProgress: true, bookmarks: true } },
+          vipMember: true,
         },
       }),
       this.prisma.user.count({ where }),
@@ -75,6 +76,7 @@ export class AdminService {
       where: { id: userId },
       include: {
         _count: { select: { collections: true, readingProgress: true, bookmarks: true } },
+        vipMember: true,
       },
     });
 
@@ -93,7 +95,8 @@ export class AdminService {
       throw new ForbiddenException('Cannot demote yourself from admin');
     }
 
-    const user = await this.prisma.user.update({
+    // Update user basic info
+    await this.prisma.user.update({
       where: { id: targetUserId },
       data: {
         ...(dto.displayName && { displayName: dto.displayName }),
@@ -101,8 +104,34 @@ export class AdminService {
         ...(dto.role && { role: dto.role }),
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
+    });
+
+    // Update VIP membership if provided
+    if (dto.vipLevel !== undefined || dto.vipExpiredAt !== undefined) {
+      const vipExpiredAt = dto.vipExpiredAt === null ? null :
+        dto.vipExpiredAt ? new Date(dto.vipExpiredAt) : undefined;
+
+      await this.prisma.vipMember.upsert({
+        where: { userId: targetUserId },
+        create: {
+          userId: targetUserId,
+          phone: '', // Will be set if user has phone
+          level: dto.vipLevel || 'free',
+          expiredAt: vipExpiredAt,
+        },
+        update: {
+          ...(dto.vipLevel !== undefined && { level: dto.vipLevel }),
+          ...(vipExpiredAt !== undefined && { expiredAt: vipExpiredAt }),
+        },
+      });
+    }
+
+    // Fetch updated user with relations
+    const user = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
       include: {
         _count: { select: { collections: true, readingProgress: true, bookmarks: true } },
+        vipMember: true,
       },
     });
 
@@ -291,6 +320,8 @@ export class AdminService {
       lastLoginAt: u.lastLoginAt || undefined,
       createdAt: u.createdAt,
       _count: u._count,
+      vipLevel: u.vipMember?.level,
+      vipExpiredAt: u.vipMember?.expiredAt || null,
     };
   }
 }

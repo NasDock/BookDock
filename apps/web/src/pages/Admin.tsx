@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { getApiClient, User, EbookSource, Book } from '@bookdock/api-client';
 import { Button, Card, CardHeader, CardTitle, CardContent, Input } from '@bookdock/ui';
+import AdminUsers from './AdminUsers';
 
 // ==================== File Upload Section ====================
 function FileUpload() {
@@ -848,7 +849,7 @@ export default function Admin() {
       <Routes>
         <Route path="/" element={<FileUpload />} />
         <Route path="/sources" element={<EbookSources />} />
-        <Route path="/users" element={<UserManagement />} />
+        <Route path="/users" element={<AdminUsers />} />
         <Route path="/books" element={<BooksManagement />} />
         <Route path="/search" element={<OpenLibrarySearch />} />
         <Route path="/settings" element={<SystemSettings />} />
