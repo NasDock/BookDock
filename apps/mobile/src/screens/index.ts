@@ -6,3 +6,7 @@ export { TTSTabScreen } from './TTSTabScreen';
 export { SettingsScreen } from './SettingsScreen';
 export { ProfileScreen } from './ProfileScreen';
 export { LoginScreen } from './LoginScreen';
+export { MemberLoginScreen } from './MemberLoginScreen';
+export { MemberBenefitsScreen } from './MemberBenefitsScreen';
+export { MemberDetailScreen } from './MemberDetailScreen';
+export { MemberPaymentSuccessScreen } from './MemberPaymentSuccessScreen';

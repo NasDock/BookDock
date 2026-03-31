@@ -8,6 +8,10 @@ export type RootStackParamList = {
   TTSReader: { book: Book };
   BookDetails: { book: Book };
   Login: undefined;
+  MemberLogin: undefined;
+  MemberBenefits: undefined;
+  MemberDetail: undefined;
+  MemberPaymentSuccess: undefined;
 };
 
 // Tab navigator param list

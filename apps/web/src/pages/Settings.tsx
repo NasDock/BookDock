@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@bookdock/auth';
 import { Button, Card, CardHeader, CardTitle, CardContent, CardFooter } from '@bookdock/ui';
 import { useThemeStore } from '../stores/authStore';
-import { useReaderStore, useReaderStore as useReaderStore2 } from '../stores/themeStore';
-import { getApiClient } from '@bookdock/api-client';
+import { useReaderStore as useReaderStore2 } from '../stores/themeStore';
+import { getApiClient, User } from '@bookdock/api-client';
 import type { ReaderMode } from '@bookdock/ebook-reader';
 
 // ==================== Page Turn Mode ====================
@@ -66,7 +65,7 @@ function PasswordChangeSection() {
     setIsLoading(true);
     try {
       const apiClient = getApiClient();
-      const response = await apiClient.updateUser(user!.id, { password: newPassword });
+      const response = await apiClient.updateUser(user!.id, { password: newPassword } as Partial<User>);
       if (response.success) {
         setMessage({ type: 'success', text: '密码修改成功' });
         setCurrentPassword('');
@@ -228,7 +227,6 @@ export default function Settings() {
   const { user, logout, membership } = useAuth();
   const { theme, setTheme } = useThemeStore();
   const readerConfig = useReaderStore2();
-  const navigate = useNavigate();
 
   // TTS settings
   const [ttsVoice, setTtsVoice] = useState<string>('');

@@ -545,6 +545,99 @@ const highlightsApi = {
   },
 };
 
+// ============ VIP API ============
+
+interface VipProduct {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  badge: string;
+  features: string[];
+}
+
+interface VipProfile {
+  userId: string;
+  phone: string;
+  level: string;
+  expiredAt: string | null;
+  isVip: boolean;
+  createdAt: string;
+}
+
+interface VipOrder {
+  id: string;
+  orderId: string;
+  userId: string;
+  productId: string;
+  amount: number;
+  status: string;
+  paidAt: string | null;
+  createdAt: string;
+}
+
+interface VipAuthResponse {
+  token: string;
+  userId: string;
+  phone: string;
+  level: string;
+  isVip: boolean;
+  expiredAt: string | null;
+}
+
+const vipApi = {
+  sendCode: async (phone: string): Promise<ApiResponse<{ success: boolean; message: string }>> => {
+    return apiFetch('/vip/send-code', {
+      method: 'POST',
+      body: JSON.stringify({ phone }),
+    });
+  },
+
+  login: async (phone: string, code: string): Promise<ApiResponse<VipAuthResponse>> => {
+    return apiFetch<VipAuthResponse>('/vip/login', {
+      method: 'POST',
+      body: JSON.stringify({ phone, code }),
+    });
+  },
+
+  getProfile: async (): Promise<ApiResponse<VipProfile>> => {
+    const authData = await AsyncStorage.getItem('bookdock-auth');
+    let token: string | null = null;
+    if (authData) {
+      const parsed = JSON.parse(authData);
+      token = parsed.state?.token;
+    }
+    return apiFetch<VipProfile>('/vip/profile', {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+  },
+
+  getProducts: async (): Promise<ApiResponse<VipProduct[]>> => {
+    return getCachedOrFetch('vip-products', () =>
+      apiFetch<VipProduct[]>('/vip/products'),
+      10 * 60 * 1000 // 10 min cache
+    );
+  },
+
+  createOrder: async (productId: string, method = 'simulated'): Promise<ApiResponse<VipOrder>> => {
+    const authData = await AsyncStorage.getItem('bookdock-auth');
+    let token: string | null = null;
+    if (authData) {
+      const parsed = JSON.parse(authData);
+      token = parsed.state?.token;
+    }
+    return apiFetch<VipOrder>('/vip/create-order', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: JSON.stringify({ productId, method }),
+    });
+  },
+
+  getOrder: async (orderId: string): Promise<ApiResponse<VipOrder>> => {
+    return apiFetch<VipOrder>(`/vip/order/${orderId}`);
+  },
+};
+
 // ============ Export API Client ============
 
 export const apiClient = {
@@ -555,6 +648,7 @@ export const apiClient = {
   settings: userSettingsApi,
   collections: collectionsApi,
   highlights: highlightsApi,
+  vip: vipApi,
 
   // Utility methods
   invalidateCache,
@@ -564,3 +658,4 @@ export const apiClient = {
 export type { BooksQuery, UserSettings };
 export type { TTSBookMeta, TTSChapter, TTSChapterContent };
 export type { Collection, Highlight };
+export type { VipProduct, VipProfile, VipOrder, VipAuthResponse };

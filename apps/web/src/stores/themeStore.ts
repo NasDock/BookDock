@@ -29,7 +29,7 @@ const defaultConfig: ReaderConfig = {
 };
 
 export const useReaderStore = create<ReaderState>()(
-  persist(
+  persist<ReaderState>(
     (set) => ({
       ...defaultConfig,
 

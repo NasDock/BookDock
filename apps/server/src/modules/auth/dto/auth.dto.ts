@@ -7,6 +7,7 @@ import {
     IsString,
     MaxLength,
     MinLength,
+    IsPhoneNumber,
 } from 'class-validator';
 
 export class RegisterDto {
@@ -47,6 +48,46 @@ export class LoginDto {
   password: string;
 }
 
+// Phone + SMS Login DTOs
+export class SendSmsCodeDto {
+  @ApiProperty({ example: '+8613912345678' })
+  @IsString()
+  @MaxLength(20)
+  phone: string;
+}
+
+export class LoginWithPhoneDto {
+  @ApiProperty({ example: '+8613912345678' })
+  @IsString()
+  @MaxLength(20)
+  phone: string;
+
+  @ApiProperty({ example: '123456' })
+  @IsString()
+  @MinLength(4)
+  @MaxLength(6)
+  code: string;
+}
+
+export class RegisterWithPhoneDto {
+  @ApiProperty({ example: '+8613912345678' })
+  @IsString()
+  @MaxLength(20)
+  phone: string;
+
+  @ApiProperty({ example: '123456' })
+  @IsString()
+  @MinLength(4)
+  @MaxLength(6)
+  code: string;
+
+  @ApiPropertyOptional({ example: 'johndoe' })
+  @IsString()
+  @MaxLength(100)
+  @IsOptional()
+  username?: string;
+}
+
 export class RefreshTokenDto {
   @ApiProperty()
   @IsString()
@@ -62,6 +103,9 @@ export class UserInfoDto {
 
   @ApiProperty()
   username: string;
+
+  @ApiPropertyOptional()
+  phone?: string;
 
   @ApiPropertyOptional()
   displayName?: string;
@@ -88,4 +132,12 @@ export class AuthResponseDto {
 
   @ApiProperty({ type: () => UserInfoDto })
   user: UserInfoDto;
+}
+
+export class SmsCodeResponseDto {
+  @ApiProperty()
+  message: string;
+
+  @ApiPropertyOptional()
+  expiresIn?: number; // seconds until code expires
 }

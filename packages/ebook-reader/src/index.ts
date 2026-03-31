@@ -25,6 +25,13 @@ export interface BookRenderer {
   getPosition: () => ReaderPosition;
   setPosition: (position: ReaderPosition) => void;
   render: () => Promise<void>;
+  applyConfig: (config: ReaderConfig) => void;
+  onLocationChange: (callback: (location: ReaderPosition) => void) => void;
+  goTo: (position: string) => Promise<void>;
+  nextPage: () => void;
+  prevPage: () => void;
+  goToPage?: (pageNum: number) => Promise<void>;
+  setScale?: (scale: number) => void;
 }
 
 // EPUB Reader Component using epub.js

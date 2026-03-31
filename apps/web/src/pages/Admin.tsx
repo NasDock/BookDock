@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { getApiClient, User, EbookSource, Book } from '@bookdock/api-client';
 import { Button, Card, CardHeader, CardTitle, CardContent, Input } from '@bookdock/ui';
@@ -57,7 +57,6 @@ function FileUpload() {
     setUploadSuccess(null);
 
     try {
-      const apiClient = getApiClient();
       const formData = new FormData();
       formData.append('file', selectedFile);
       formData.append('title', meta.title || selectedFile.name.replace(/\.[^/.]+$/, ''));

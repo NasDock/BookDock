@@ -6,6 +6,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BooksModule } from './modules/books/books.module';
 import { MembershipModule } from './modules/membership/membership.module';
+import { VipModule } from './modules/vip/vip.module';
 import { ReadingProgressModule } from './modules/reading-progress/reading-progress.module';
 import { TtsModule } from './modules/tts/tts.module';
 import { BullMQModule } from './queues/bullmq.module';
@@ -27,6 +28,7 @@ import { HealthController } from './health.controller';
     TtsModule,
     AdminModule,
     MembershipModule,
+    VipModule,
   ],
   controllers: [HealthController],
 })

@@ -75,6 +75,7 @@ model User {
   updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   lastLoginAt   DateTime? @map("last_login_at") @db.Timestamptz
   isActive      Boolean   @default(true) @map("is_active")
+  phone         String?   @unique @map("phone") @db.VarChar(20)
 
   // Relations
   collections        Collection[]
@@ -84,6 +85,7 @@ model User {
   ttsAudioFiles      TtsAudioFile[]
   sessions           Session[]
   apiKeys            ApiKey[]
+  vipMember          VipMember?
 
   @@map("users")
 }
@@ -334,6 +336,37 @@ model ApiKey {
   @@index([userId])
   @@index([keyHash])
   @@map("api_keys")
+}
+
+// VIP Members (phone-based lightweight accounts)
+model VipMember {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @unique @map("user_id") @db.Uuid
+  phone     String    @unique @db.VarChar(20)
+  level     String    @default("free") // "free" | "year" | "lifetime"
+  expiredAt DateTime? @map("expired_at") @db.Timestamptz // null = 永久
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("vip_members")
+}
+
+// VIP Orders
+model VipOrder {
+  id        String    @id @default(uuid()) @db.Uuid
+  orderId   String    @unique @map("order_id") @db.VarChar(100)
+  userId    String    @map("user_id") @db.VarChar(100)
+  productId String    @map("product_id") @db.VarChar(20) // "year" | "lifetime"
+  amount    Float     // RMB (20 or 60)
+  status    String    @default("pending") @map("status") // "pending" | "paid" | "expired"
+  paidAt    DateTime? @map("paid_at") @db.Timestamptz
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([userId])
+  @@index([orderId])
+  @@map("vip_orders")
 }
 
 model IndexerJob {

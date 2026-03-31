@@ -30,6 +30,7 @@ export interface User {
   id: string;
   username: string;
   email?: string;
+  phone?: string;
   role: 'admin' | 'user';
   membership: 'free' | 'premium';
   createdAt: string;
@@ -64,6 +65,64 @@ export interface EbookSource {
   path?: string;
   enabled: boolean;
   lastSyncAt?: string;
+}
+
+// ─── Membership Types ────────────────────────────────────────────────────────
+
+export type MembershipPlan = 'free' | 'annual' | 'lifetime';
+
+export interface MembershipPlanDto {
+  id: MembershipPlan;
+  name: string;
+  description: string;
+  price: number; // in cents
+  currency: string;
+  interval: string;
+  features: string[];
+  badge?: string;
+}
+
+export interface Subscription {
+  id: string;
+  userId: string;
+  plan: MembershipPlan;
+  status: 'active' | 'cancelled' | 'expired' | 'trial';
+  currentPeriodStart?: string;
+  currentPeriodEnd?: string;
+  cancelledAt?: string;
+  autoRenew: boolean;
+  createdAt: string;
+}
+
+export type PaymentMethod = 'simulated' | 'wechat' | 'alipay';
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'cancelled' | 'expired';
+
+export interface Payment {
+  id: string;
+  userId: string;
+  amount: number;
+  currency: string;
+  plan: MembershipPlan;
+  method: PaymentMethod;
+  status: PaymentStatus;
+  tradeNo?: string;
+  qrCode?: string;
+  qrCodeExpiredAt?: string;
+  paidAt?: string;
+  createdAt: string;
+}
+
+export interface Usage {
+  userId: string;
+  plan: MembershipPlan;
+  storageUsedBytes: bigint;
+  storageLimitBytes: bigint;
+  ttsUsedMin: number;
+  ttsLimitMin: number;
+  booksUploaded: number;
+  booksLimit: number;
+  collectionsCount: number;
+  collectionsLimit: number;
 }
 
 export interface ApiClientConfig {
@@ -130,6 +189,69 @@ class ApiClient {
 
   async getCurrentUser(): Promise<ApiResponse<User>> {
     const { data } = await this.client.get('/auth/me');
+    return data;
+  }
+
+  // Phone + SMS Auth
+  async sendSmsCode(phone: string): Promise<ApiResponse<{ message: string; expiresIn?: number }>> {
+    const { data } = await this.client.post('/auth/send-sms', { phone });
+    return data;
+  }
+
+  async loginWithPhone(phone: string, code: string): Promise<ApiResponse<{ token: string; user: User }>> {
+    const { data } = await this.client.post('/auth/login/phone', { phone, code });
+    return data;
+  }
+
+  async registerWithPhone(phone: string, code: string, username?: string): Promise<ApiResponse<{ token: string; user: User }>> {
+    const { data } = await this.client.post('/auth/register/phone', { phone, code, username });
+    return data;
+  }
+
+  // Membership endpoints
+  async getMembershipPlans(): Promise<ApiResponse<MembershipPlanDto[]>> {
+    const { data } = await this.client.get('/membership/plans');
+    return data;
+  }
+
+  async getMembershipPlan(planId: string): Promise<ApiResponse<MembershipPlanDto>> {
+    const { data } = await this.client.get(`/membership/plans/${planId}`);
+    return data;
+  }
+
+  async getSubscription(): Promise<ApiResponse<Subscription | null>> {
+    const { data } = await this.client.get('/membership/subscription');
+    return data;
+  }
+
+  async getUsage(): Promise<ApiResponse<Usage>> {
+    const { data } = await this.client.get('/membership/usage');
+    return data;
+  }
+
+  // Payment endpoints
+  async createPayment(plan: MembershipPlan, method: PaymentMethod): Promise<ApiResponse<Payment>> {
+    const { data } = await this.client.post('/membership/payment', { plan, method });
+    return data;
+  }
+
+  async getPayment(paymentId: string): Promise<ApiResponse<Payment>> {
+    const { data } = await this.client.get(`/membership/payment/${paymentId}`);
+    return data;
+  }
+
+  async getPayments(): Promise<ApiResponse<Payment[]>> {
+    const { data } = await this.client.get('/membership/payments');
+    return data;
+  }
+
+  async pollPayment(paymentId: string): Promise<ApiResponse<Payment>> {
+    const { data } = await this.client.get(`/membership/payment/${paymentId}/poll`);
+    return data;
+  }
+
+  async simulatePaymentSuccess(paymentId: string): Promise<ApiResponse<Payment>> {
+    const { data } = await this.client.post(`/membership/payment/${paymentId}/simulate`);
     return data;
   }
 

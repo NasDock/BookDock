@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getApiClient, Book } from '@bookdock/api-client';
+import { useAuth } from '@bookdock/auth';
 import { useBookReader } from '../hooks/useBookReader';
 import { useReaderStore } from '../stores/themeStore';
 import { Button } from '@bookdock/ui';
@@ -311,17 +312,17 @@ interface ReaderControlsProps {
 function ReaderControls({
   book,
   position,
-  mode,
-  fontSize,
-  onModeChange,
-  onFontSizeChange,
+  mode: _mode,
+  fontSize: _fontSize,
+  onModeChange: _onModeChange,
+  onFontSizeChange: _onFontSizeChange,
   onPrevPage,
   onNextPage,
   onGoBack,
   onGoToPage,
   onToggleAutoScroll,
   isAutoScroll,
-  bookmarks,
+  bookmarks: _bookmarks,
   onAddBookmark,
   showSettings,
   onToggleSettings,
@@ -481,6 +482,7 @@ function ReaderControls({
 export default function Reader() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { isPremium } = useAuth();
   const [book, setBook] = useState<Book | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -523,23 +525,6 @@ export default function Reader() {
     setBookmarks(newBookmarks);
     localStorage.setItem(`bookdock_bookmarks_${id}`, JSON.stringify(newBookmarks));
   }, [id]);
-
-  const handleAddBookmark = useCallback(() => {
-    if (!book) return;
-    const newBookmark: Bookmark = {
-      id: Date.now().toString(),
-      cfi: '',
-      position: position.currentPage || 0,
-      createdAt: new Date().toISOString(),
-      percentage: position.percentage,
-    };
-    saveBookmarks([...bookmarks, newBookmark]);
-  }, [book, position, bookmarks, saveBookmarks]);
-
-  const handleGoToBookmark = useCallback((bookmark: Bookmark) => {
-    goToPosition({ percentage: bookmark.percentage, currentPage: bookmark.position });
-    setShowSettings(false);
-  }, [goToPosition]);
 
   // Auto scroll
   useEffect(() => {
@@ -620,6 +605,24 @@ export default function Reader() {
     autoSaveInterval: 5000,
     onPositionChange: handlePositionChange,
   });
+
+  // Bookmark handlers (must be after useBookReader for position/goToPosition)
+  const handleAddBookmark = useCallback(() => {
+    if (!book) return;
+    const newBookmark: Bookmark = {
+      id: Date.now().toString(),
+      cfi: '',
+      position: position.currentPage || 0,
+      createdAt: new Date().toISOString(),
+      percentage: position.percentage,
+    };
+    saveBookmarks([...bookmarks, newBookmark]);
+  }, [book, position, bookmarks, saveBookmarks]);
+
+  const handleGoToBookmark = useCallback((bookmark: Bookmark) => {
+    goToPosition({ percentage: bookmark.percentage, currentPage: bookmark.position });
+    setShowSettings(false);
+  }, [goToPosition]);
 
   // Restore position from localStorage on mount
   useEffect(() => {
@@ -908,9 +911,12 @@ export default function Reader() {
       <button
         onClick={() => navigate(`/book/${id}/tts`)}
         className="fixed bottom-24 right-6 w-14 h-14 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-105 z-40"
-        title="听书模式"
+        title="听书模式 (会员专属)"
       >
-        🔊
+        <span className="text-xl">🔊</span>
+        {!isPremium && (
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-amber-400 text-white text-[10px] rounded-full flex items-center justify-center font-bold">VIP</span>
+        )}
       </button>
     </div>
   );

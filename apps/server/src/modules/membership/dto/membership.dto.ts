@@ -7,24 +7,13 @@ import {
   Max,
   IsBoolean,
   IsDateString,
+  IsNumber,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import { MembershipPlan, SubscriptionStatus, PaymentMethod, PaymentStatus } from '@prisma/client';
 
-export enum MembershipPlan {
-  FREE = 'free',
-  BASIC = 'basic',
-  PREMIUM = 'premium',
-  FAMILY = 'family',
-}
-
-export enum SubscriptionStatus {
-  ACTIVE = 'active',
-  CANCELLED = 'cancelled',
-  PAST_DUE = 'past_due',
-  EXPIRED = 'expired',
-  TRIALING = 'trialing',
-}
+export { MembershipPlan, SubscriptionStatus, PaymentMethod, PaymentStatus };
 
 export class MembershipPlanDto {
   @ApiProperty({ enum: MembershipPlan })
@@ -37,7 +26,7 @@ export class MembershipPlanDto {
   description: string;
 
   @ApiProperty()
-  price: number;
+  price: number; // in cents (¥20 = 2000, ¥60 = 6000)
 
   @ApiProperty()
   currency: string;
@@ -49,14 +38,7 @@ export class MembershipPlanDto {
   features: string[];
 
   @ApiProperty()
-  limits: {
-    booksUpload: number;
-    storageGb: number;
-    ttsEnabled: boolean;
-    ttsQuotaMinPerMonth: number;
-    collectionsMax: number;
-    concurrentDevices: number;
-  };
+  badge?: string; // e.g. "年卡", "永久卡"
 }
 
 export class SubscriptionDto {
@@ -100,7 +82,7 @@ export class CreateSubscriptionDto {
   @IsEnum(MembershipPlan)
   plan: MembershipPlan;
 
-  @ApiPropertyOptional({ example: 'stripe_payment_intent_id' })
+  @ApiPropertyOptional({ example: 'payment_id' })
   @IsString()
   @IsOptional()
   paymentIntentId?: string;
@@ -122,7 +104,7 @@ export class UsageDto {
   @ApiProperty()
   userId: string;
 
-  @ApiProperty()
+  @ApiProperty({ enum: MembershipPlan })
   plan: MembershipPlan;
 
   @ApiProperty()
@@ -148,4 +130,60 @@ export class UsageDto {
 
   @ApiProperty()
   collectionsLimit: number;
+}
+
+// Payment DTOs
+export class CreatePaymentDto {
+  @ApiProperty({ enum: MembershipPlan })
+  @IsEnum(MembershipPlan)
+  plan: MembershipPlan;
+
+  @ApiProperty({ enum: PaymentMethod })
+  @IsEnum(PaymentMethod)
+  method: PaymentMethod;
+}
+
+export class PaymentDto {
+  @ApiProperty()
+  id: string;
+
+  @ApiProperty()
+  userId: string;
+
+  @ApiProperty()
+  amount: number;
+
+  @ApiProperty()
+  currency: string;
+
+  @ApiProperty({ enum: MembershipPlan })
+  plan: MembershipPlan;
+
+  @ApiProperty({ enum: PaymentMethod })
+  method: PaymentMethod;
+
+  @ApiProperty({ enum: PaymentStatus })
+  status: PaymentStatus;
+
+  @ApiPropertyOptional()
+  tradeNo?: string;
+
+  @ApiPropertyOptional()
+  qrCode?: string;
+
+  @ApiPropertyOptional()
+  qrCodeExpiredAt?: Date;
+
+  @ApiPropertyOptional()
+  paidAt?: Date;
+
+  @ApiProperty()
+  createdAt: Date;
+}
+
+export class PaymentQueryDto {
+  @ApiPropertyOptional({ enum: PaymentStatus })
+  @IsEnum(PaymentStatus)
+  @IsOptional()
+  status?: PaymentStatus;
 }

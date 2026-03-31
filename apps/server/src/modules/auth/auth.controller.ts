@@ -13,7 +13,7 @@ import { Request } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AuthService } from './auth.service';
-import { AuthResponseDto, LoginDto, RefreshTokenDto, RegisterDto, UserInfoDto } from './dto/auth.dto';
+import { AuthResponseDto, LoginDto, RefreshTokenDto, RegisterDto, UserInfoDto, SendSmsCodeDto, LoginWithPhoneDto, RegisterWithPhoneDto, SmsCodeResponseDto } from './dto/auth.dto';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -69,5 +69,41 @@ export class AuthController {
   @ApiResponse({ status: 200, type: UserInfoDto })
   async getCurrentUser(@CurrentUser('sub') userId: string) {
     return this.authService.getCurrentUser(userId);
+  }
+
+  // ─── Phone + SMS Auth ───────────────────────────────────────────────────────
+
+  @Post('send-sms')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Send SMS verification code' })
+  @ApiResponse({ status: 200, type: SmsCodeResponseDto })
+  async sendSmsCode(@Body() dto: SendSmsCodeDto) {
+    return this.authService.sendSmsCode(dto.phone);
+  }
+
+  @Post('login/phone')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Login with phone + SMS code' })
+  @ApiResponse({ status: 200, type: AuthResponseDto })
+  async loginWithPhone(
+    @Body() dto: LoginWithPhoneDto,
+    @Req() req: Request & { headers: { 'user-agent'?: string } },
+  ) {
+    const userAgent = req.headers['user-agent'];
+    const ipAddress = req.socket?.remoteAddress;
+    return this.authService.loginWithPhone(dto, userAgent, ipAddress);
+  }
+
+  @Post('register/phone')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Register with phone + SMS code' })
+  @ApiResponse({ status: 200, type: AuthResponseDto })
+  async registerWithPhone(
+    @Body() dto: RegisterWithPhoneDto,
+    @Req() req: Request & { headers: { 'user-agent'?: string } },
+  ) {
+    const userAgent = req.headers['user-agent'];
+    const ipAddress = req.socket?.remoteAddress;
+    return this.authService.registerWithPhone(dto, userAgent, ipAddress);
   }
 }

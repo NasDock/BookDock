@@ -320,7 +320,7 @@ export default function Library() {
             <span className="text-green-600 dark:text-green-400">{stats.completed} 已读完</span>
             <span className="text-blue-600 dark:text-blue-400">{stats.reading} 在读</span>
             <span className="text-gray-400">{stats.unread} 未读</span>
-            {user?.membership === 'premium' && (
+            {(user as { membership?: string } | null)?.membership === 'premium' && (
               <span className="ml-2 text-amber-500">Premium 会员</span>
             )}
           </p>
