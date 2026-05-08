@@ -1,20 +1,21 @@
 import {
-    Inject,
-    Injectable,
-    NotFoundException
+  Injectable,
+  Inject,
+  NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
+import { PrismaClient, Book, BookFormat } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
-import { BookFormat, PrismaClient } from '@prisma/client';
-import { createReadStream, existsSync, statSync } from 'fs';
+import { createReadStream, statSync, existsSync } from 'fs';
 import { join } from 'path';
 import { PRISMA_CLIENT } from '../../config/database.module';
 import {
-    BookQueryDto,
-    BookResponseDto,
-    BookStatsDto,
-    CreateBookDto,
-    PaginatedBooksDto,
-    UpdateBookDto,
+  CreateBookDto,
+  UpdateBookDto,
+  BookQueryDto,
+  BookResponseDto,
+  PaginatedBooksDto,
+  BookStatsDto,
 } from './dto/books.dto';
 
 @Injectable()
@@ -40,14 +41,14 @@ export class BooksService {
       try {
         const crypto = await import('crypto');
         const hash = crypto.createHash('sha256');
-        await new Promise((resolve, reject) => {
+        await new Promise<void>((resolve, reject) => {
           createReadStream(fullPath)
             .on('data', (chunk) => hash.update(chunk))
             .on('end', () => {
               fileHash = hash.digest('hex');
               const stats = statSync(fullPath);
               fileSize = BigInt(stats.size);
-              resolve(null);
+              resolve();
             })
             .on('error', reject);
         });
@@ -161,7 +162,7 @@ export class BooksService {
   async getCover(id: string): Promise<{ stream: unknown; contentType: string }> {
     const book = await this.prisma.book.findUnique({
       where: { id, isDeleted: false },
-      select: { title: true, coverUrl: true, filePath: true },
+      select: { coverUrl: true, filePath: true, title: true },
     });
 
     if (!book) {

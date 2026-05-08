@@ -1,81 +1,34 @@
+import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { useDesktopEvents } from './hooks/useDesktopCommands';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { LibraryScreen } from './screens/Library';
 import { ReaderScreen } from './screens/Reader';
 import { SettingsScreen } from './screens/Settings';
-import { SourceManageScreen } from './screens/SourceManageScreen';
-import { MemberLoginScreen } from './screens/MemberLoginScreen';
-import { MemberBenefitsScreen } from './screens/MemberBenefitsScreen';
-import { MemberDetailScreen } from './screens/MemberDetailScreen';
-import { MemberPaymentSuccessScreen } from './screens/MemberPaymentSuccessScreen';
-import { AdminUsersScreen } from './screens/AdminUsersScreen';
 import { useDesktopStore } from './stores/desktopStore';
+import { useDesktopEvents } from './hooks/useDesktopCommands';
+import type { Book } from '@bookdock/api-client';
 import './styles.css';
 
-function getVipStatus() {
-  try {
-    const stored = localStorage.getItem('bookdock_vip_user');
-    if (stored) {
-      const user = JSON.parse(stored);
-      return { isVip: user.isVip === true, level: user.level || 'free' };
-    }
-  } catch {}
-  return { isVip: false, level: 'free' };
-}
-
-function NoVipBlock() {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-sm mx-4 text-center shadow-2xl">
-        <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full mb-4">
-          <span className="text-2xl">👑</span>
-        </div>
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">尊享会员专享</h2>
-        <p className="text-gray-500 dark:text-gray-400 mb-5 text-sm">当前功能仅对会员开放</p>
-        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 mb-5 text-left">
-          <p className="text-xs font-semibold text-gray-400 uppercase mb-2">会员特权</p>
-          {['📚 无限书籍', '🎧 语音朗读', '⭐ 新功能抢先', '🚫 去除广告'].map(b => (
-            <p key={b} className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-1.5 mb-1">
-              <span className="text-green-500">✓</span> {b}
-            </p>
-          ))}
-        </div>
-        <div className="space-y-2">
-          <a href="#/member-benefits" className="block w-full py-2 rounded-lg text-white font-medium text-center"
-            style={{ background: 'linear-gradient(135deg, #f59e0b, #ea580c)' }}>
-            立即开通会员
-          </a>
-          <a href="#/" className="block w-full py-2 text-gray-500 text-center text-sm">返回书架</a>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function VipGuard({ children }: { children: React.ReactNode }) {
-  const vip = getVipStatus();
-  if (!vip.isVip) return <NoVipBlock />;
-  return <>{children}</>;
-}
-
+// Wrapper component for desktop events
 function DesktopApp() {
   useDesktopEvents();
-  const { settings } = useDesktopStore();
+
+  const { settings, selectedBook, selectBook, setBooks } = useDesktopStore();
   const [isReady, setIsReady] = useState(false);
-  const [vipStatus, setVipStatus] = useState({ isVip: false, level: 'free' });
+  const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    setVipStatus(getVipStatus());
-    const interval = setInterval(() => setVipStatus(getVipStatus()), 1000);
-    return () => clearInterval(interval);
-  }, []);
+  const isTauri = !!(window as any).__TAURI_IPC__;
 
+  // Apply theme
   useEffect(() => {
     const effectiveTheme =
       settings.theme === 'system'
-        ? window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+        ? window.matchMedia('(prefers-color-scheme: dark)').matches
+          ? 'dark'
+          : 'light'
         : settings.theme;
+
     if (effectiveTheme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
@@ -84,18 +37,55 @@ function DesktopApp() {
     setIsReady(true);
   }, [settings.theme]);
 
+  // Listen for system theme changes
   useEffect(() => {
     if (settings.theme !== 'system') return;
+
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handler = (e: MediaQueryListEvent) => {
-      if (e.matches) document.documentElement.classList.add('dark');
-      else document.documentElement.classList.remove('dark');
+      if (e.matches) {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
     };
+
     mediaQuery.addEventListener('change', handler);
     return () => mediaQuery.removeEventListener('change', handler);
   }, [settings.theme]);
 
-  if (!isReady) {
+  // Tauri: load books and listen for backend events
+  useEffect(() => {
+    if (!isTauri) return;
+
+    loadBooks();
+
+    const unlisten = listen<{ type: string; payload: unknown }>('book-event', (event) => {
+      console.log('Received book event:', event.payload);
+      if (event.payload) {
+        // Handle book events
+      }
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [isTauri]);
+
+  const loadBooks = async () => {
+    if (!isTauri) return;
+    setIsLoading(true);
+    try {
+      const result = await invoke<Book[]>('get_books');
+      setBooks(result);
+    } catch (error) {
+      console.error('Failed to load books:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (!isReady || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
         <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
@@ -105,37 +95,66 @@ function DesktopApp() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Desktop VIP status bar */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600 dark:text-gray-400">📖 书仓</span>
-          <span className="text-gray-300">|</span>
-          <span className="text-sm text-gray-500 dark:text-gray-400">桌面版</span>
-        </div>
-        <div className="flex items-center gap-3">
-          {vipStatus.isVip ? (
-            <a href="#/member-detail" className="px-2 py-0.5 text-xs bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-full">
-              👑 {vipStatus.level === 'lifetime' ? '永久' : '年卡'}
-            </a>
-          ) : (
-            <a href="#/member-benefits" className="px-2 py-0.5 text-xs bg-gray-200 dark:bg-gray-700 text-gray-500 rounded-full hover:bg-amber-100">
-              开通会员
-            </a>
-          )}
-        </div>
-      </div>
       <Routes>
+        {/* Main library */}
         <Route path="/" element={<LibraryScreen />} />
+
+        {/* Reader - may open in new window or inline */}
         <Route path="/reader/:id" element={<ReaderScreen />} />
+
+        {/* Settings */}
         <Route path="/settings" element={<SettingsScreen />} />
-        <Route path="/member-login" element={<MemberLoginScreen />} />
-        <Route path="/member-benefits" element={<MemberBenefitsScreen />} />
-        <Route path="/member-detail" element={<MemberDetailScreen />} />
-        <Route path="/member-payment-success" element={<MemberPaymentSuccessScreen />} />
-        <Route path="/admin-users" element={<AdminUsersScreen />} />
-        <Route path="/sources" element={<SourceManageScreen />} />
+
+        {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+
+      {/* Selected book inline reader overlay */}
+      {selectedBook && (
+        <div className="fixed inset-0 z-50 bg-white dark:bg-gray-900">
+          <div className="h-full flex flex-col">
+            <header className="flex items-center justify-between px-4 py-2 bg-gray-100 dark:bg-gray-800 border-b dark:border-gray-700">
+              <button
+                onClick={() => selectBook(null)}
+                className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              >
+                ← 返回
+              </button>
+              <span className="font-medium text-gray-900 dark:text-white">
+                {selectedBook.title}
+              </span>
+              <div className="w-20"></div>
+            </header>
+            <main className="flex-1 overflow-hidden">
+              <ReaderScreen />
+            </main>
+          </div>
+        </div>
+      )}
+
+      {/* Non-Tauri Warning Overlay */}
+      {!isTauri && (
+        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-md text-center">
+            <div className="text-6xl mb-4">⚠️</div>
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+              运行环境提示
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              检测到当前在普通浏览器中运行。桌面端应用的功能需要通过 Tauri 环境启动才能获得完整体验。
+            </p>
+            <div className="bg-gray-100 dark:bg-gray-900 p-4 rounded-lg font-mono text-sm text-left mb-6">
+              <p className="text-blue-500">$ pnpm dev:desktop</p>
+            </div>
+            <button
+              onClick={() => (window.location.href = '/')}
+              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+            >
+              继续使用有限功能
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

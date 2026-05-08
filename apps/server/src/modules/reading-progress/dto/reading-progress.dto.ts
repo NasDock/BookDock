@@ -1,18 +1,19 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ReadingStatus } from '@prisma/client';
-import { Type } from 'class-transformer';
 import {
-    IsArray,
-    IsEnum,
-    IsInt,
-    IsOptional,
-    IsString,
-    IsUUID,
-    Max,
-    MaxLength,
-    Min,
-    MinLength
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsInt,
+  Min,
+  Max,
+  IsUUID,
+  IsNumber,
+  MinLength,
+  MaxLength,
+  IsArray,
 } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { ReadingStatus } from '@prisma/client';
 
 export class UpdateReadingProgressDto {
   @ApiPropertyOptional({ enum: ReadingStatus })
@@ -120,6 +121,11 @@ export class ReadingProgressResponseDto {
 }
 
 export class BookBookmarkDto {
+  @ApiPropertyOptional()
+  @IsUUID()
+  @IsOptional()
+  bookId?: string;
+
   @ApiProperty({ example: 'Chapter 1' })
   @IsString()
   @MinLength(1)
@@ -145,14 +151,10 @@ export class BookBookmarkDto {
   @IsOptional()
   highlightText?: string;
 
-    @ApiPropertyOptional({ example: 'yellow' })
-    @IsString()
-    @IsOptional()
-    highlightColor?: string;
-
-    @ApiProperty({ description: 'Book ID' })
-    @IsUUID()
-    bookId: string;
+  @ApiPropertyOptional({ example: 'yellow' })
+  @IsString()
+  @IsOptional()
+  highlightColor?: string;
 }
 
 export class BookmarkResponseDto {

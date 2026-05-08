@@ -1,19 +1,21 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
-import { Type } from 'class-transformer';
 import {
-    IsArray,
-    IsBoolean,
-    IsEnum,
-    IsInt,
-    IsOptional,
-    IsString,
-    IsUUID,
-    Max,
-    MaxLength,
-    Min,
-    MinLength
+  IsString,
+  IsOptional,
+  IsEnum,
+  IsInt,
+  Min,
+  Max,
+  IsBoolean,
+  IsArray,
+  IsUUID,
+  IsUrl,
+  MinLength,
+  MaxLength,
+  IsDateString,
 } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import { UserRole } from '@prisma/client';
 
 export class UserQueryDto {
   @ApiPropertyOptional({ default: 1 })
@@ -67,17 +69,6 @@ export class UpdateUserDto {
   @IsString()
   @IsOptional()
   preferences?: string; // JSON string
-
-  // VIP Membership management
-  @ApiPropertyOptional({ description: 'VIP level: free, year, lifetime' })
-  @IsString()
-  @IsOptional()
-  vipLevel?: string;
-
-  @ApiPropertyOptional({ description: 'VIP expiry date (ISO string), null = never expires' })
-  @IsString()
-  @IsOptional()
-  vipExpiredAt?: string | null;
 }
 
 export class AdminUserResponseDto {
@@ -114,13 +105,6 @@ export class AdminUserResponseDto {
     readingProgress: number;
     bookmarks: number;
   };
-
-  // VIP Membership fields
-  @ApiPropertyOptional()
-  vipLevel?: string;
-
-  @ApiPropertyOptional()
-  vipExpiredAt?: Date | null;
 }
 
 // ── Data Source Management ────────────────────────────────────────────────────

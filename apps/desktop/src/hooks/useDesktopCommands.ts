@@ -71,6 +71,7 @@ interface Book {
   current_page?: number;
   added_at: string;
   last_read_at?: string;
+  file_size?: number;
 }
 
 // ============================================================================

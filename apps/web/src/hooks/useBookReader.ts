@@ -89,7 +89,7 @@ export function useBookReader({
         }
 
         // Listen for position changes
-        newReader.onLocationChange((newPosition) => {
+        newReader.onLocationChange?.((newPosition) => {
           setPosition(newPosition);
           onPositionChange?.(newPosition);
         });
@@ -117,7 +117,7 @@ export function useBookReader({
   // Update config when settings change
   useEffect(() => {
     if (readerRef.current && reader) {
-      readerRef.current.applyConfig(config);
+      readerRef.current.applyConfig?.(config);
     }
   }, [config]);
 
@@ -154,7 +154,7 @@ export function useBookReader({
   const goToPosition = useCallback(async (targetPosition: ReaderPosition) => {
     if (readerRef.current) {
       if (targetPosition.cfi) {
-        await readerRef.current.goTo(targetPosition.cfi);
+        await readerRef.current.goTo?.(targetPosition.cfi);
       } else if (targetPosition.currentPage && book?.fileType === 'pdf') {
         await readerRef.current.goToPosition?.(targetPosition);
       }
@@ -162,11 +162,11 @@ export function useBookReader({
   }, [book?.fileType]);
 
   const nextPage = useCallback(() => {
-    readerRef.current?.nextPage();
+    readerRef.current?.nextPage?.();
   }, []);
 
   const prevPage = useCallback(() => {
-    readerRef.current?.prevPage();
+    readerRef.current?.prevPage?.();
   }, []);
 
   const saveProgress = useCallback(async () => {

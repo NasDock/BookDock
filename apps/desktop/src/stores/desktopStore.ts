@@ -67,7 +67,7 @@ interface DesktopState {
 
 export const useDesktopStore = create<DesktopState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       // File browser
       currentPath: '',
       files: [],

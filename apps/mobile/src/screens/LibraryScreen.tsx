@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,15 +9,14 @@ import {
   RefreshControl,
   Dimensions,
   Pressable,
-  Modal,
+  Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useLibraryStore, useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
-import { apiClient, type EbookSource } from '../services/api';
 import type { Book } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -25,79 +24,46 @@ const { width } = Dimensions.get('window');
 const GRID_COLUMNS = 3;
 const ITEM_WIDTH = (width - spacing.md * 2 - spacing.sm * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
 
-type SortOption = 'title' | 'author' | 'addedAt' | 'lastReadAt';
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-
-const SORT_OPTIONS: { value: SortOption; label: string; icon: string }[] = [
-  { value: 'title', label: 'Title', icon: 'text' },
-  { value: 'author', label: 'Author', icon: 'person' },
-  { value: 'addedAt', label: 'Date Added', icon: 'calendar' },
-  { value: 'lastReadAt', label: 'Recently Read', icon: 'time' },
-];
 
 export function LibraryScreen() {
   const navigation = useNavigation<NavigationProp>();
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
-  const { books, localBooks, viewMode, setViewMode, setBooks, setLoading } = useLibraryStore();
-  
+  const {
+    books,
+    localBooks,
+    viewMode,
+    setViewMode,
+    fetchBooks,
+    downloadBook,
+    deleteLocalBook,
+    isLoading,
+    error,
+  } = useLibraryStore();
+
   const [refreshing, setRefreshing] = useState(false);
   const [localSearchQuery, setLocalSearchQuery] = useState('');
-  const [sortOption, setSortOption] = useState<SortOption>('addedAt');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [showSortModal, setShowSortModal] = useState(false);
-  const [sources, setSources] = useState<EbookSource[]>([]);
-  const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
-  const [showSourceModal, setShowSourceModal] = useState(false);
-
-  // Load sources
-  useEffect(() => {
-    apiClient.sources.getSources().then((res) => {
-      if (res.success && res.data) setSources(res.data);
-    }).catch(console.error);
-  }, []);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
+  // Load books on mount and when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      fetchBooks();
+    }, [fetchBooks])
+  );
+
   const filteredBooks = useMemo(() => {
     const query = localSearchQuery.toLowerCase();
-    let result = query
-      ? books.filter(
-          (book) =>
-            book.title.toLowerCase().includes(query) ||
-            book.author.toLowerCase().includes(query)
-        )
-      : [...books];
-
-    // Source filter - currently all books shown; source filtering
-    // requires server-side sourceId on books
-    if (selectedSourceId) {
-      // Placeholder: in future, filter by book.sourceId === selectedSourceId
-      // For now, show all books with a source badge
-    }
-
-    // Apply sorting
-    result.sort((a, b) => {
-      let comparison = 0;
-      switch (sortOption) {
-        case 'title':
-          comparison = a.title.localeCompare(b.title);
-          break;
-        case 'author':
-          comparison = a.author.localeCompare(b.author);
-          break;
-        case 'addedAt':
-          comparison = new Date(a.addedAt || 0).getTime() - new Date(b.addedAt || 0).getTime();
-          break;
-        case 'lastReadAt':
-          comparison = new Date(a.lastReadAt || 0).getTime() - new Date(b.lastReadAt || 0).getTime();
-          break;
-      }
-      return sortOrder === 'asc' ? comparison : -comparison;
-    });
-
-    return result;
-  }, [books, localSearchQuery, sortOption, sortOrder]);
+    if (!query) return books;
+    return books.filter(
+      (book) =>
+        book.title.toLowerCase().includes(query) ||
+        book.author.toLowerCase().includes(query)
+    );
+  }, [books, localSearchQuery]);
 
   const handleBookPress = useCallback((book: Book) => {
     navigation.navigate('Reader', { book });
@@ -109,35 +75,45 @@ export function LibraryScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    setLoading(true);
-    try {
-      const response = await apiClient.books.getBooks({ sort: sortOption, order: sortOrder });
-      if (response.success && response.data) {
-        setBooks(response.data.books);
-      }
-    } catch (error) {
-      console.error('Failed to refresh library:', error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [sortOption, sortOrder, setBooks, setLoading]);
+    await fetchBooks();
+    setRefreshing(false);
+  }, [fetchBooks]);
 
-  const handleSortChange = useCallback((option: SortOption) => {
-    if (option === sortOption) {
-      // Toggle order if same option
-      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortOption(option);
-      setSortOrder('asc');
+  const handleDownload = useCallback(async (book: Book) => {
+    const isDownloaded = localBooks.some((b) => b.id === book.id && b.isDownloaded);
+    if (isDownloaded) {
+      Alert.alert('Confirm', 'Delete this downloaded book?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteLocalBook(book.id);
+          },
+        },
+      ]);
+      return;
     }
-    setShowSortModal(false);
-  }, [sortOption]);
+
+    setDownloadingId(book.id);
+    try {
+      const path = await downloadBook(book);
+      if (path) {
+        Alert.alert('Success', 'Book downloaded for offline reading');
+      } else {
+        Alert.alert('Error', 'Failed to download book');
+      }
+    } catch {
+      Alert.alert('Error', 'Failed to download book');
+    } finally {
+      setDownloadingId(null);
+    }
+  }, [localBooks, downloadBook, deleteLocalBook]);
 
   const renderGridItem = useCallback(({ item }: { item: Book }) => {
     const localBook = localBooks.find((b) => b.id === item.id);
     const isDownloaded = !!localBook?.isDownloaded;
-    const source = selectedSourceId ? sources.find((s) => s.id === selectedSourceId) : null;
+    const isDownloading = downloadingId === item.id;
 
     return (
       <Pressable
@@ -151,16 +127,21 @@ export function LibraryScreen() {
           ) : (
             <Text style={styles.coverInitial}>{item.title.charAt(0).toUpperCase()}</Text>
           )}
-          {isDownloaded && (
-            <View style={styles.downloadBadge}>
-              <Ionicons name="cloud-done" size={12} color="#fff" />
-            </View>
-          )}
-          {source && (
-            <View style={[styles.sourceBadge, { backgroundColor: theme.colors.primary }]}>
-              <Ionicons name="server" size={10} color="#fff" />
-            </View>
-          )}
+          <TouchableOpacity
+            style={styles.downloadButton}
+            onPress={() => handleDownload(item)}
+            disabled={isDownloading}
+          >
+            {isDownloading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons
+                name={isDownloaded ? 'cloud-done' : 'cloud-download-outline'}
+                size={16}
+                color="#fff"
+              />
+            )}
+          </TouchableOpacity>
         </View>
         <Text style={styles.bookTitle} numberOfLines={2}>
           {item.title}
@@ -180,11 +161,12 @@ export function LibraryScreen() {
         )}
       </Pressable>
     );
-  }, [styles, theme, localBooks, handleBookPress]);
+  }, [styles, theme, localBooks, downloadingId, handleBookPress, handleDownload]);
 
   const renderListItem = useCallback(({ item }: { item: Book }) => {
     const localBook = localBooks.find((b) => b.id === item.id);
     const isDownloaded = !!localBook?.isDownloaded;
+    const isDownloading = downloadingId === item.id;
 
     return (
       <Pressable
@@ -224,14 +206,29 @@ export function LibraryScreen() {
           )}
         </View>
         <TouchableOpacity
-          style={styles.ttsButton}
+          style={styles.actionButton}
           onPress={() => handleTTSPress(item)}
         >
           <Ionicons name="headset" size={20} color={theme.colors.primary} />
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => handleDownload(item)}
+          disabled={isDownloading}
+        >
+          {isDownloading ? (
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+          ) : (
+            <Ionicons
+              name={isDownloaded ? 'cloud-done' : 'cloud-download-outline'}
+              size={20}
+              color={isDownloaded ? theme.colors.success : theme.colors.textSecondary}
+            />
+          )}
+        </TouchableOpacity>
       </Pressable>
     );
-  }, [styles, theme, localBooks, handleBookPress, handleTTSPress]);
+  }, [styles, theme, localBooks, downloadingId, handleBookPress, handleTTSPress, handleDownload]);
 
   const renderHeader = () => (
     <View style={styles.header}>
@@ -250,38 +247,6 @@ export function LibraryScreen() {
           </TouchableOpacity>
         )}
       </View>
-      {/* Sort Button */}
-      <TouchableOpacity
-        style={[styles.sortButton, { backgroundColor: theme.colors.surface }]}
-        onPress={() => setShowSortModal(true)}
-      >
-        <Ionicons name="swap-vertical" size={18} color={theme.colors.primary} />
-        <Text style={[styles.sortButtonText, { color: theme.colors.primary }]}>
-          {SORT_OPTIONS.find((o) => o.value === sortOption)?.label || 'Sort'}
-        </Text>
-      </TouchableOpacity>
-      {/* Source filter button */}
-      <TouchableOpacity
-        style={[
-          styles.sortButton,
-          { backgroundColor: theme.colors.surface },
-          selectedSourceId && { backgroundColor: theme.colors.primary + '15' },
-        ]}
-        onPress={() => setShowSourceModal(true)}
-      >
-        <Ionicons name="server" size={18} color={selectedSourceId ? theme.colors.primary : theme.colors.textSecondary} />
-        <Text
-          style={[
-            styles.sortButtonText,
-            { color: selectedSourceId ? theme.colors.primary : theme.colors.textSecondary },
-          ]}
-          numberOfLines={1}
-        >
-          {selectedSourceId
-            ? (sources.find((s) => s.id === selectedSourceId)?.name || 'Source')
-            : 'All Sources'}
-        </Text>
-      </TouchableOpacity>
       <View style={styles.viewToggle}>
         <TouchableOpacity
           style={[
@@ -313,143 +278,14 @@ export function LibraryScreen() {
     </View>
   );
 
-  const renderSortModal = () => (
-    <Modal
-      visible={showSortModal}
-      animationType="fade"
-      transparent
-      onRequestClose={() => setShowSortModal(false)}
-    >
-      <Pressable style={styles.sortModalOverlay} onPress={() => setShowSortModal(false)}>
-        <View style={[styles.sortModalContent, { backgroundColor: theme.colors.surface }]}>
-          <Text style={styles.sortModalTitle}>Sort By</Text>
-          {SORT_OPTIONS.map((option) => (
-            <TouchableOpacity
-              key={option.value}
-              style={[
-                styles.sortOption,
-                sortOption === option.value && { backgroundColor: theme.colors.primary + '20' },
-              ]}
-              onPress={() => handleSortChange(option.value)}
-            >
-              <View style={styles.sortOptionLeft}>
-                <Ionicons
-                  name={option.icon as any}
-                  size={20}
-                  color={sortOption === option.value ? theme.colors.primary : theme.colors.textSecondary}
-                />
-                <Text
-                  style={[
-                    styles.sortOptionText,
-                    sortOption === option.value && { color: theme.colors.primary },
-                  ]}
-                >
-                  {option.label}
-                </Text>
-              </View>
-              {sortOption === option.value && (
-                <Ionicons
-                  name={sortOrder === 'asc' ? 'arrow-up' : 'arrow-down'}
-                  size={18}
-                  color={theme.colors.primary}
-                />
-              )}
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity
-            style={[styles.sortModalClose, { borderTopColor: theme.colors.border }]}
-            onPress={() => setShowSortModal(false)}
-          >
-            <Text style={styles.sortModalCloseText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </Pressable>
-    </Modal>
-  );
-
-  const renderSourceModal = () => (
-    <Modal
-      visible={showSourceModal}
-      animationType="fade"
-      transparent
-      onRequestClose={() => setShowSourceModal(false)}
-    >
-      <Pressable style={styles.sortModalOverlay} onPress={() => setShowSourceModal(false)}>
-        <View style={[styles.sortModalContent, { backgroundColor: theme.colors.surface }]}>
-          <Text style={styles.sortModalTitle}>Filter by Source</Text>
-          <TouchableOpacity
-            style={[
-              styles.sortOption,
-              selectedSourceId === null && { backgroundColor: theme.colors.primary + '20' },
-            ]}
-            onPress={() => {
-              setSelectedSourceId(null);
-              setShowSourceModal(false);
-            }}
-          >
-            <View style={styles.sortOptionLeft}>
-              <Ionicons name="library" size={20} color={selectedSourceId === null ? theme.colors.primary : theme.colors.textSecondary} />
-              <Text style={[styles.sortOptionText, selectedSourceId === null && { color: theme.colors.primary }]}>
-                All Sources ({books.length})
-              </Text>
-            </View>
-            {selectedSourceId === null && (
-              <Ionicons name="checkmark" size={18} color={theme.colors.primary} />
-            )}
-          </TouchableOpacity>
-          {sources.length === 0 ? (
-            <View style={{ padding: spacing.md, alignItems: 'center' }}>
-              <Text style={[styles.sortOptionText, { color: theme.colors.textSecondary }]}>
-                No sources configured
-              </Text>
-              <Text style={[styles.sortOptionText, { color: theme.colors.textSecondary, fontSize: fontSizes.xs }]}>
-                Add sources in the Sources tab
-              </Text>
-            </View>
-          ) : (
-            sources.map((source) => (
-              <TouchableOpacity
-                key={source.id}
-                style={[
-                  styles.sortOption,
-                  selectedSourceId === source.id && { backgroundColor: theme.colors.primary + '20' },
-                ]}
-                onPress={() => {
-                  setSelectedSourceId(source.id);
-                  setShowSourceModal(false);
-                }}
-              >
-                <View style={styles.sortOptionLeft}>
-                  <Ionicons
-                    name={source.type === 'webdav' ? 'cloud' : source.type === 'smb' ? 'folder' : 'server'}
-                    size={20}
-                    color={selectedSourceId === source.id ? theme.colors.primary : theme.colors.textSecondary}
-                  />
-                  <View>
-                    <Text style={[styles.sortOptionText, selectedSourceId === source.id && { color: theme.colors.primary }]}>
-                      {source.name}
-                    </Text>
-                    <Text style={[styles.sortOptionText, { fontSize: fontSizes.xs, color: theme.colors.textSecondary }]}>
-                      {source.bookCount} books · {source.type.toUpperCase()}
-                    </Text>
-                  </View>
-                </View>
-                {selectedSourceId === source.id && (
-                  <Ionicons name="checkmark" size={18} color={theme.colors.primary} />
-                )}
-              </TouchableOpacity>
-            ))
-          )}
-          <TouchableOpacity
-            style={[styles.sortModalClose, { borderTopColor: theme.colors.border }]}
-            onPress={() => setShowSourceModal(false)}
-          >
-            <Text style={styles.sortModalCloseText}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </Pressable>
-    </Modal>
-  );
+  if (isLoading && books.length === 0) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={{ color: theme.colors.textSecondary, marginTop: spacing.md }}>Loading books...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -472,13 +308,11 @@ export function LibraryScreen() {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="library-outline" size={64} color={theme.colors.textSecondary} />
-            <Text style={styles.emptyText}>Your library is empty</Text>
-            <Text style={styles.emptySubtext}>Add books from the web app</Text>
+            <Text style={styles.emptyText}>{error || 'Your library is empty'}</Text>
+            <Text style={styles.emptySubtext}>Pull down to refresh</Text>
           </View>
         }
       />
-      {renderSortModal()}
-      {renderSourceModal()}
     </View>
   );
 }
@@ -517,18 +351,6 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontSize: fontSizes.md,
       color: theme.colors.text,
     },
-    sortButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.sm,
-      borderRadius: borderRadius.md,
-      gap: spacing.xs,
-    },
-    sortButtonText: {
-      fontSize: fontSizes.xs,
-      fontWeight: '500',
-    },
     viewToggle: {
       flexDirection: 'row',
       gap: spacing.xs,
@@ -537,51 +359,6 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       padding: spacing.sm,
       borderRadius: borderRadius.md,
       backgroundColor: theme.colors.surface,
-    },
-    sortModalOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    sortModalContent: {
-      width: '80%',
-      borderRadius: borderRadius.xl,
-      padding: spacing.lg,
-    },
-    sortModalTitle: {
-      fontSize: fontSizes.xl,
-      fontWeight: '600',
-      color: theme.colors.text,
-      marginBottom: spacing.md,
-      textAlign: 'center',
-    },
-    sortOption: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      padding: spacing.md,
-      borderRadius: borderRadius.md,
-      marginBottom: spacing.xs,
-    },
-    sortOptionLeft: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-    },
-    sortOptionText: {
-      fontSize: fontSizes.md,
-      color: theme.colors.text,
-    },
-    sortModalClose: {
-      marginTop: spacing.md,
-      paddingTop: spacing.md,
-      borderTopWidth: 1,
-      alignItems: 'center',
-    },
-    sortModalCloseText: {
-      fontSize: fontSizes.md,
-      color: theme.colors.textSecondary,
     },
     listContentContainer: {
       paddingHorizontal: spacing.md,
@@ -612,20 +389,17 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontWeight: 'bold',
       color: theme.colors.textSecondary,
     },
-    downloadBadge: {
+    downloadButton: {
       position: 'absolute',
       top: spacing.xs,
       right: spacing.xs,
-      backgroundColor: theme.colors.success,
+      backgroundColor: 'rgba(0,0,0,0.6)',
       borderRadius: borderRadius.full,
       padding: spacing.xs,
-    },
-    sourceBadge: {
-      position: 'absolute',
-      bottom: spacing.xs,
-      right: spacing.xs,
-      borderRadius: borderRadius.full,
-      padding: spacing.xs,
+      minWidth: 28,
+      minHeight: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     bookTitle: {
       fontSize: fontSizes.sm,
@@ -686,8 +460,13 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontSize: fontSizes.xs,
       color: theme.colors.textSecondary,
     },
-    ttsButton: {
-      padding: spacing.md,
+    downloadBadge: {
+      backgroundColor: theme.colors.success + '20',
+      borderRadius: borderRadius.sm,
+      padding: spacing.xs,
+    },
+    actionButton: {
+      padding: spacing.sm,
     },
     emptyContainer: {
       flex: 1,

@@ -216,7 +216,7 @@ export class SourceService {
                     }
                     const config = this.decryptWebDAVConfig(source.webdavConfig);
                     const client = new WebDAVClientWrapper();
-                    const result = await client.testConnection(config);
+                    const result = await client.testConnection(config as any);
                     return result;
                 }
                 case 'smb': {
@@ -225,7 +225,7 @@ export class SourceService {
                     }
                     const config = this.decryptSMBConfig(source.smbConfig);
                     const client = new SMBClientWrapper();
-                    return await client.testConnection(config);
+                    return await client.testConnection(config as any);
                 }
                 case 'ftp': {
                     if (!source.ftpConfig?.host) {
@@ -233,7 +233,7 @@ export class SourceService {
                     }
                     const config = this.decryptFTPConfig(source.ftpConfig);
                     const client = new FTPClientWrapper();
-                    return await client.testConnection(config);
+                    return await client.testConnection(config as any);
                 }
                 default:
                     throw new BadRequestException(`Unknown source type: ${source.type}`);
@@ -264,7 +264,7 @@ export class SourceService {
                 case 'webdav': {
                     const config = this.decryptWebDAVConfig(source.webdavConfig!);
                     const client = new WebDAVClientWrapper();
-                    await client.connect(config);
+                    await client.connect(config as any);
                     const files = await client.listFiles(remotePath);
                     client.disconnect();
                     return files.map((f) => this.webdavFileToDto(f));
@@ -272,7 +272,7 @@ export class SourceService {
                 case 'smb': {
                     const config = this.decryptSMBConfig(source.smbConfig!);
                     const client = new SMBClientWrapper();
-                    await client.connect(config);
+                    await client.connect(config as any);
                     const files = await client.listFiles(remotePath);
                     client.disconnect();
                     return files.map((f) => this.smbFileToDto(f));
@@ -280,7 +280,7 @@ export class SourceService {
                 case 'ftp': {
                     const config = this.decryptFTPConfig(source.ftpConfig!);
                     const client = new FTPClientWrapper();
-                    await client.connect(config);
+                    await client.connect(config as any);
                     const files = await client.listFiles(remotePath);
                     client.disconnect();
                     return files.map((f) => this.ftpFileToDto(f));
@@ -310,7 +310,7 @@ export class SourceService {
                 case 'webdav': {
                     const config = this.decryptWebDAVConfig(source.webdavConfig!);
                     const client = new WebDAVClientWrapper();
-                    await client.connect(config);
+                    await client.connect(config as any);
                     const data = await client.downloadFile(remotePath);
                     client.disconnect();
                     return data;
@@ -318,7 +318,7 @@ export class SourceService {
                 case 'smb': {
                     const config = this.decryptSMBConfig(source.smbConfig!);
                     const client = new SMBClientWrapper();
-                    await client.connect(config);
+                    await client.connect(config as any);
                     const data = await client.downloadFile(remotePath);
                     client.disconnect();
                     return data;
@@ -326,7 +326,7 @@ export class SourceService {
                 case 'ftp': {
                     const config = this.decryptFTPConfig(source.ftpConfig!);
                     const client = new FTPClientWrapper();
-                    await client.connect(config);
+                    await client.connect(config as any);
                     const data = await client.downloadFile(remotePath);
                     client.disconnect();
                     return data;
@@ -387,7 +387,7 @@ export class SourceService {
 
             // Update source last sync info
             sources[idx].lastSyncAt = new Date().toISOString();
-            sources[idx].lastError = result.errors?.length > 0 ? result.errors[0] : undefined;
+            sources[idx].lastError = (result.errors?.length ?? 0) > 0 ? result.errors?.[0] : undefined;
             sources[idx].bookCount = ebookFiles.length;
             sources[idx].updatedAt = new Date().toISOString();
             this.saveSources(sources);
@@ -400,7 +400,7 @@ export class SourceService {
         } catch (err) {
             result.status = 'failed';
             result.errors?.push(err instanceof Error ? err.message : String(err));
-            sources[idx].lastError = result.errors[0];
+            sources[idx].lastError = result.errors?.[0] || (err instanceof Error ? err.message : String(err));
             sources[idx].updatedAt = new Date().toISOString();
             this.saveSources(sources);
         }
@@ -457,10 +457,14 @@ export class SourceService {
     }
 
     private decryptWebDAVConfig(config: WebDAVConfigDto & { _encryptedPassword?: string }): WebDAVConfigDto {
+        const decrypted: WebDAVConfigDto = { ...config };
         if (config._encryptedPassword) {
-            return { ...config, password: this.decrypt(config._encryptedPassword) };
+            decrypted.password = this.decrypt(config._encryptedPassword);
         }
-        return config;
+        // Ensure required fields have defaults
+        decrypted.username ??= '';
+        decrypted.password ??= '';
+        return decrypted;
     }
 
     private encryptPasswordsInSMBConfig(config: SMBConfigDto): SMBConfigDto & { _encryptedPassword?: string } {
@@ -471,10 +475,13 @@ export class SourceService {
     }
 
     private decryptSMBConfig(config: SMBConfigDto & { _encryptedPassword?: string }): SMBConfigDto {
+        const decrypted: SMBConfigDto = { ...config };
         if (config._encryptedPassword) {
-            return { ...config, password: this.decrypt(config._encryptedPassword) };
+            decrypted.password = this.decrypt(config._encryptedPassword);
         }
-        return config;
+        decrypted.username ??= '';
+        decrypted.password ??= '';
+        return decrypted;
     }
 
     private encryptPasswordsInFTPConfig(config: FTPConfigDto): FTPConfigDto & { _encryptedPassword?: string } {
@@ -485,10 +492,13 @@ export class SourceService {
     }
 
     private decryptFTPConfig(config: FTPConfigDto & { _encryptedPassword?: string }): FTPConfigDto {
+        const decrypted: FTPConfigDto = { ...config };
         if (config._encryptedPassword) {
-            return { ...config, password: this.decrypt(config._encryptedPassword) };
+            decrypted.password = this.decrypt(config._encryptedPassword);
         }
-        return config;
+        decrypted.username ??= '';
+        decrypted.password ??= '';
+        return decrypted;
     }
 
     private getBasePath(source: StoredSource): string {

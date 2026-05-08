@@ -66,7 +66,7 @@ export function MemberPaymentSuccessScreen({ navigation }: any) {
             <Text style={styles.primaryBtnText}>👑 查看会员详情</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.secondaryBtn, { backgroundColor: theme.colors.surface }]} onPress={() => navigation.getParent()?.goBack()}>
-            <Text style={[styles.secondaryBtnText, { color: theme.colors.text }}]}>📚 返回书架</Text>
+            <Text style={[styles.secondaryBtnText, { color: theme.colors.text }]}>📚 返回书架</Text>
           </TouchableOpacity>
         </View>
 

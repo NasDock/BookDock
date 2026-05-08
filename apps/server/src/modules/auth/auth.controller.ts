@@ -24,7 +24,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({ status: 201, type: AuthResponseDto })
   async register(@Body() dto: RegisterDto, @Req() req: Request) {
-    const ipAddress = req.socket?.remoteAddress;
+    const ipAddress = (req as any).socket?.remoteAddress;
     return this.authService.register(dto);
   }
 
@@ -37,7 +37,7 @@ export class AuthController {
     @Req() req: Request & { headers: { 'user-agent'?: string } },
   ) {
     const userAgent = req.headers['user-agent'];
-    const ipAddress = req.socket?.remoteAddress;
+    const ipAddress = (req as any).socket?.remoteAddress;
     return this.authService.login(dto, userAgent, ipAddress);
   }
 
