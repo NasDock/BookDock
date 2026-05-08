@@ -284,3 +284,8 @@ export function usePermission(permission: 'admin' | 'read' | 'write' | 'upload')
       return false;
   }
 }
+
+// Stub PremiumBadge component for backwards compatibility
+export function PremiumBadge({ className }: { className?: string }) {
+  return <span className={className}>Premium</span>;
+}

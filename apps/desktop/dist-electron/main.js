@@ -1,166 +1,109 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-const __filename$1 = fileURLToPath(import.meta.url);
-const __dirname$1 = path.dirname(__filename$1);
-process.env.DIST_ELECTRON = path.join(__dirname$1, "../dist-electron");
-process.env.DIST = path.join(__dirname$1, "../dist");
-process.env.VITE_PUBLIC = process.env.VITE_DEV_SERVER_URL ? path.join(__dirname$1, "../public") : process.env.DIST;
-let win = null;
-const preload = path.join(__dirname$1, "preload.mjs");
-const url = process.env.VITE_DEV_SERVER_URL;
-const indexHtml = path.join(process.env.DIST, "index.html");
-let books = [];
-let windowStates = {};
-let settings = {
+import { app as d, BrowserWindow as w, ipcMain as t, dialog as g } from "electron";
+import l from "fs";
+import r from "path";
+import { fileURLToPath as b } from "url";
+const D = b(import.meta.url), u = r.dirname(D);
+process.env.DIST_ELECTRON = r.join(u, "../dist-electron");
+process.env.DIST = r.join(u, "../dist");
+process.env.VITE_PUBLIC = process.env.VITE_DEV_SERVER_URL ? r.join(u, "../public") : process.env.DIST;
+let s = null;
+const _ = r.join(u, "preload.mjs"), p = process.env.VITE_DEV_SERVER_URL, h = r.join(process.env.DIST, "index.html");
+let c = [], S = {}, m = {
   theme: "system",
   fontSize: 16,
-  autoPlayTts: false,
+  autoPlayTts: !1,
   ttsRate: 1,
   ttsVolume: 1,
   nasPaths: []
 };
-function createWindow() {
-  console.log("Main process using preload script at:", preload);
-  win = new BrowserWindow({
+function f() {
+  console.log("Main process using preload script at:", _), s = new w({
     width: 1200,
     height: 800,
     minWidth: 800,
     minHeight: 600,
     title: "BookDock - 书仓",
     webPreferences: {
-      preload,
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: false
+      preload: _,
+      nodeIntegration: !1,
+      contextIsolation: !0,
+      sandbox: !1
     }
-  });
-  if (url) {
-    console.log("Main process loading URL:", url);
-    win.loadURL(url);
-    win.webContents.openDevTools();
-  } else {
-    console.log("Main process loading file:", indexHtml);
-    win.loadFile(indexHtml);
-  }
+  }), p ? (console.log("Main process loading URL:", p), s.loadURL(p), s.webContents.openDevTools()) : (console.log("Main process loading file:", h), s.loadFile(h));
 }
-app.whenReady().then(() => {
-  createWindow();
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
+d.whenReady().then(() => {
+  f(), d.on("activate", () => {
+    w.getAllWindows().length === 0 && f();
   });
 });
-app.on("window-all-closed", () => {
-  win = null;
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+d.on("window-all-closed", () => {
+  s = null, process.platform !== "darwin" && d.quit();
 });
-ipcMain.handle("read_directory", async (_, dirPath) => {
+t.handle("read_directory", async (i, e) => {
   try {
-    const entries = fs.readdirSync(dirPath, { withFileTypes: true });
-    return entries.filter((entry) => entry.isDirectory() || /\.(epub|pdf|mobi|txt)$/i.test(entry.name)).map((entry) => ({
-      name: entry.name,
-      path: path.join(dirPath, entry.name),
-      is_dir: entry.isDirectory(),
-      size: entry.isFile() ? fs.statSync(path.join(dirPath, entry.name)).size : 0,
-      modified: fs.statSync(path.join(dirPath, entry.name)).mtime.toISOString()
+    return l.readdirSync(e, { withFileTypes: !0 }).filter((n) => n.isDirectory() || /\.(epub|pdf|mobi|txt)$/i.test(n.name)).map((n) => ({
+      name: n.name,
+      path: r.join(e, n.name),
+      is_dir: n.isDirectory(),
+      size: n.isFile() ? l.statSync(r.join(e, n.name)).size : 0,
+      modified: l.statSync(r.join(e, n.name)).mtime.toISOString()
     }));
-  } catch (error) {
-    throw new Error(error.message);
+  } catch (o) {
+    throw new Error(o.message);
   }
 });
-ipcMain.handle("add_book", async (_, payload) => {
-  const { book } = payload;
-  if (!books.find((b) => b.id === book.id)) {
-    books.push(book);
-  }
-  return { success: true };
+t.handle("add_book", async (i, e) => {
+  const { book: o } = e;
+  return c.find((n) => n.id === o.id) || c.push(o), { success: !0 };
 });
-ipcMain.handle("get_home_directory", () => {
-  return app.getPath("home");
-});
-ipcMain.handle("read_file_text", async (_, filePath) => {
+t.handle("get_home_directory", () => d.getPath("home"));
+t.handle("read_file_text", async (i, e) => {
   try {
-    return fs.readFileSync(filePath, "utf-8");
-  } catch (error) {
-    throw new Error(error.message);
+    return l.readFileSync(e, "utf-8");
+  } catch (o) {
+    throw new Error(o.message);
   }
 });
-ipcMain.handle("open_file_dialog", async () => {
-  const result = await dialog.showOpenDialog({
-    properties: ["openFile"],
-    filters: [
-      { name: "E-books", extensions: ["epub", "pdf", "mobi", "txt"] }
-    ]
-  });
-  return result.filePaths[0] || null;
-});
-ipcMain.handle("open_folder_dialog", async () => {
-  const result = await dialog.showOpenDialog({
-    properties: ["openDirectory"]
-  });
-  return result.filePaths[0] || null;
-});
-ipcMain.handle("load_settings", () => {
-  return settings;
-});
-ipcMain.handle("save_settings", (_, newSettings) => {
-  settings = { ...settings, ...newSettings };
-  return { success: true };
-});
-ipcMain.handle("save_window_state", (_, { label }) => {
-  if (win) {
-    const bounds = win.getBounds();
-    windowStates[label] = {
-      ...bounds,
-      maximized: win.isMaximized()
+t.handle("open_file_dialog", async () => (await g.showOpenDialog({
+  properties: ["openFile"],
+  filters: [
+    { name: "E-books", extensions: ["epub", "pdf", "mobi", "txt"] }
+  ]
+})).filePaths[0] || null);
+t.handle("open_folder_dialog", async () => (await g.showOpenDialog({
+  properties: ["openDirectory"]
+})).filePaths[0] || null);
+t.handle("load_settings", () => m);
+t.handle("save_settings", (i, e) => (m = { ...m, ...e }, { success: !0 }));
+t.handle("save_window_state", (i, { label: e }) => {
+  if (s) {
+    const o = s.getBounds();
+    S[e] = {
+      ...o,
+      maximized: s.isMaximized()
     };
   }
-  return { success: true };
+  return { success: !0 };
 });
-ipcMain.handle("restore_window_state", (_, { label }) => {
-  return windowStates[label] || null;
-});
-ipcMain.handle("open_reader_window", async (_, { bookId, bookTitle }) => {
-  console.log("Open reader for:", bookId, bookTitle);
-  return { success: true };
-});
-ipcMain.handle("minimize_to_tray", () => {
-  if (win) win.hide();
-  return { success: true };
-});
-ipcMain.handle("show_main_window", () => {
-  if (win) win.show();
-  return { success: true };
-});
-ipcMain.handle("import_local_book", async (_, { filePath }) => {
-  const fileName = path.basename(filePath);
-  const book = {
+t.handle("restore_window_state", (i, { label: e }) => S[e] || null);
+t.handle("open_reader_window", async (i, { bookId: e, bookTitle: o }) => (console.log("Open reader for:", e, o), { success: !0 }));
+t.handle("minimize_to_tray", () => (s && s.hide(), { success: !0 }));
+t.handle("show_main_window", () => (s && s.show(), { success: !0 }));
+t.handle("import_local_book", async (i, { filePath: e }) => {
+  const o = r.basename(e), n = {
     id: Math.random().toString(36).substring(7),
-    title: fileName.replace(/\.[^/.]+$/, ""),
+    title: o.replace(/\.[^/.]+$/, ""),
     author: "本地书籍",
     cover: null,
-    path: filePath,
-    format: path.extname(filePath).slice(1).toLowerCase(),
-    fileSize: fs.statSync(filePath).size,
+    path: e,
+    format: r.extname(e).slice(1).toLowerCase(),
+    fileSize: l.statSync(e).size,
     lastRead: (/* @__PURE__ */ new Date()).toISOString(),
     progress: 0
   };
-  if (!books.find((b) => b.path === filePath)) {
-    books.push(book);
-  }
-  return book;
+  return c.find((a) => a.path === e) || c.push(n), n;
 });
-ipcMain.handle("update_reading_progress", async (_, { bookId, progress, currentPage }) => {
-  const book = books.find((b) => b.id === bookId);
-  if (book) {
-    book.progress = progress;
-    if (currentPage !== void 0) book.currentPage = currentPage;
-    book.lastRead = (/* @__PURE__ */ new Date()).toISOString();
-  }
-  return { success: true };
+t.handle("update_reading_progress", async (i, { bookId: e, progress: o, currentPage: n }) => {
+  const a = c.find((y) => y.id === e);
+  return a && (a.progress = o, n !== void 0 && (a.currentPage = n), a.lastRead = (/* @__PURE__ */ new Date()).toISOString()), { success: !0 };
 });
