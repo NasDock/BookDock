@@ -290,7 +290,7 @@ export async function createBookReader(
   const apiClient = getApiClient();
   
   try {
-    const fileBlob = await apiClient.getBookFile(book.id);
+    const fileBlob = await apiClient.getBookFileBlob(book.id);
     const fileUrl = URL.createObjectURL(fileBlob);
 
     if (book.fileType === 'pdf') {

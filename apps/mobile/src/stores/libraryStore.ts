@@ -5,6 +5,8 @@ import * as FileSystem from 'expo-file-system';
 import type { Book } from '@bookdock/api-client';
 import type { ReaderPosition } from '@bookdock/ebook-reader';
 import type { LocalBook, ReadingState } from '../types';
+import { getApiClient } from '@bookdock/api-client';
+import { useAuthStore } from './authStore';
 
 // Storage keys
 const READING_PROGRESS_KEY = 'bookdock-reading-progress';
@@ -19,7 +21,7 @@ interface LibraryState {
   totalBooks: number;
   selectedBook: Book | null;
   viewMode: 'grid' | 'list';
-  
+
   // Actions
   setBooks: (books: Book[]) => void;
   setLocalBooks: (books: LocalBook[]) => void;
@@ -31,11 +33,16 @@ interface LibraryState {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   clearError: () => void;
-  
+
+  // Server API
+  fetchBooks: (params?: { page?: number; limit?: number; search?: string }) => Promise<void>;
+  searchBooks: (query: string) => Promise<Book[]>;
+
   // Reading progress
   getReadingProgress: (bookId: string) => ReaderPosition | null;
   saveReadingProgress: (bookId: string, position: ReaderPosition) => Promise<void>;
-  
+  syncReadingProgress: (bookId: string) => Promise<void>;
+
   // Local file management
   downloadBook: (book: Book) => Promise<string | null>;
   deleteLocalBook: (bookId: string) => Promise<void>;
@@ -56,7 +63,7 @@ export const useLibraryStore = create<LibraryState>()(
       viewMode: 'grid',
 
       setBooks: (books) => set({ books }),
-      
+
       setLocalBooks: (localBooks) => set({ localBooks }),
 
       addLocalBook: (book) => set((state) => {
@@ -83,14 +90,49 @@ export const useLibraryStore = create<LibraryState>()(
 
       clearError: () => set({ error: null }),
 
+      // Server API
+      fetchBooks: async (params = {}) => {
+        set({ isLoading: true, error: null });
+        try {
+          const apiClient = getApiClient();
+          const response = await apiClient.getBooks(params);
+          if (response.success && response.data) {
+            set({
+              books: response.data.books,
+              totalBooks: response.data.total,
+              currentPage: response.data.page,
+              isLoading: false,
+            });
+          } else {
+            set({ error: response.error || 'Failed to load books', isLoading: false });
+          }
+        } catch (error) {
+          set({ error: (error as Error).message || 'Network error', isLoading: false });
+        }
+      },
+
+      searchBooks: async (query) => {
+        try {
+          const apiClient = getApiClient();
+          const response = await apiClient.getBooks({ search: query });
+          if (response.success && response.data) {
+            return response.data.books;
+          }
+          return [];
+        } catch {
+          return [];
+        }
+      },
+
       getReadingProgress: (_bookId) => {
-        // Reading progress is stored in AsyncStorage, not in localBooks
-        // This would need to call loadReadingProgress separately
         return null;
       },
 
       saveReadingProgress: async (bookId, position) => {
         try {
+          const apiClient = getApiClient();
+          await apiClient.updateReadingProgress(bookId, position.percentage, position.currentPage);
+
           const key = `${READING_PROGRESS_KEY}_${bookId}`;
           const progressData: ReadingState = {
             bookId,
@@ -103,35 +145,90 @@ export const useLibraryStore = create<LibraryState>()(
         }
       },
 
+      syncReadingProgress: async (bookId) => {
+        try {
+          const apiClient = getApiClient();
+          const response = await apiClient.getReadingProgress(bookId);
+          if (response.success && response.data) {
+            const key = `${READING_PROGRESS_KEY}_${bookId}`;
+            const progressData: ReadingState = {
+              bookId,
+              position: {
+                percentage: response.data.progress,
+                currentPage: response.data.currentPage,
+              },
+              lastReadAt: new Date().toISOString(),
+            };
+            await AsyncStorage.setItem(key, JSON.stringify(progressData));
+          }
+        } catch (error) {
+          console.error('Failed to sync reading progress:', error);
+        }
+      },
+
       downloadBook: async (book) => {
         try {
-          const localPath = `${FileSystem.documentDirectory}books/${book.id}_${book.title}.${book.fileType}`;
-          
+          const apiClient = getApiClient();
+          const booksDir = `${FileSystem.documentDirectory}books/`;
+
+          // Create directory
+          const dirInfo = await FileSystem.getInfoAsync(booksDir);
+          if (!dirInfo.exists) {
+            await FileSystem.makeDirectoryAsync(booksDir, { intermediates: true });
+          }
+
+          const localPath = `${booksDir}${book.id}_${book.title}.${book.fileType}`;
+
           // Check if already downloaded
           const fileInfo = await FileSystem.getInfoAsync(localPath);
           if (fileInfo.exists) {
+            const localBook: LocalBook = {
+              ...book,
+              localPath,
+              isDownloaded: true,
+              lastSyncedAt: new Date().toISOString(),
+            };
+            get().addLocalBook(localBook);
             return localPath;
           }
 
-          // Create directory if not exists
-          const dirInfo = await FileSystem.getInfoAsync(`${FileSystem.documentDirectory}books/`);
-          if (!dirInfo.exists) {
-            await FileSystem.makeDirectoryAsync(`${FileSystem.documentDirectory}books/`, {
-              intermediates: true,
-            });
+          // Download from server via API
+          const response = await fetch(
+            `${apiClient.baseURL}/books/${book.id}/download`,
+            {
+              headers: {
+                Authorization: `Bearer ${useAuthStore.getState().token || ''}`,
+              },
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error(`Download failed: ${response.status}`);
           }
 
-          // Note: In a real app, you'd download from your server
-          // For now, we'll just return the path as if it was downloaded
-          await FileSystem.writeAsStringAsync(localPath, '', {});
-          
+          const blob = await response.blob();
+          const reader = new FileReader();
+          const base64Promise = new Promise<string>((resolve, reject) => {
+            reader.onloadend = () => {
+              const base64 = reader.result as string;
+              resolve(base64.split(',')[1]);
+            };
+            reader.onerror = reject;
+          });
+          reader.readAsDataURL(blob);
+          const base64Data = await base64Promise;
+
+          await FileSystem.writeAsStringAsync(localPath, base64Data, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+
           const localBook: LocalBook = {
             ...book,
             localPath,
             isDownloaded: true,
             lastSyncedAt: new Date().toISOString(),
           };
-          
+
           get().addLocalBook(localBook);
           return localPath;
         } catch (error) {

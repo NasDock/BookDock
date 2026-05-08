@@ -78,10 +78,12 @@ class ApiClient {
   private client: AxiosInstance;
   private getAuthToken?: () => string | null;
   private onAuthError?: () => void;
+  public readonly baseURL: string;
 
   constructor(config: ApiClientConfig) {
     this.getAuthToken = config.getAuthToken;
     this.onAuthError = config.onAuthError;
+    this.baseURL = config.baseURL;
 
     this.client = axios.create({
       baseURL: config.baseURL,
@@ -160,8 +162,18 @@ class ApiClient {
     return data;
   }
 
-  async getBookFile(id: string): Promise<Blob> {
-    const { data } = await this.client.get(`/books/${id}/file`, { responseType: 'blob' });
+  async getBookFile(id: string): Promise<ArrayBuffer> {
+    const { data } = await this.client.get(`/books/${id}/download`, { responseType: 'arraybuffer' });
+    return data;
+  }
+
+  async getBookFileBlob(id: string): Promise<Blob> {
+    const { data } = await this.client.get(`/books/${id}/download`, { responseType: 'blob' });
+    return data;
+  }
+
+  async downloadBookFile(id: string): Promise<ArrayBuffer> {
+    const { data } = await this.client.get(`/books/${id}/download`, { responseType: 'arraybuffer' });
     return data;
   }
 

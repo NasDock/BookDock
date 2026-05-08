@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  Alert,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,358 +17,427 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useReaderStore, useThemeStore, useLibraryStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
-import { sharingService } from '../services';
+import { getApiClient } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
-import type { Book } from '@bookdock/api-client';
-import type { ReaderMode } from '@bookdock/ebook-reader';
+import * as FileSystem from 'expo-file-system';
 
-type ReaderRouteProp = RouteProp<RootStackParamList, 'Reader'>;
+// Base64 encoder for React Native (btoa is not available)
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa ? btoa(binary) : Buffer.from ? Buffer.from(binary, 'binary').toString('base64') : customBtoa(binary);
+}
+
+function customBtoa(input: string): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let output = '';
+  let i = 0;
+  while (i < input.length) {
+    const a = input.charCodeAt(i++);
+    const b = i < input.length ? input.charCodeAt(i++) : NaN;
+    const c = i < input.length ? input.charCodeAt(i++) : NaN;
+    const bitmap = (a << 16) | ((!isNaN(b) ? b : 0) << 8) | (!isNaN(c) ? c : 0);
+    output += chars.charAt((bitmap >> 18) & 63);
+    output += chars.charAt((bitmap >> 12) & 63);
+    output += !isNaN(b) ? chars.charAt((bitmap >> 6) & 63) : '=';
+    output += !isNaN(c) ? chars.charAt(bitmap & 63) : '=';
+  }
+  return output;
+}
+
+type ReaderScreenRouteProp = RouteProp<RootStackParamList, 'Reader'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-// HTML template for the reader
-function createReaderHTML(
-  book: Book,
-  config: {
-    fontSize: number;
-    fontFamily: string;
-    lineHeight: number;
-    margin: number;
-    mode: ReaderMode;
-  }
-): string {
-  const bgColors: Record<ReaderMode, string> = {
-    light: '#ffffff',
-    dark: '#1a1a1a',
-    sepia: '#f5ebe0',
-  };
-  
-  const textColors: Record<ReaderMode, string> = {
-    light: '#333333',
-    dark: '#e0e0e0',
-    sepia: '#5c4b37',
-  };
+interface ReaderConfig {
+  fontSize: number;
+  lineHeight: number;
+  margin: number;
+  theme: 'light' | 'dark' | 'sepia';
+}
 
-  return `
-<!DOCTYPE html>
+// Generate HTML reader based on file type and content
+function generateReaderHtml(
+  bookTitle: string,
+  bookAuthor: string,
+  content: string,
+  fileType: string,
+  config: ReaderConfig,
+  isBase64: boolean = false
+): string {
+  const isDark = config.theme === 'dark';
+  const isSepia = config.theme === 'sepia';
+  const bgColor = isDark ? '#1a1a1a' : isSepia ? '#f4ecd8' : '#ffffff';
+  const textColor = isDark ? '#e0e0e0' : '#1a1a1a';
+  const linkColor = isDark ? '#6b9fff' : '#0066cc';
+
+  if (fileType === 'pdf') {
+    return `<!DOCTYPE html>
 <html>
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <style>body{margin:0;padding:0;background:${bgColor};overflow:hidden;height:100vh;}</style>
+</head>
+<body>
+  <embed src="data:application/pdf;base64,${content}" type="application/pdf" width="100%" height="100%" />
+</body>
+</html>`;
+  }
+
+  if (fileType === 'txt' || fileType === 'text') {
+    const safeContent = content
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <meta charset="UTF-8">
   <style>
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    html, body {
-      width: 100%;
-      height: 100%;
-      background-color: ${bgColors[config.mode]};
-      color: ${textColors[config.mode]};
-      font-family: ${config.fontFamily}, Georgia, serif;
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       font-size: ${config.fontSize}px;
       line-height: ${config.lineHeight};
+      color: ${textColor};
+      background: ${bgColor};
+      margin: 0;
       padding: ${config.margin}px;
-      overflow: hidden;
+      text-align: justify;
+      word-wrap: break-word;
+      transition: all 0.3s ease;
     }
-    #content {
-      width: 100%;
-      height: 100%;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-    }
-    .page {
-      min-height: 100%;
-      padding-bottom: 50px;
-    }
-    h1 { font-size: 1.5em; margin-bottom: 0.5em; }
-    h2 { font-size: 1.3em; margin-bottom: 0.5em; }
-    p { margin-bottom: 1em; text-align: justify; }
-    img { max-width: 100%; height: auto; display: block; margin: 1em auto; }
-    @media (prefers-color-scheme: dark) {
-      body { background-color: #1a1a1a; color: #e0e0e0; }
-    }
+    h1 { font-size: ${config.fontSize * 1.5}px; margin-bottom: 0.5em; color: ${textColor}; }
+    h2 { font-size: ${config.fontSize * 1.3}px; margin-bottom: 0.5em; color: ${textColor}; }
+    pre { white-space: pre-wrap; word-wrap: break-word; margin: 0; }
   </style>
 </head>
 <body>
-  <div id="content">
-    <div class="page">
-      <h1>${book.title}</h1>
-      <p style="font-style: italic; margin-bottom: 2em;">by ${book.author}</p>
-      <p>This is a preview of the book content. In a production environment, this would be rendered from the actual EPUB or PDF file using libraries like epub.js or pdf.js.</p>
-      <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
-      <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
-      <p>Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.</p>
-      <p>Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt.</p>
-      <p>Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem.</p>
-    </div>
-  </div>
-  <script>
-    // Send message to React Native
-    function sendMessage(type, data) {
-      window.ReactNativeWebView.postMessage(JSON.stringify({ type, data }));
-    }
-    
-    // Track scroll position
-    document.getElementById('content').addEventListener('scroll', function() {
-      const scrollTop = document.getElementById('content').scrollTop;
-      const scrollHeight = document.getElementById('content').scrollHeight - document.getElementById('content').clientHeight;
-      const progress = scrollHeight > 0 ? (scrollTop / scrollHeight) * 100 : 0;
-      sendMessage('progress', { progress, scrollTop });
-    });
-    
-    // Initial load
-    sendMessage('ready', { title: document.title });
-  </script>
+  <h1>${bookTitle}</h1>
+  <p style="font-style: italic; margin-bottom: 2em;">by ${bookAuthor}</p>
+  <pre>${safeContent}</pre>
 </body>
-</html>
-`;
+</html>`;
+  }
+
+  // EPUB / MOBI fallback - show a message with download option
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: -apple-system, sans-serif;
+      font-size: ${config.fontSize}px;
+      color: ${textColor};
+      background: ${bgColor};
+      margin: 0;
+      padding: ${config.margin}px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      text-align: center;
+    }
+    .card {
+      background: ${isDark ? '#2a2a2a' : '#f5f5f5'};
+      padding: 2em;
+      border-radius: 12px;
+      max-width: 400px;
+    }
+    h2 { margin-top: 0; }
+    .format { color: ${linkColor}; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>${bookTitle}</h2>
+    <p>by ${bookAuthor}</p>
+    <p>This book is in <span class="format">${fileType.toUpperCase()}</span> format.</p>
+    <p>Please download the book for offline reading with a compatible EPUB reader.</p>
+  </div>
+</body>
+</html>`;
 }
 
 export function ReaderScreen() {
   const navigation = useNavigation<NavigationProp>();
-  const route = useRoute<ReaderRouteProp>();
+  const route = useRoute<ReaderScreenRouteProp>();
   const { book } = route.params;
-  
+
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
-  
-  const readerConfig = useReaderStore();
-  const { saveReadingProgress, getLocalBookPath } = useLibraryStore();
-  
-  const [showControls, setShowControls] = useState(true);
-  const [currentPosition, setCurrentPosition] = useState(0);
-  const [totalPages] = useState(1);
-  const [showSettings, setShowSettings] = useState(false);
+  const readerStore = useReaderStore();
+  const libraryStore = useLibraryStore();
+
+  const [htmlContent, setHtmlContent] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
-  
+  const [showSettings, setShowSettings] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const webViewRef = useRef<WebView>(null);
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  const html = useMemo(() => {
-    return createReaderHTML(book, {
-      fontSize: readerConfig.fontSize,
-      fontFamily: readerConfig.fontFamily,
-      lineHeight: readerConfig.lineHeight,
-      margin: readerConfig.margin,
-      mode: readerConfig.mode,
-    });
-  }, [book, readerConfig]);
+  // Reader config
+  const readerConfig: ReaderConfig = useMemo(() => ({
+    fontSize: readerStore.fontSize,
+    lineHeight: readerStore.lineHeight,
+    margin: readerStore.margin,
+    theme: actualTheme === 'dark' ? 'dark' : 'light',
+  }), [readerStore.fontSize, readerStore.lineHeight, readerStore.margin, actualTheme]);
 
-  const handleMessage = useCallback((event: { nativeEvent: { data: string } }) => {
+  // Load book content
+  const loadBookContent = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
     try {
-      const message = JSON.parse(event.nativeEvent.data);
-      if (message.type === 'progress') {
-        setCurrentPosition(message.data.progress);
-        if (readerConfig.autoSaveProgress && readerConfig.currentBookId === book.id) {
-          saveReadingProgress(book.id, {
-            percentage: message.data.progress,
-            currentPage: Math.floor((message.data.progress / 100) * totalPages),
-            totalPages,
-          });
+      // Check if we have a local file first
+      const localPath = libraryStore.getLocalBookPath(book.id);
+      if (localPath) {
+        const fileInfo = await FileSystem.getInfoAsync(localPath);
+        if (fileInfo.exists) {
+          // Use local file
+          if (book.fileType === 'txt') {
+            const text = await FileSystem.readAsStringAsync(localPath);
+            const html = generateReaderHtml(book.title, book.author, text, book.fileType, readerConfig);
+            setHtmlContent(html);
+          } else if (book.fileType === 'pdf') {
+            const base64 = await FileSystem.readAsStringAsync(localPath, { encoding: FileSystem.EncodingType.Base64 });
+            const html = generateReaderHtml(book.title, book.author, base64, 'pdf', readerConfig, true);
+            setHtmlContent(html);
+          } else {
+            // EPUB/MOBI - show placeholder
+            const html = generateReaderHtml(book.title, book.author, '', book.fileType, readerConfig);
+            setHtmlContent(html);
+          }
+          setIsLoading(false);
+          return;
         }
       }
-    } catch (e) {
-      console.error('Failed to parse WebView message:', e);
+
+      // Fetch from server
+      const apiClient = getApiClient();
+      const arrayBuffer = await apiClient.downloadBookFile(book.id);
+
+      if (book.fileType === 'txt') {
+        const decoder = new TextDecoder('utf-8');
+        const text = decoder.decode(arrayBuffer);
+        const html = generateReaderHtml(book.title, book.author, text, book.fileType, readerConfig);
+        setHtmlContent(html);
+      } else if (book.fileType === 'pdf') {
+        const bytes = new Uint8Array(arrayBuffer);
+        const base64 = arrayBufferToBase64(arrayBuffer);
+        const html = generateReaderHtml(book.title, book.author, base64, 'pdf', readerConfig, true);
+        setHtmlContent(html);
+      } else {
+        // EPUB / MOBI - show placeholder with real file loaded message
+        const html = generateReaderHtml(book.title, book.author, '', book.fileType, readerConfig);
+        setHtmlContent(html);
+      }
+    } catch (err) {
+      console.error('Failed to load book:', err);
+      setError((err as Error).message || 'Failed to load book');
+    } finally {
+      setIsLoading(false);
     }
-  }, [book.id, readerConfig.autoSaveProgress, readerConfig.currentBookId, saveReadingProgress, totalPages]);
+  }, [book, libraryStore, readerConfig]);
+
+  useEffect(() => {
+    loadBookContent();
+  }, [loadBookContent]);
+
+  const handleMessage = useCallback((event: any) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'scroll') {
+        const progress = data.progress || 0;
+        if (book.id && readerStore.autoSaveProgress) {
+          libraryStore.saveReadingProgress(book.id, { percentage: progress, currentPage: 0 });
+        }
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }, [book.id, readerStore.autoSaveProgress, libraryStore]);
+
+  const injectedJS = useMemo(() => `
+    (function() {
+      let lastScroll = 0;
+      const sendProgress = () => {
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+        const progress = scrollHeight > 0 ? Math.round((scrollTop / scrollHeight) * 100) : 0;
+        if (Math.abs(progress - lastScroll) > 5) {
+          lastScroll = progress;
+          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', progress }));
+        }
+      };
+      window.addEventListener('scroll', sendProgress, { passive: true });
+    })();
+  `, []);
 
   const handleShare = useCallback(async () => {
-    await sharingService.shareBook({
-      title: book.title,
-      author: book.author,
-      localPath: getLocalBookPath(book.id) || undefined,
-    });
-  }, [book, getLocalBookPath]);
+    try {
+      const apiClient = getApiClient();
+      // Try to get book details for sharing
+      const response = await apiClient.getBook(book.id);
+      if (response.success && response.data) {
+        const bookData = response.data;
+        const shareText = `I'm reading "${bookData.title}" by ${bookData.author} on BookDock`;
+        // Use Share API if available, otherwise clipboard
+        // @ts-ignore
+        if (navigator?.share) {
+          // @ts-ignore
+          await navigator.share({ title: bookData.title, text: shareText });
+        } else {
+          Alert.alert('Share', shareText);
+        }
+      }
+    } catch {
+      Alert.alert('Share', `I'm reading "${book.title}" by ${book.author} on BookDock`);
+    }
+  }, [book]);
 
-  const handleFontSizeChange = useCallback((delta: number) => {
-    readerConfig.setFontSize(Math.max(12, Math.min(32, readerConfig.fontSize + delta)));
-  }, [readerConfig]);
-
-  const handleModeChange = useCallback((mode: ReaderMode) => {
-    readerConfig.setMode(mode);
-  }, [readerConfig]);
-
-  const handleWebViewError = useCallback(() => {
-    setIsLoading(false);
-  }, []);
-
-  const renderSettingsModal = () => (
-    <Modal
-      visible={showSettings}
-      animationType="slide"
-      transparent={true}
-      onRequestClose={() => setShowSettings(false)}
-    >
-      <Pressable style={styles.modalOverlay} onPress={() => setShowSettings(false)}>
-        <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
-          <Text style={styles.modalTitle}>Reader Settings</Text>
-          
-          {/* Font Size */}
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Font Size</Text>
-            <View style={styles.fontSizeControls}>
-              <TouchableOpacity
-                style={styles.fontSizeButton}
-                onPress={() => handleFontSizeChange(-2)}
-              >
-                <Text style={styles.fontSizeButtonText}>A-</Text>
-              </TouchableOpacity>
-              <Text style={styles.fontSizeValue}>{readerConfig.fontSize}</Text>
-              <TouchableOpacity
-                style={styles.fontSizeButton}
-                onPress={() => handleFontSizeChange(2)}
-              >
-                <Text style={styles.fontSizeButtonText}>A+</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-          
-          {/* Reading Mode */}
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Theme</Text>
-            <View style={styles.modeButtons}>
-              {(['light', 'dark', 'sepia'] as ReaderMode[]).map((mode) => (
-                <TouchableOpacity
-                  key={mode}
-                  style={[
-                    styles.modeButton,
-                    readerConfig.mode === mode && styles.modeButtonActive,
-                  ]}
-                  onPress={() => handleModeChange(mode)}
-                >
-                  <Text
-                    style={[
-                      styles.modeButtonText,
-                      readerConfig.mode === mode && styles.modeButtonTextActive,
-                    ]}
-                  >
-                    {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-          
-          {/* Auto-save Progress */}
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Auto-save Progress</Text>
-            <TouchableOpacity
-              style={[
-                styles.toggle,
-                readerConfig.autoSaveProgress && styles.toggleActive,
-              ]}
-              onPress={() => readerConfig.setAutoSaveProgress(!readerConfig.autoSaveProgress)}
-            >
-              <View style={[
-                styles.toggleThumb,
-                readerConfig.autoSaveProgress && styles.toggleThumbActive,
-              ]} />
-            </TouchableOpacity>
-          </View>
-          
-          <TouchableOpacity
-            style={[styles.closeButton, { backgroundColor: theme.colors.primary }]}
-            onPress={() => setShowSettings(false)}
-          >
-            <Text style={styles.closeButtonText}>Done</Text>
-          </TouchableOpacity>
-        </View>
-      </Pressable>
-    </Modal>
-  );
+  const handleDownload = useCallback(async () => {
+    try {
+      await libraryStore.downloadBook(book);
+      Alert.alert('Success', 'Book downloaded for offline reading');
+    } catch {
+      Alert.alert('Error', 'Failed to download book');
+    }
+  }, [libraryStore, book]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <StatusBar
-        barStyle={actualTheme === 'dark' ? 'light-content' : 'dark-content'}
-        backgroundColor={theme.colors.surface}
-      />
-      
-      {/* Header */}
-      {showControls && (
-        <View style={[styles.header, { backgroundColor: theme.colors.surface }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-            <Ionicons name="chevron-back" size={24} color={theme.colors.text} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>{book.title}</Text>
-          <TouchableOpacity onPress={handleShare} style={styles.headerButton}>
-            <Ionicons name="share-outline" size={24} color={theme.colors.text} />
+      <StatusBar barStyle={actualTheme === 'dark' ? 'light-content' : 'dark-content'} />
+
+      {/* Toolbar */}
+      <View style={[styles.toolbar, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.toolbarButton}>
+          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
+        <View style={styles.toolbarTitle}>
+          <Text style={[styles.toolbarTitleText, { color: theme.colors.text }]} numberOfLines={1}>
+            {book.title}
+          </Text>
+          {book.readingProgress !== undefined && (
+            <Text style={[styles.toolbarProgress, { color: theme.colors.textSecondary }]}>
+              {Math.round(book.readingProgress)}% read
+            </Text>
+          )}
+        </View>
+        <TouchableOpacity onPress={handleShare} style={styles.toolbarButton}>
+          <Ionicons name="share-outline" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.toolbarButton}>
+          <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleDownload} style={styles.toolbarButton}>
+          <Ionicons name="cloud-download-outline" size={24} color={theme.colors.primary} />
+        </TouchableOpacity>
+      </View>
+
+      {/* WebView */}
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+          <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>Loading book...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.loadingContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color={theme.colors.error} />
+          <Text style={[styles.errorText, { color: theme.colors.error }]}>{error}</Text>
+          <TouchableOpacity onPress={loadBookContent} style={styles.retryButton}>
+            <Text style={{ color: theme.colors.primary }}>Retry</Text>
           </TouchableOpacity>
         </View>
-      )}
-      
-      {/* Reader Content */}
-      <View style={styles.readerContainer}>
+      ) : (
         <WebView
           ref={webViewRef}
-          source={{ html }}
-          style={styles.webView}
+          source={{ html: htmlContent }}
+          style={styles.webview}
+          injectedJavaScript={injectedJS}
           onMessage={handleMessage}
-          onLoadEnd={() => setIsLoading(false)}
-          onError={handleWebViewError}
           scrollEnabled={true}
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator={true}
           originWhitelist={['*']}
           javaScriptEnabled={true}
           domStorageEnabled={true}
-          allowFileAccess={true}
-          allowsInlineMediaPlayback={true}
-          mediaPlaybackRequiresUserAction={true}
+          onError={(e) => {
+            console.error('WebView error:', e.nativeEvent);
+            setError('Failed to render book content');
+          }}
         />
-        {isLoading && (
-          <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color={theme.colors.primary} />
-          </View>
-        )}
-      </View>
-      
-      {/* Bottom Controls */}
-      {showControls && (
-        <View style={[styles.bottomControls, { backgroundColor: theme.colors.surface }]}>
-          <View style={styles.progressInfo}>
-            <Text style={styles.progressText}>
-              {Math.round(currentPosition)}%
-            </Text>
-          </View>
-          <View style={styles.controlButtons}>
+      )}
+
+      {/* Settings Modal */}
+      <Modal
+        visible={showSettings}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowSettings(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setShowSettings(false)} />
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Reader Settings</Text>
+
+            <View style={styles.settingRow}>
+              <Text style={[styles.settingLabel, { color: theme.colors.text }]}>Font Size</Text>
+              <View style={styles.fontSizeControls}>
+                <TouchableOpacity
+                  onPress={() => readerStore.setFontSize(Math.max(12, readerStore.fontSize - 2))}
+                  style={[styles.fontButton, { borderColor: theme.colors.border }]}
+                >
+                  <Text style={{ color: theme.colors.text }}>A-</Text>
+                </TouchableOpacity>
+                <Text style={[styles.fontValue, { color: theme.colors.text }]}>{readerStore.fontSize}px</Text>
+                <TouchableOpacity
+                  onPress={() => readerStore.setFontSize(Math.min(32, readerStore.fontSize + 2))}
+                  style={[styles.fontButton, { borderColor: theme.colors.border }]}
+                >
+                  <Text style={{ color: theme.colors.text }}>A+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.settingRow}>
+              <Text style={[styles.settingLabel, { color: theme.colors.text }]}>Line Height</Text>
+              <View style={styles.fontSizeControls}>
+                <TouchableOpacity
+                  onPress={() => readerStore.setLineHeight(Math.max(1, readerStore.lineHeight - 0.2))}
+                  style={[styles.fontButton, { borderColor: theme.colors.border }]}
+                >
+                  <Text style={{ color: theme.colors.text }}>-</Text>
+                </TouchableOpacity>
+                <Text style={[styles.fontValue, { color: theme.colors.text }]}>{readerStore.lineHeight.toFixed(1)}</Text>
+                <TouchableOpacity
+                  onPress={() => readerStore.setLineHeight(Math.min(3, readerStore.lineHeight + 0.2))}
+                  style={[styles.fontButton, { borderColor: theme.colors.border }]}
+                >
+                  <Text style={{ color: theme.colors.text }}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <TouchableOpacity
-              style={styles.controlButton}
-              onPress={() => setShowSettings(true)}
+              style={[styles.closeButton, { backgroundColor: theme.colors.primary }]}
+              onPress={() => {
+                setShowSettings(false);
+                loadBookContent(); // Reload with new settings
+              }}
             >
-              <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.controlButton}
-              onPress={() => readerConfig.setMode(readerConfig.mode === 'dark' ? 'light' : 'dark')}
-            >
-              <Ionicons
-                name={actualTheme === 'dark' ? 'sunny' : 'moon'}
-                size={24}
-                color={theme.colors.text}
-              />
+              <Text style={styles.closeButtonText}>Apply</Text>
             </TouchableOpacity>
           </View>
         </View>
-      )}
-      
-      {/* Tap zones */}
-      <View style={styles.tapZones}>
-        <TouchableOpacity
-          style={styles.tapZoneLeft}
-          onPress={() => webViewRef.current?.injectJavaScript('document.getElementById("content").scrollTop -= 300; true;')}
-        />
-        <TouchableOpacity
-          style={styles.tapZoneCenter}
-          onPress={() => setShowControls(!showControls)}
-        />
-        <TouchableOpacity
-          style={styles.tapZoneRight}
-          onPress={() => webViewRef.current?.injectJavaScript('document.getElementById("content").scrollTop += 300; true;')}
-        />
-      </View>
-      
-      {renderSettingsModal()}
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -377,180 +447,109 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     container: {
       flex: 1,
     },
-    header: {
+    toolbar: {
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.sm,
       borderBottomWidth: 1,
-      borderBottomColor: theme.colors.border,
     },
-    headerButton: {
+    toolbarButton: {
       padding: spacing.sm,
     },
-    headerTitle: {
+    toolbarTitle: {
       flex: 1,
-      fontSize: fontSizes.md,
-      fontWeight: '600',
-      color: theme.colors.text,
-      textAlign: 'center',
       marginHorizontal: spacing.sm,
     },
-    readerContainer: {
+    toolbarTitleText: {
+      fontSize: fontSizes.md,
+      fontWeight: '600',
+    },
+    toolbarProgress: {
+      fontSize: fontSizes.xs,
+      marginTop: 2,
+    },
+    webview: {
       flex: 1,
     },
-    webView: {
+    loadingContainer: {
       flex: 1,
-      backgroundColor: theme.colors.background,
-    },
-    loadingOverlay: {
-      ...StyleSheet.absoluteFillObject,
       justifyContent: 'center',
       alignItems: 'center',
-      backgroundColor: theme.colors.background,
-    },
-    bottomControls: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      borderTopWidth: 1,
-      borderTopColor: theme.colors.border,
-    },
-    progressInfo: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    progressText: {
-      fontSize: fontSizes.sm,
-      color: theme.colors.textSecondary,
-    },
-    controlButtons: {
-      flexDirection: 'row',
       gap: spacing.md,
     },
-    controlButton: {
-      padding: spacing.sm,
+    loadingText: {
+      fontSize: fontSizes.md,
     },
-    tapZones: {
-      ...StyleSheet.absoluteFillObject,
-      flexDirection: 'row',
+    errorText: {
+      fontSize: fontSizes.md,
+      textAlign: 'center',
+      marginHorizontal: spacing.lg,
     },
-    tapZoneLeft: {
-      flex: 1,
-    },
-    tapZoneCenter: {
-      flex: 2,
-    },
-    tapZoneRight: {
-      flex: 1,
+    retryButton: {
+      padding: spacing.md,
+      borderRadius: borderRadius.md,
+      borderWidth: 1,
+      borderColor: theme.colors.primary,
     },
     modalOverlay: {
       flex: 1,
       justifyContent: 'flex-end',
+    },
+    modalBackdrop: {
+      ...StyleSheet.absoluteFillObject,
       backgroundColor: 'rgba(0,0,0,0.5)',
     },
     modalContent: {
+      padding: spacing.lg,
       borderTopLeftRadius: borderRadius.xl,
       borderTopRightRadius: borderRadius.xl,
-      padding: spacing.lg,
-      paddingBottom: spacing.xxl,
+      gap: spacing.md,
     },
     modalTitle: {
       fontSize: fontSizes.xl,
       fontWeight: '600',
-      color: theme.colors.text,
-      marginBottom: spacing.lg,
       textAlign: 'center',
+      marginBottom: spacing.md,
     },
     settingRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingVertical: spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.border,
+      paddingVertical: spacing.sm,
     },
     settingLabel: {
       fontSize: fontSizes.md,
-      color: theme.colors.text,
+      fontWeight: '500',
     },
     fontSizeControls: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
     },
-    fontSizeButton: {
-      width: 40,
-      height: 40,
+    fontButton: {
+      width: 36,
+      height: 36,
       borderRadius: borderRadius.md,
-      backgroundColor: theme.colors.background,
-      justifyContent: 'center',
+      borderWidth: 1,
       alignItems: 'center',
+      justifyContent: 'center',
     },
-    fontSizeButtonText: {
+    fontValue: {
       fontSize: fontSizes.md,
-      fontWeight: '600',
-      color: theme.colors.text,
-    },
-    fontSizeValue: {
-      fontSize: fontSizes.lg,
-      fontWeight: '600',
-      color: theme.colors.text,
-      minWidth: 30,
+      minWidth: 50,
       textAlign: 'center',
     },
-    modeButtons: {
-      flexDirection: 'row',
-      gap: spacing.sm,
-    },
-    modeButton: {
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      borderRadius: borderRadius.md,
-      backgroundColor: theme.colors.background,
-    },
-    modeButtonActive: {
-      backgroundColor: theme.colors.primary,
-    },
-    modeButtonText: {
-      fontSize: fontSizes.sm,
-      color: theme.colors.textSecondary,
-    },
-    modeButtonTextActive: {
-      color: '#fff',
-      fontWeight: '600',
-    },
-    toggle: {
-      width: 50,
-      height: 30,
-      borderRadius: 15,
-      backgroundColor: theme.colors.border,
-      padding: 2,
-    },
-    toggleActive: {
-      backgroundColor: theme.colors.primary,
-    },
-    toggleThumb: {
-      width: 26,
-      height: 26,
-      borderRadius: 13,
-      backgroundColor: '#fff',
-    },
-    toggleThumbActive: {
-      transform: [{ translateX: 20 }],
-    },
     closeButton: {
-      marginTop: spacing.lg,
-      paddingVertical: spacing.md,
+      padding: spacing.md,
       borderRadius: borderRadius.md,
       alignItems: 'center',
+      marginTop: spacing.md,
     },
     closeButtonText: {
+      color: '#fff',
       fontSize: fontSizes.md,
       fontWeight: '600',
-      color: '#fff',
     },
   });
 }

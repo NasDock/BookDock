@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,8 +9,10 @@ import {
   RefreshControl,
   Dimensions,
   Pressable,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useLibraryStore, useThemeStore } from '../stores';
@@ -28,12 +30,30 @@ export function LibraryScreen() {
   const navigation = useNavigation<NavigationProp>();
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
-  const { books, localBooks, viewMode, setViewMode } = useLibraryStore();
-  
+  const {
+    books,
+    localBooks,
+    viewMode,
+    setViewMode,
+    fetchBooks,
+    downloadBook,
+    deleteLocalBook,
+    isLoading,
+    error,
+  } = useLibraryStore();
+
   const [refreshing, setRefreshing] = useState(false);
   const [localSearchQuery, setLocalSearchQuery] = useState('');
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const styles = useMemo(() => createStyles(theme), [theme]);
+
+  // Load books on mount and when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      fetchBooks();
+    }, [fetchBooks])
+  );
 
   const filteredBooks = useMemo(() => {
     const query = localSearchQuery.toLowerCase();
@@ -55,14 +75,45 @@ export function LibraryScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    // Simulate refresh
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await fetchBooks();
     setRefreshing(false);
-  }, []);
+  }, [fetchBooks]);
+
+  const handleDownload = useCallback(async (book: Book) => {
+    const isDownloaded = localBooks.some((b) => b.id === book.id && b.isDownloaded);
+    if (isDownloaded) {
+      Alert.alert('Confirm', 'Delete this downloaded book?', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteLocalBook(book.id);
+          },
+        },
+      ]);
+      return;
+    }
+
+    setDownloadingId(book.id);
+    try {
+      const path = await downloadBook(book);
+      if (path) {
+        Alert.alert('Success', 'Book downloaded for offline reading');
+      } else {
+        Alert.alert('Error', 'Failed to download book');
+      }
+    } catch {
+      Alert.alert('Error', 'Failed to download book');
+    } finally {
+      setDownloadingId(null);
+    }
+  }, [localBooks, downloadBook, deleteLocalBook]);
 
   const renderGridItem = useCallback(({ item }: { item: Book }) => {
     const localBook = localBooks.find((b) => b.id === item.id);
     const isDownloaded = !!localBook?.isDownloaded;
+    const isDownloading = downloadingId === item.id;
 
     return (
       <Pressable
@@ -76,11 +127,21 @@ export function LibraryScreen() {
           ) : (
             <Text style={styles.coverInitial}>{item.title.charAt(0).toUpperCase()}</Text>
           )}
-          {isDownloaded && (
-            <View style={styles.downloadBadge}>
-              <Ionicons name="cloud-done" size={12} color="#fff" />
-            </View>
-          )}
+          <TouchableOpacity
+            style={styles.downloadButton}
+            onPress={() => handleDownload(item)}
+            disabled={isDownloading}
+          >
+            {isDownloading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons
+                name={isDownloaded ? 'cloud-done' : 'cloud-download-outline'}
+                size={16}
+                color="#fff"
+              />
+            )}
+          </TouchableOpacity>
         </View>
         <Text style={styles.bookTitle} numberOfLines={2}>
           {item.title}
@@ -100,11 +161,12 @@ export function LibraryScreen() {
         )}
       </Pressable>
     );
-  }, [styles, theme, localBooks, handleBookPress]);
+  }, [styles, theme, localBooks, downloadingId, handleBookPress, handleDownload]);
 
   const renderListItem = useCallback(({ item }: { item: Book }) => {
     const localBook = localBooks.find((b) => b.id === item.id);
     const isDownloaded = !!localBook?.isDownloaded;
+    const isDownloading = downloadingId === item.id;
 
     return (
       <Pressable
@@ -144,14 +206,29 @@ export function LibraryScreen() {
           )}
         </View>
         <TouchableOpacity
-          style={styles.ttsButton}
+          style={styles.actionButton}
           onPress={() => handleTTSPress(item)}
         >
           <Ionicons name="headset" size={20} color={theme.colors.primary} />
         </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => handleDownload(item)}
+          disabled={isDownloading}
+        >
+          {isDownloading ? (
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+          ) : (
+            <Ionicons
+              name={isDownloaded ? 'cloud-done' : 'cloud-download-outline'}
+              size={20}
+              color={isDownloaded ? theme.colors.success : theme.colors.textSecondary}
+            />
+          )}
+        </TouchableOpacity>
       </Pressable>
     );
-  }, [styles, theme, localBooks, handleBookPress, handleTTSPress]);
+  }, [styles, theme, localBooks, downloadingId, handleBookPress, handleTTSPress, handleDownload]);
 
   const renderHeader = () => (
     <View style={styles.header}>
@@ -201,6 +278,15 @@ export function LibraryScreen() {
     </View>
   );
 
+  if (isLoading && books.length === 0) {
+    return (
+      <View style={[styles.container, { backgroundColor: theme.colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={{ color: theme.colors.textSecondary, marginTop: spacing.md }}>Loading books...</Text>
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <FlatList
@@ -222,8 +308,8 @@ export function LibraryScreen() {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="library-outline" size={64} color={theme.colors.textSecondary} />
-            <Text style={styles.emptyText}>Your library is empty</Text>
-            <Text style={styles.emptySubtext}>Add books from the web app</Text>
+            <Text style={styles.emptyText}>{error || 'Your library is empty'}</Text>
+            <Text style={styles.emptySubtext}>Pull down to refresh</Text>
           </View>
         }
       />
@@ -303,13 +389,17 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontWeight: 'bold',
       color: theme.colors.textSecondary,
     },
-    downloadBadge: {
+    downloadButton: {
       position: 'absolute',
       top: spacing.xs,
       right: spacing.xs,
-      backgroundColor: theme.colors.success,
+      backgroundColor: 'rgba(0,0,0,0.6)',
       borderRadius: borderRadius.full,
       padding: spacing.xs,
+      minWidth: 28,
+      minHeight: 28,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     bookTitle: {
       fontSize: fontSizes.sm,
@@ -370,8 +460,13 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontSize: fontSizes.xs,
       color: theme.colors.textSecondary,
     },
-    ttsButton: {
-      padding: spacing.md,
+    downloadBadge: {
+      backgroundColor: theme.colors.success + '20',
+      borderRadius: borderRadius.sm,
+      padding: spacing.xs,
+    },
+    actionButton: {
+      padding: spacing.sm,
     },
     emptyContainer: {
       flex: 1,

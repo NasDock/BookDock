@@ -295,7 +295,7 @@ export default function ReaderTTS() {
           setBook(response.data);
 
           // Fetch book file
-          const fileBlob = await apiClient.getBookFile(id);
+          const fileBlob = await apiClient.getBookFileBlob(id);
           const text = await extractBookContent(fileBlob, response.data.fileType);
           setContent(text);
 

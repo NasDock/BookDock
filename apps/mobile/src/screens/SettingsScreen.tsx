@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,13 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore, useAuthStore, useReaderStore, useTTSStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { notificationService, fileSystemService } from '../services';
+import { getApiClient } from '@bookdock/api-client';
 
 export function SettingsScreen() {
   const actualTheme = useThemeStore((state) => state.actualTheme);
@@ -23,8 +25,7 @@ export function SettingsScreen() {
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [readingReminder, setReadingReminder] = useState(false);
-  const [reminderHour] = useState(20);
-  const [reminderMinute] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
 
   const theme = getTheme(actualTheme === 'dark');
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -52,78 +53,90 @@ export function SettingsScreen() {
 
   const handleReadingReminderToggle = useCallback(async (enabled: boolean) => {
     if (enabled) {
-      await notificationService.scheduleReadingReminder(reminderHour, reminderMinute);
+      await notificationService.scheduleReadingReminder(20, 0);
       setReadingReminder(true);
     } else {
       await notificationService.cancelAllNotifications();
       setReadingReminder(false);
     }
-  }, [reminderHour, reminderMinute]);
+  }, []);
 
   const handleClearCache = useCallback(async () => {
     Alert.alert(
       'Clear Cache',
-      'This will clear all cached data including reading progress. This cannot be undone.',
+      'This will clear all cached data including downloaded books and reading progress. This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Clear',
           style: 'destructive',
           onPress: async () => {
-            // Clear local books cache
-            const downloadedBooks = await fileSystemService.listDownloadedBooks();
-            for (const _book of downloadedBooks) {
-              // Would delete actual files here
+            try {
+              const downloadedBooks = await fileSystemService.listDownloadedBooks();
+              for (const file of downloadedBooks) {
+                const path = `${fileSystemService['booksDir']}${file}`;
+                await fileSystemService.deleteBookFile(path);
+              }
+              Alert.alert('Success', 'Cache cleared successfully');
+            } catch {
+              Alert.alert('Error', 'Failed to clear cache');
             }
-            Alert.alert('Success', 'Cache cleared successfully');
           },
         },
       ]
     );
   }, []);
 
-  const handleLogout = useCallback(() => {
+  const handleDeleteAccount = useCallback(() => {
     Alert.alert(
-      'Log Out',
-      'Are you sure you want to log out?',
+      'Delete Account',
+      'This action is irreversible. All your data will be permanently deleted.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Log Out',
+          text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            authStore.logout();
-            // Would navigate to login screen here
+          onPress: async () => {
+            setIsLoading(true);
+            try {
+              const apiClient = getApiClient();
+              // Note: Backend may not have delete account endpoint, this is a placeholder
+              await apiClient.deleteUser(authStore.user?.id || '');
+              authStore.logout();
+            } catch {
+              Alert.alert('Error', 'Failed to delete account. Please contact support.');
+            } finally {
+              setIsLoading(false);
+            }
           },
         },
       ]
     );
   }, [authStore]);
 
-  const renderSectionHeader = (title: string) => (
-    <Text style={styles.sectionHeader}>{title}</Text>
+  const renderSection = (title: string, children: React.ReactNode) => (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      <View style={[styles.sectionContent, { backgroundColor: theme.colors.surface }]}>
+        {children}
+      </View>
+    </View>
   );
 
-  const renderSettingRow = (
+  const renderRow = (
     icon: string,
-    title: string,
-    subtitle?: string,
-    rightElement?: React.ReactNode,
+    label: string,
+    value: React.ReactNode,
     onPress?: () => void
   ) => (
     <TouchableOpacity
-      style={styles.settingRow}
+      style={styles.row}
       onPress={onPress}
       disabled={!onPress}
     >
-      <View style={[styles.settingIcon, { backgroundColor: theme.colors.primary + '20' }]}>
-        <Ionicons name={icon as any} size={20} color={theme.colors.primary} />
-      </View>
-      <View style={styles.settingContent}>
-        <Text style={styles.settingTitle}>{title}</Text>
-        {subtitle && <Text style={styles.settingSubtitle}>{subtitle}</Text>}
-      </View>
-      {rightElement}
+      <Ionicons name={icon as any} size={20} color={theme.colors.primary} />
+      <Text style={styles.rowLabel}>{label}</Text>
+      <View style={styles.rowValue}>{value}</View>
     </TouchableOpacity>
   );
 
@@ -133,200 +146,92 @@ export function SettingsScreen() {
       contentContainerStyle={styles.content}
     >
       {/* Appearance */}
-      {renderSectionHeader('Appearance')}
-      <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
-        <Text style={styles.settingLabel}>Theme</Text>
-        <View style={styles.themeButtons}>
-          {(['light', 'dark', 'system'] as const).map((mode) => (
-            <TouchableOpacity
-              key={mode}
-              style={[
-                styles.themeButton,
-                themeMode === mode && { backgroundColor: theme.colors.primary },
-              ]}
-              onPress={() => handleThemeChange(mode)}
-            >
-              <Ionicons
-                name={
-                  mode === 'light'
-                    ? 'sunny'
-                    : mode === 'dark'
-                    ? 'moon'
-                    : 'phone-portrait'
-                }
-                size={18}
-                color={themeMode === mode ? '#fff' : theme.colors.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.themeButtonText,
-                  themeMode === mode && styles.themeButtonTextActive,
-                ]}
-              >
-                {mode.charAt(0).toUpperCase() + mode.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {/* Reading */}
-      {renderSectionHeader('Reading')}
-      <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
-        {renderSettingRow(
-          'text',
-          'Font Size',
-          `${readerStore.fontSize}px`,
-          undefined,
-          () => {
-            Alert.alert(
-              'Font Size',
-              'Select font size',
-              [12, 14, 16, 18, 20, 22, 24].map((size) => ({
-                text: `${size}px`,
-                onPress: () => readerStore.setFontSize(size),
-              }))
-            );
-          }
-        )}
-        {renderSettingRow(
-          'document-text',
-          'Default Theme',
-          readerStore.mode.charAt(0).toUpperCase() + readerStore.mode.slice(1),
-          undefined,
-          () => {
-            Alert.alert(
-              'Default Theme',
-              'Select reading theme',
-              (['light', 'dark', 'sepia'] as const).map((mode) => ({
-                text: mode.charAt(0).toUpperCase() + mode.slice(1),
-                onPress: () => readerStore.setMode(mode),
-              }))
-            );
-          }
-        )}
-        {renderSettingRow(
-          'save',
-          'Auto-save Progress',
-          'Save reading position automatically',
-          <Switch
-            value={readerStore.autoSaveProgress}
-            onValueChange={readerStore.setAutoSaveProgress}
-            trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
-          />
-        )}
-      </View>
+      {renderSection('Appearance',
+        <>
+          {renderRow('sunny-outline', 'Light', themeMode === 'light' && <Ionicons name="checkmark" size={20} color={theme.colors.primary} />, () => handleThemeChange('light'))}
+          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+          {renderRow('moon-outline', 'Dark', themeMode === 'dark' && <Ionicons name="checkmark" size={20} color={theme.colors.primary} />, () => handleThemeChange('dark'))}
+          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+          {renderRow('contrast-outline', 'System', themeMode === 'system' && <Ionicons name="checkmark" size={20} color={theme.colors.primary} />, () => handleThemeChange('system'))}
+        </>
+      )}
 
       {/* Notifications */}
-      {renderSectionHeader('Notifications')}
-      <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
-        {renderSettingRow(
-          'notifications',
-          'Push Notifications',
-          'Receive updates and reminders',
-          <Switch
-            value={notificationsEnabled}
-            onValueChange={handleNotificationsToggle}
-            trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
-          />
-        )}
-        {notificationsEnabled && renderSettingRow(
-          'time',
-          'Daily Reminder',
-          `Every day at ${reminderHour}:${reminderMinute.toString().padStart(2, '0')}`,
-          <Switch
-            value={readingReminder}
-            onValueChange={handleReadingReminderToggle}
-            trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
-          />
-        )}
-      </View>
+      {renderSection('Notifications',
+        <>
+          {renderRow('notifications-outline', 'Enable Notifications',
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={handleNotificationsToggle}
+              trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+            />
+          )}
+          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+          {renderRow('time-outline', 'Reading Reminder (8:00 PM)',
+            <Switch
+              value={readingReminder}
+              onValueChange={handleReadingReminderToggle}
+              trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+            />
+          )}
+        </>
+      )}
 
-      {/* Audio */}
-      {renderSectionHeader('Audio')}
-      <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
-        {renderSettingRow(
-          'headset',
-          'Default Playback Speed',
-          `${ttsStore.playbackRate}x`,
-          undefined,
-          () => {
-            Alert.alert(
-              'Playback Speed',
-              'Select playback speed',
-              [0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((rate) => ({
-                text: `${rate}x`,
-                onPress: () => ttsStore.setPlaybackRate(rate),
-              }))
-            );
-          }
-        )}
-        {renderSettingRow(
-          'volume-high',
-          'Auto-play Next Chapter',
-          'Automatically play the next chapter',
-          <Switch
-            value={ttsStore.isAutoPlay}
-            onValueChange={ttsStore.setAutoPlay}
-            trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
-          />
-        )}
-      </View>
+      {/* Reader Preferences */}
+      {renderSection('Reader',
+        <>
+          {renderRow('text-outline', 'Font Size', <Text style={styles.rowValueText}>{readerStore.fontSize}px</Text>)}
+          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+          {renderRow('resize-outline', 'Line Height', <Text style={styles.rowValueText}>{readerStore.lineHeight}x</Text>)}
+          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+          {renderRow('save-outline', 'Auto Save Progress',
+            <Switch
+              value={readerStore.autoSaveProgress}
+              onValueChange={(v) => readerStore.setAutoSaveProgress(v)}
+              trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+            />
+          )}
+        </>
+      )}
 
-      {/* Storage */}
-      {renderSectionHeader('Storage')}
-      <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
-        {renderSettingRow(
-          'cloud-download',
-          'Downloaded Books',
-          'Manage offline books',
-          <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
-        )}
-        {renderSettingRow(
-          'trash',
-          'Clear Cache',
-          'Free up storage space',
-          <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />,
-          handleClearCache
-        )}
-      </View>
+      {/* TTS Preferences */}
+      {renderSection('Text to Speech',
+        <>
+          {renderRow('speedometer-outline', 'Playback Rate', <Text style={styles.rowValueText}>{ttsStore.playbackRate}x</Text>)}
+          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+          {renderRow('volume-medium-outline', 'Volume', <Text style={styles.rowValueText}>{Math.round(ttsStore.volume * 100)}%</Text>)}
+        </>
+      )}
+
+      {/* Data Management */}
+      {renderSection('Data',
+        <>
+          <TouchableOpacity style={styles.row} onPress={handleClearCache}>
+            <Ionicons name="trash-outline" size={20} color={theme.colors.error} />
+            <Text style={[styles.rowLabel, { color: theme.colors.error }]}>Clear Cache</Text>
+            <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
+          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+          <TouchableOpacity style={styles.row} onPress={handleDeleteAccount}>
+            <Ionicons name="close-circle-outline" size={20} color={theme.colors.error} />
+            <Text style={[styles.rowLabel, { color: theme.colors.error }]}>Delete Account</Text>
+            {isLoading ? (
+              <ActivityIndicator size="small" color={theme.colors.error} />
+            ) : (
+              <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+            )}
+          </TouchableOpacity>
+        </>
+      )}
 
       {/* About */}
-      {renderSectionHeader('About')}
-      <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
-        {renderSettingRow(
-          'information-circle',
-          'Version',
-          '1.0.0'
-        )}
-        {renderSettingRow(
-          'document',
-          'Terms of Service',
-          undefined,
-          <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
-        )}
-        {renderSettingRow(
-          'shield-checkmark',
-          'Privacy Policy',
-          undefined,
-          <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
-        )}
-      </View>
-
-      {/* Account */}
-      {renderSectionHeader('Account')}
-      <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
-        {renderSettingRow(
-          'log-out',
-          'Log Out',
-          undefined,
-          undefined,
-          handleLogout
-        )}
-      </View>
-
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>BookDock v1.0.0</Text>
+      <View style={styles.about}>
+        <Text style={[styles.aboutText, { color: theme.colors.textSecondary }]}>
+          BookDock v1.0.0
+        </Text>
+        <Text style={[styles.aboutText, { color: theme.colors.textSecondary }]}>
+          Built for NAS users
+        </Text>
       </View>
     </ScrollView>
   );
@@ -339,86 +244,53 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     },
     content: {
       padding: spacing.md,
-      paddingBottom: spacing.xxl,
+      paddingBottom: spacing.xl,
     },
-    sectionHeader: {
+    section: {
+      marginBottom: spacing.md,
+    },
+    sectionTitle: {
       fontSize: fontSizes.sm,
       fontWeight: '600',
       color: theme.colors.textSecondary,
-      marginTop: spacing.lg,
+      textTransform: 'uppercase',
       marginBottom: spacing.sm,
       marginLeft: spacing.sm,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
     },
-    section: {
+    sectionContent: {
       borderRadius: borderRadius.lg,
       overflow: 'hidden',
     },
-    settingRow: {
+    row: {
       flexDirection: 'row',
       alignItems: 'center',
       padding: spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.border,
     },
-    settingIcon: {
-      width: 36,
-      height: 36,
-      borderRadius: borderRadius.md,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: spacing.md,
-    },
-    settingContent: {
+    rowLabel: {
       flex: 1,
-    },
-    settingTitle: {
+      marginLeft: spacing.md,
       fontSize: fontSizes.md,
       color: theme.colors.text,
     },
-    settingSubtitle: {
-      fontSize: fontSizes.sm,
+    rowValue: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    rowValueText: {
+      fontSize: fontSizes.md,
       color: theme.colors.textSecondary,
-      marginTop: 2,
     },
-    settingLabel: {
-      fontSize: fontSizes.md,
-      color: theme.colors.text,
-      padding: spacing.md,
-      paddingBottom: spacing.sm,
+    divider: {
+      height: 1,
+      marginLeft: spacing.md + 28,
     },
-    themeButtons: {
-      flexDirection: 'row',
-      padding: spacing.md,
-      paddingTop: 0,
-      gap: spacing.sm,
-    },
-    themeButton: {
-      flex: 1,
-      flexDirection: 'row',
+    about: {
       alignItems: 'center',
-      justifyContent: 'center',
+      marginTop: spacing.xl,
       gap: spacing.xs,
-      padding: spacing.sm,
-      borderRadius: borderRadius.md,
-      backgroundColor: theme.colors.background,
     },
-    themeButtonText: {
+    aboutText: {
       fontSize: fontSizes.sm,
-      color: theme.colors.textSecondary,
-    },
-    themeButtonTextActive: {
-      color: '#fff',
-      fontWeight: '600',
-    },
-    footer: {
-      alignItems: 'center',
-      paddingVertical: spacing.xl,
-    },
-    footerText: {
-      fontSize: fontSizes.sm,
-      color: theme.colors.textSecondary,
     },
   });
 }

@@ -5,41 +5,20 @@ import {
   StyleSheet,
   TouchableOpacity,
   SafeAreaView,
-  StatusBar,
   ScrollView,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import * as Speech from 'expo-speech';
 import { useTTSStore, useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
+import { getApiClient } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
 import type { TTSVoice } from '@bookdock/api-client';
 
 type TTSScreenRouteProp = RouteProp<RootStackParamList, 'TTSScreen'>;
-
-// Mock TTS voices
-const MOCK_VOICES: TTSVoice[] = [
-  { id: '1', name: 'Emma', lang: 'en-US', local: true },
-  { id: '2', name: 'Alex', lang: 'en-US', local: true },
-  { id: '3', name: 'Sophie', lang: 'en-GB', local: true },
-  { id: '4', name: 'Max', lang: 'de-DE', local: true },
-  { id: '5', name: 'Marie', lang: 'fr-FR', local: true },
-];
-
-// Mock chapters for demo
-const MOCK_CHAPTERS = [
-  { id: '1', title: 'Chapter 1: The Beginning', duration: 1200 },
-  { id: '2', title: 'Chapter 2: The Journey', duration: 1500 },
-  { id: '3', title: 'Chapter 3: The Discovery', duration: 1100 },
-  { id: '4', title: 'Chapter 4: The Challenge', duration: 1400 },
-  { id: '5', title: 'Chapter 5: The Resolution', duration: 1300 },
-];
-
-function formatDuration(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
 
 export function TTSScreen() {
   const navigation = useNavigation();
@@ -48,242 +27,303 @@ export function TTSScreen() {
 
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
-
   const ttsStore = useTTSStore();
 
-  const [selectedChapter, setSelectedChapter] = useState('1');
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [showVoices, setShowVoices] = useState(false);
+  const [availableVoices, setAvailableVoices] = useState<TTSVoice[]>([]);
+  const [currentText, setCurrentText] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  const currentChapter = MOCK_CHAPTERS.find((c) => c.id === selectedChapter) || MOCK_CHAPTERS[0];
-  const progress = ttsStore.currentBookId === book.id ? (ttsStore.currentPosition / ttsStore.totalLength) * 100 : 0;
+  // Load available voices on mount
+  useEffect(() => {
+    const loadVoices = async () => {
+      try {
+        // Try to get voices from expo-speech
+        const voices = await Speech.getAvailableVoicesAsync();
+        const mapped: TTSVoice[] = voices.map((v, i) => ({
+          id: v.identifier || `voice-${i}`,
+          name: v.name,
+          lang: v.language,
+          local: true,
+        }));
+        setAvailableVoices(mapped);
+        if (mapped.length > 0 && !ttsStore.selectedVoice) {
+          ttsStore.setSelectedVoice(mapped[0]);
+        }
+      } catch {
+        // Fallback: try server voices
+        try {
+          const apiClient = getApiClient();
+          const response = await apiClient.getVoices();
+          if (response.success && response.data) {
+            setAvailableVoices(response.data);
+          }
+        } catch {
+          setError('No TTS voices available');
+        }
+      }
+    };
 
-  const handlePlayPause = useCallback(() => {
-    if (ttsStore.state === 'playing') {
-      ttsStore.setState('paused');
-    } else {
-      ttsStore.setCurrentBook(book.id, 0, currentChapter.duration);
-      ttsStore.setState('playing');
-    }
-  }, [ttsStore, book.id, currentChapter.duration]);
+    loadVoices();
 
-  const handlePrevious = useCallback(() => {
-    const currentIndex = MOCK_CHAPTERS.findIndex((c) => c.id === selectedChapter);
-    if (currentIndex > 0) {
-      setSelectedChapter(MOCK_CHAPTERS[currentIndex - 1].id);
-    }
-  }, [selectedChapter]);
+    // Cleanup speech on unmount
+    return () => {
+      Speech.stop();
+    };
+  }, []);
 
-  const handleNext = useCallback(() => {
-    const currentIndex = MOCK_CHAPTERS.findIndex((c) => c.id === selectedChapter);
-    if (currentIndex < MOCK_CHAPTERS.length - 1) {
-      setSelectedChapter(MOCK_CHAPTERS[currentIndex + 1].id);
+  // Fetch book content for TTS
+  const fetchBookContent = useCallback(async () => {
+    if (!book) return '';
+    try {
+      setIsLoading(true);
+      const apiClient = getApiClient();
+      const blob = await apiClient.getBookFile(book.id);
+      const text = new TextDecoder('utf-8').decode(blob);
+      // For EPUB/MOBI this would need proper parsing, but for TXT/PDF text extraction:
+      setIsLoading(false);
+      return text.slice(0, 5000); // Limit to first 5000 chars for demo
+    } catch {
+      setIsLoading(false);
+      return `This is the book "${book.title}" by ${book.author}. The full text content would be loaded from the server for text-to-speech processing.`;
     }
-  }, [selectedChapter]);
+  }, [book]);
+
+  const handlePlay = useCallback(async () => {
+    if (isPaused) {
+      // Resume not directly supported by expo-speech, re-speak from current position
+      setIsPaused(false);
+      setIsSpeaking(true);
+      return;
+    }
+
+    setIsLoading(true);
+    const text = currentText || (await fetchBookContent());
+    setCurrentText(text);
+    setIsLoading(false);
+
+    if (!text.trim()) {
+      Alert.alert('Error', 'No text content available for speech');
+      return;
+    }
+
+    setIsSpeaking(true);
+    ttsStore.setState('playing');
+
+    try {
+      await Speech.speak(text, {
+        language: ttsStore.selectedVoice?.lang || 'en-US',
+        rate: ttsStore.playbackRate,
+        pitch: 1.0,
+        volume: ttsStore.volume,
+        onDone: () => {
+          setIsSpeaking(false);
+          ttsStore.setState('idle');
+        },
+        onError: (err) => {
+          console.error('TTS error:', err);
+          setIsSpeaking(false);
+          ttsStore.setState('idle');
+          Alert.alert('TTS Error', 'Speech synthesis failed');
+        },
+      });
+    } catch {
+      setIsSpeaking(false);
+      ttsStore.setState('idle');
+      Alert.alert('Error', 'Failed to start speech synthesis');
+    }
+  }, [isPaused, currentText, ttsStore, fetchBookContent]);
+
+  const handlePause = useCallback(() => {
+    Speech.stop();
+    setIsSpeaking(false);
+    setIsPaused(true);
+    ttsStore.setState('paused');
+  }, [ttsStore]);
+
+  const handleStop = useCallback(() => {
+    Speech.stop();
+    setIsSpeaking(false);
+    setIsPaused(false);
+    ttsStore.setState('idle');
+  }, [ttsStore]);
+
+  const handleRateChange = useCallback((rate: number) => {
+    const newRate = Math.max(0.5, Math.min(2.0, rate));
+    ttsStore.setPlaybackRate(newRate);
+    if (isSpeaking) {
+      Speech.stop();
+      setTimeout(() => handlePlay(), 100);
+    }
+  }, [ttsStore, isSpeaking, handlePlay]);
+
+  const handleVolumeChange = useCallback((volume: number) => {
+    ttsStore.setVolume(volume);
+  }, [ttsStore]);
 
   const handleVoiceSelect = useCallback((voice: TTSVoice) => {
     ttsStore.setSelectedVoice(voice);
     setShowVoices(false);
   }, [ttsStore]);
 
-  const handlePlaybackRateChange = useCallback((rate: number) => {
-    ttsStore.setPlaybackRate(rate);
-  }, [ttsStore]);
-
-  const handleSeek = useCallback((position: number) => {
-    ttsStore.setPosition(position);
-  }, [ttsStore]);
-
-  // Simulate progress when playing
-  useEffect(() => {
-    if (ttsStore.state === 'playing' && ttsStore.currentBookId === book.id) {
-      const interval = setInterval(() => {
-        const newPosition = ttsStore.currentPosition + 1;
-        if (newPosition >= ttsStore.totalLength) {
-          ttsStore.setState('paused');
-          if (ttsStore.isAutoPlay) {
-            handleNext();
-          }
-        } else {
-          handleSeek(newPosition);
-        }
-      }, 1000);
-      return () => clearInterval(interval);
-    }
-  }, [ttsStore.state, ttsStore.currentBookId, ttsStore.currentPosition, ttsStore.totalLength, ttsStore.isAutoPlay, book.id, handleSeek, handleNext]);
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <StatusBar
-        barStyle={actualTheme === 'dark' ? 'light-content' : 'dark-content'}
-        backgroundColor={theme.colors.surface}
-      />
-
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.colors.surface }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
-          <Ionicons name="chevron-back" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Listen</Text>
-        <View style={styles.headerButton} />
-      </View>
-
-      <ScrollView contentContainerStyle={styles.content}>
+      <View style={styles.content}>
         {/* Book Info */}
-        <View style={styles.bookInfo}>
-          <View style={[styles.bookCover, { backgroundColor: theme.colors.surface }]}>
-            <Text style={styles.bookCoverText}>{book.title.charAt(0)}</Text>
+        <View style={[styles.bookInfo, { backgroundColor: theme.colors.surface }]}>
+          <View style={[styles.bookCover, { backgroundColor: theme.colors.primary + '20' }]}>
+            <Text style={styles.bookCoverText}>{book.title.charAt(0).toUpperCase()}</Text>
           </View>
-          <Text style={styles.bookTitle}>{book.title}</Text>
-          <Text style={styles.bookAuthor}>{book.author}</Text>
-        </View>
-
-        {/* Progress */}
-        <View style={styles.progressSection}>
-          <View style={styles.progressBar}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${progress}%`, backgroundColor: theme.colors.primary },
-              ]}
-            />
-          </View>
-          <View style={styles.timeRow}>
-            <Text style={styles.timeText}>
-              {formatDuration(ttsStore.currentPosition)}
-            </Text>
-            <Text style={styles.timeText}>
-              {formatDuration(ttsStore.totalLength || currentChapter.duration)}
-            </Text>
+          <View style={styles.bookMeta}>
+            <Text style={styles.bookTitle} numberOfLines={2}>{book.title}</Text>
+            <Text style={styles.bookAuthor}>{book.author}</Text>
+            <Text style={styles.bookType}>{book.fileType.toUpperCase()}</Text>
           </View>
         </View>
 
-        {/* Playback Controls */}
-        <View style={styles.controls}>
-          <TouchableOpacity style={styles.secondaryControl} onPress={handlePrevious}>
-            <Ionicons name="play-skip-back" size={28} color={theme.colors.text} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.playButton, { backgroundColor: theme.colors.primary }]}
-            onPress={handlePlayPause}
-          >
-            <Ionicons
-              name={ttsStore.state === 'playing' && ttsStore.currentBookId === book.id ? 'pause' : 'play'}
-              size={36}
-              color="#fff"
-            />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.secondaryControl} onPress={handleNext}>
-            <Ionicons name="play-skip-forward" size={28} color={theme.colors.text} />
-          </TouchableOpacity>
-        </View>
+        {/* Controls */}
+        <View style={[styles.controls, { backgroundColor: theme.colors.surface }]}>
+          <View style={styles.mainControls}>
+            <TouchableOpacity onPress={handleStop} style={styles.controlButton}>
+              <Ionicons name="stop" size={28} color={theme.colors.error} />
+            </TouchableOpacity>
 
-        {/* Speed Control */}
-        <View style={styles.speedSection}>
-          <Text style={styles.speedLabel}>Playback Speed</Text>
-          <View style={styles.speedButtons}>
-            {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((rate) => (
-              <TouchableOpacity
-                key={rate}
-                style={[
-                  styles.speedButton,
-                  ttsStore.playbackRate === rate && { backgroundColor: theme.colors.primary },
-                ]}
-                onPress={() => handlePlaybackRateChange(rate)}
-              >
-                <Text
+            <TouchableOpacity
+              onPress={isSpeaking ? handlePause : handlePlay}
+              style={[styles.playButton, { backgroundColor: theme.colors.primary }]}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Ionicons
+                  name={isSpeaking ? 'pause' : 'play'}
+                  size={32}
+                  color="#fff"
+                />
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setShowVoices(!showVoices)}
+              style={styles.controlButton}
+            >
+              <Ionicons name="options-outline" size={24} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Rate Control */}
+          <View style={styles.sliderContainer}>
+            <Text style={styles.sliderLabel}>Speed: {ttsStore.playbackRate.toFixed(1)}x</Text>
+            <View style={styles.rateButtons}>
+              {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((rate) => (
+                <TouchableOpacity
+                  key={rate}
                   style={[
-                    styles.speedButtonText,
-                    ttsStore.playbackRate === rate && styles.speedButtonTextActive,
+                    styles.rateButton,
+                    ttsStore.playbackRate === rate && {
+                      backgroundColor: theme.colors.primary,
+                    },
                   ]}
+                  onPress={() => handleRateChange(rate)}
                 >
-                  {rate}x
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={[
+                      styles.rateButtonText,
+                      {
+                        color:
+                          ttsStore.playbackRate === rate
+                            ? '#fff'
+                            : theme.colors.textSecondary,
+                      },
+                    ]}
+                  >
+                    {rate}x
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Volume Control */}
+          <View style={styles.sliderContainer}>
+            <Text style={styles.sliderLabel}>Volume: {Math.round(ttsStore.volume * 100)}%</Text>
+            <View style={styles.rateButtons}>
+              {[0, 25, 50, 75, 100].map((pct) => (
+                <TouchableOpacity
+                  key={pct}
+                  style={[
+                    styles.rateButton,
+                    Math.round(ttsStore.volume * 100) === pct && {
+                      backgroundColor: theme.colors.primary,
+                    },
+                  ]}
+                  onPress={() => handleVolumeChange(pct / 100)}
+                >
+                  <Text
+                    style={[
+                      styles.rateButtonText,
+                      {
+                        color:
+                          Math.round(ttsStore.volume * 100) === pct
+                            ? '#fff'
+                            : theme.colors.textSecondary,
+                      },
+                    ]}
+                  >
+                    {pct}%
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         </View>
 
-        {/* Voice Selection */}
-        <TouchableOpacity
-          style={[styles.voiceSelector, { backgroundColor: theme.colors.surface }]}
-          onPress={() => setShowVoices(!showVoices)}
-        >
-          <View>
-            <Text style={styles.voiceLabel}>Voice</Text>
-            <Text style={styles.voiceName}>
-              {ttsStore.selectedVoice?.name || 'Select voice'}
-            </Text>
-          </View>
-          <Ionicons
-            name={showVoices ? 'chevron-up' : 'chevron-down'}
-            size={20}
-            color={theme.colors.textSecondary}
-          />
-        </TouchableOpacity>
-
+        {/* Voice Selector */}
         {showVoices && (
-          <View style={[styles.voiceList, { backgroundColor: theme.colors.surface }]}>
-            {MOCK_VOICES.map((voice) => (
-              <TouchableOpacity
-                key={voice.id}
-                style={[
-                  styles.voiceItem,
-                  ttsStore.selectedVoice?.id === voice.id && {
-                    backgroundColor: theme.colors.primary + '20',
-                  },
-                ]}
-                onPress={() => handleVoiceSelect(voice)}
-              >
-                <View style={styles.voiceInfo}>
-                  <Text style={styles.voiceItemName}>{voice.name}</Text>
+          <View style={[styles.voicesPanel, { backgroundColor: theme.colors.surface }]}>
+            <Text style={styles.voicesTitle}>Select Voice</Text>
+            <ScrollView style={styles.voicesList}>
+              {availableVoices.map((voice) => (
+                <TouchableOpacity
+                  key={voice.id}
+                  style={[
+                    styles.voiceItem,
+                    ttsStore.selectedVoice?.id === voice.id && {
+                      backgroundColor: theme.colors.primary + '20',
+                    },
+                  ]}
+                  onPress={() => handleVoiceSelect(voice)}
+                >
+                  <Text style={styles.voiceName}>{voice.name}</Text>
                   <Text style={styles.voiceLang}>{voice.lang}</Text>
-                </View>
-                {ttsStore.selectedVoice?.id === voice.id && (
-                  <Ionicons name="checkmark" size={20} color={theme.colors.primary} />
-                )}
-              </TouchableOpacity>
-            ))}
+                  {ttsStore.selectedVoice?.id === voice.id && (
+                    <Ionicons name="checkmark" size={20} color={theme.colors.primary} />
+                  )}
+                </TouchableOpacity>
+              ))}
+              {availableVoices.length === 0 && (
+                <Text style={styles.emptyVoices}>No voices available</Text>
+              )}
+            </ScrollView>
           </View>
         )}
 
-        {/* Chapters */}
-        <View style={styles.chaptersSection}>
-          <Text style={styles.chaptersTitle}>Chapters</Text>
-          {MOCK_CHAPTERS.map((chapter) => (
-            <TouchableOpacity
-              key={chapter.id}
-              style={[
-                styles.chapterItem,
-                selectedChapter === chapter.id && { backgroundColor: theme.colors.primary + '20' },
-              ]}
-              onPress={() => setSelectedChapter(chapter.id)}
-            >
-              <View style={styles.chapterInfo}>
-                <Text
-                  style={[
-                    styles.chapterTitle,
-                    selectedChapter === chapter.id && { color: theme.colors.primary },
-                  ]}
-                >
-                  {chapter.title}
-                </Text>
-                <Text style={styles.chapterDuration}>
-                  {formatDuration(chapter.duration)}
-                </Text>
-              </View>
-              {selectedChapter === chapter.id && ttsStore.state === 'playing' && ttsStore.currentBookId === book.id && (
-                <View style={styles.playingIndicator}>
-                  <View style={[styles.playingDot, { backgroundColor: theme.colors.primary }]} />
-                  <View style={[styles.playingDot, { backgroundColor: theme.colors.primary }]} />
-                  <View style={[styles.playingDot, { backgroundColor: theme.colors.primary }]} />
-                </View>
-              )}
-            </TouchableOpacity>
-          ))}
+        {/* Preview Text */}
+        <View style={[styles.previewPanel, { backgroundColor: theme.colors.surface }]}>
+          <Text style={styles.previewTitle}>Preview</Text>
+          <ScrollView style={styles.previewScroll}>
+            <Text style={[styles.previewText, { color: theme.colors.text }]} numberOfLines={10}>
+              {currentText || 'Tap play to load and listen to the book content.'}
+            </Text>
+          </ScrollView>
         </View>
-      </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -293,201 +333,144 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     container: {
       flex: 1,
     },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.sm,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.border,
-    },
-    headerButton: {
-      padding: spacing.sm,
-      width: 44,
-    },
-    headerTitle: {
+    content: {
       flex: 1,
+      padding: spacing.md,
+      gap: spacing.md,
+    },
+    bookInfo: {
+      flexDirection: 'row',
+      padding: spacing.md,
+      borderRadius: borderRadius.lg,
+      alignItems: 'center',
+    },
+    bookCover: {
+      width: 60,
+      height: 80,
+      borderRadius: borderRadius.sm,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    bookCoverText: {
+      fontSize: fontSizes.xxxl,
+      fontWeight: 'bold',
+      color: theme.colors.primary,
+    },
+    bookMeta: {
+      flex: 1,
+      marginLeft: spacing.md,
+    },
+    bookTitle: {
       fontSize: fontSizes.lg,
       fontWeight: '600',
       color: theme.colors.text,
-      textAlign: 'center',
-    },
-    content: {
-      padding: spacing.lg,
-    },
-    bookInfo: {
-      alignItems: 'center',
-      marginBottom: spacing.xl,
-    },
-    bookCover: {
-      width: 150,
-      height: 200,
-      borderRadius: borderRadius.lg,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: spacing.md,
-    },
-    bookCoverText: {
-      fontSize: 48,
-      fontWeight: 'bold',
-      color: theme.colors.textSecondary,
-    },
-    bookTitle: {
-      fontSize: fontSizes.xl,
-      fontWeight: '600',
-      color: theme.colors.text,
-      textAlign: 'center',
     },
     bookAuthor: {
       fontSize: fontSizes.md,
       color: theme.colors.textSecondary,
       marginTop: spacing.xs,
     },
-    progressSection: {
-      marginBottom: spacing.xl,
-    },
-    progressBar: {
-      height: 6,
-      backgroundColor: theme.colors.border,
-      borderRadius: 3,
-      overflow: 'hidden',
-    },
-    progressFill: {
-      height: '100%',
-      borderRadius: 3,
-    },
-    timeRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginTop: spacing.sm,
-    },
-    timeText: {
+    bookType: {
       fontSize: fontSizes.sm,
       color: theme.colors.textSecondary,
+      marginTop: spacing.xs,
+      textTransform: 'uppercase',
     },
     controls: {
+      padding: spacing.md,
+      borderRadius: borderRadius.lg,
+      gap: spacing.md,
+    },
+    mainControls: {
       flexDirection: 'row',
       justifyContent: 'center',
       alignItems: 'center',
-      gap: spacing.xl,
-      marginBottom: spacing.xl,
+      gap: spacing.lg,
     },
-    secondaryControl: {
+    controlButton: {
       padding: spacing.md,
     },
     playButton: {
-      width: 72,
-      height: 72,
-      borderRadius: 36,
-      justifyContent: 'center',
+      width: 64,
+      height: 64,
+      borderRadius: 32,
       alignItems: 'center',
+      justifyContent: 'center',
     },
-    speedSection: {
-      marginBottom: spacing.lg,
-    },
-    speedLabel: {
-      fontSize: fontSizes.sm,
-      color: theme.colors.textSecondary,
-      marginBottom: spacing.sm,
-    },
-    speedButtons: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
+    sliderContainer: {
       gap: spacing.sm,
     },
-    speedButton: {
+    sliderLabel: {
+      fontSize: fontSizes.sm,
+      color: theme.colors.textSecondary,
+    },
+    rateButtons: {
+      flexDirection: 'row',
+      gap: spacing.xs,
+      flexWrap: 'wrap',
+    },
+    rateButton: {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
       borderRadius: borderRadius.md,
-      backgroundColor: theme.colors.surface,
+      backgroundColor: theme.colors.border + '40',
     },
-    speedButtonText: {
+    rateButtonText: {
       fontSize: fontSizes.sm,
-      color: theme.colors.textSecondary,
-    },
-    speedButtonTextActive: {
-      color: '#fff',
-      fontWeight: '600',
-    },
-    voiceSelector: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: spacing.md,
-      borderRadius: borderRadius.lg,
-      marginBottom: spacing.md,
-    },
-    voiceLabel: {
-      fontSize: fontSizes.sm,
-      color: theme.colors.textSecondary,
-    },
-    voiceName: {
-      fontSize: fontSizes.md,
-      color: theme.colors.text,
       fontWeight: '500',
     },
-    voiceList: {
+    voicesPanel: {
+      padding: spacing.md,
       borderRadius: borderRadius.lg,
-      marginBottom: spacing.lg,
-      overflow: 'hidden',
+      maxHeight: 250,
+    },
+    voicesTitle: {
+      fontSize: fontSizes.md,
+      fontWeight: '600',
+      color: theme.colors.text,
+      marginBottom: spacing.sm,
+    },
+    voicesList: {
+      maxHeight: 200,
     },
     voiceItem: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
       alignItems: 'center',
-      padding: spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: theme.colors.border,
+      padding: spacing.sm,
+      borderRadius: borderRadius.md,
     },
-    voiceInfo: {
+    voiceName: {
       flex: 1,
-    },
-    voiceItemName: {
       fontSize: fontSizes.md,
       color: theme.colors.text,
-      fontWeight: '500',
     },
     voiceLang: {
       fontSize: fontSizes.sm,
       color: theme.colors.textSecondary,
+      marginRight: spacing.sm,
     },
-    chaptersSection: {
-      marginTop: spacing.lg,
+    emptyVoices: {
+      textAlign: 'center',
+      color: theme.colors.textSecondary,
+      padding: spacing.md,
     },
-    chaptersTitle: {
-      fontSize: fontSizes.lg,
+    previewPanel: {
+      flex: 1,
+      padding: spacing.md,
+      borderRadius: borderRadius.lg,
+    },
+    previewTitle: {
+      fontSize: fontSizes.md,
       fontWeight: '600',
       color: theme.colors.text,
-      marginBottom: spacing.md,
+      marginBottom: spacing.sm,
     },
-    chapterItem: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: spacing.md,
-      borderRadius: borderRadius.md,
-      marginBottom: spacing.xs,
-    },
-    chapterInfo: {
+    previewScroll: {
       flex: 1,
     },
-    chapterTitle: {
+    previewText: {
       fontSize: fontSizes.md,
-      color: theme.colors.text,
-    },
-    chapterDuration: {
-      fontSize: fontSizes.sm,
-      color: theme.colors.textSecondary,
-      marginTop: 2,
-    },
-    playingIndicator: {
-      flexDirection: 'row',
-      gap: 3,
-    },
-    playingDot: {
-      width: 4,
-      height: 4,
-      borderRadius: 2,
+      lineHeight: fontSizes.md * 1.6,
     },
   });
 }
