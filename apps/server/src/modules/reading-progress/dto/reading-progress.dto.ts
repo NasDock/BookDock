@@ -9,6 +9,7 @@ import {
   IsNumber,
   MinLength,
   MaxLength,
+  IsArray,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -120,6 +121,11 @@ export class ReadingProgressResponseDto {
 }
 
 export class BookBookmarkDto {
+  @ApiPropertyOptional()
+  @IsUUID()
+  @IsOptional()
+  bookId?: string;
+
   @ApiProperty({ example: 'Chapter 1' })
   @IsString()
   @MinLength(1)

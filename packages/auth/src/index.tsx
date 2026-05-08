@@ -72,8 +72,8 @@ export function AuthProvider({ children, apiBaseUrl, onAuthError }: AuthProvider
             if (response.success && response.data) {
               setState(prev => ({
                 ...prev,
-                user: response.data,
-                membership: response.data.membership,
+                user: response.data ?? null,
+                membership: response.data?.membership ?? null,
               }));
               localStorage.setItem(USER_KEY, JSON.stringify(response.data));
             }
@@ -201,8 +201,8 @@ export function AuthProvider({ children, apiBaseUrl, onAuthError }: AuthProvider
       if (response.success && response.data) {
         setState(prev => ({
           ...prev,
-          user: response.data,
-          membership: response.data.membership,
+          user: response.data ?? null,
+          membership: response.data?.membership ?? null,
         }));
         localStorage.setItem(USER_KEY, JSON.stringify(response.data));
       }

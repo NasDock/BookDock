@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaClient, ReadingStatus } from '@prisma/client';
-import { PRISMA_CLIENT } from '../../../config/database.module';
+import { PRISMA_CLIENT } from '../../config/database.module';
 import {
   UpdateReadingProgressDto,
   ReadingProgressQueryDto,

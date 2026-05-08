@@ -10,7 +10,7 @@ import { PrismaClient, UserRole } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
-import { PRISMA_CLIENT } from '../../../config/database.module';
+import { PRISMA_CLIENT } from '../../config/database.module';
 import {
   UserQueryDto,
   UpdateUserDto,

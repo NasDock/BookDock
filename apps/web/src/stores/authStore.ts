@@ -66,11 +66,13 @@ if (typeof window !== 'undefined' && window.matchMedia) {
   });
 }
 
+import type { User } from '@bookdock/api-client';
+
 // Auth store placeholder (expand with real auth logic)
 interface AuthState {
-  user: { id: string; name: string; email: string } | null;
+  user: User | null;
   isAuthenticated: boolean;
-  login: (user: AuthState['user']) => void;
+  login: (user: User) => void;
   logout: () => void;
 }
 

@@ -10,7 +10,7 @@ import { Queue } from 'bullmq';
 import { PrismaClient, TtsJobStatus } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import { PRISMA_CLIENT } from '../../../config/database.module';
+import { PRISMA_CLIENT } from '../../config/database.module';
 import { CreateTtsJobDto, TtsJobQueryDto, TtsJobResponseDto, TtsVoiceDto, TtsAudioFileResponseDto } from './dto/tts.dto';
 
 @Injectable()

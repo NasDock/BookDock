@@ -109,7 +109,7 @@ function PlaybackControls({
   isPlaying: boolean;
   isPaused: boolean;
   isLoading: boolean;
-  progress: { percentage: number; currentIndex: number; totalChunks: number; currentText: string };
+  progress: { percentage: number; currentIndex: number; totalChunks: number; currentText: string; isPlaying: boolean };
   rate: number;
   volume: number;
   onPlayPause: () => void;

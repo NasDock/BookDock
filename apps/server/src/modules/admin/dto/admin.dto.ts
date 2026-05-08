@@ -8,7 +8,7 @@ import {
   IsBoolean,
   IsArray,
   IsUUID,
-  IsURL,
+  IsUrl,
   MinLength,
   MaxLength,
   IsDateString,

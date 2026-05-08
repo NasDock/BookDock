@@ -88,7 +88,7 @@ export class ReadingProgressController {
     @Body() dto: BookBookmarkDto,
     @CurrentUser('sub') userId: string,
   ) {
-    return this.progressService.createBookmark(userId, dto.bookId as unknown as string || '', dto);
+    return this.progressService.createBookmark(userId, dto.bookId || '', dto);
   }
 
   @Post('bookmarks/:bookId')

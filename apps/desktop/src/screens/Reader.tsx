@@ -1,11 +1,9 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useDesktopStore } from '../stores/desktopStore';
 import {
-  readFileContent,
   readFileText,
   updateReadingProgress,
-  openReaderWindow,
 } from '../hooks/useDesktopCommands';
 import { TTSControls } from '../components/TTSControls';
 
@@ -97,7 +95,7 @@ export function ReaderScreen({ bookId: propBookId, onBack }: ReaderScreenProps) 
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<'light' | 'dark' | 'sepia'>('light');
   const [fontSize, setFontSize] = useState(16);
-  const [showControls, setShowControls] = useState(true);
+  const [showControls] = useState(true);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<SimpleEpubRenderer | null>(null);

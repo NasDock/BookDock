@@ -10,7 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaClient, User, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
-import { PRISMA_CLIENT } from '../../../config/database.module';
+import { PRISMA_CLIENT } from '../../config/database.module';
 import { RegisterDto, LoginDto, AuthResponseDto, UserInfoDto } from './dto/auth.dto';
 
 @Injectable()

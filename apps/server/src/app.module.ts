@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { AppConfig } from './config/app.config';
 import { DatabaseModule } from './config/database.module';
 import { BullMQModule } from './queues/bullmq.module';

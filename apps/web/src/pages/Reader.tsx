@@ -465,6 +465,24 @@ export default function Reader() {
     localStorage.setItem(`bookdock_bookmarks_${id}`, JSON.stringify(newBookmarks));
   }, [id]);
 
+  const handlePositionChange = useCallback((pos: ReaderPosition) => {
+    console.log('Position changed:', pos);
+  }, []);
+
+  const {
+    containerRef: readerContainerRef,
+    position,
+    isLoading: isReaderLoading,
+    error: readerError,
+    nextPage,
+    prevPage,
+    goToPosition,
+  } = useBookReader({
+    book,
+    autoSaveInterval: 5000,
+    onPositionChange: handlePositionChange,
+  });
+
   const handleAddBookmark = useCallback(() => {
     if (!book) return;
     const newBookmark: Bookmark = {
@@ -525,25 +543,6 @@ export default function Reader() {
 
     fetchBook();
   }, [id]);
-
-  const handlePositionChange = useCallback((pos: ReaderPosition) => {
-    // Progress is auto-saved by useBookReader hook
-    console.log('Position changed:', pos);
-  }, []);
-
-  const {
-    containerRef: readerContainerRef,
-    position,
-    isLoading: isReaderLoading,
-    error: readerError,
-    nextPage,
-    prevPage,
-    goToPosition,
-  } = useBookReader({
-    book,
-    autoSaveInterval: 5000,
-    onPositionChange: handlePositionChange,
-  });
 
   const handleGoBack = useCallback(() => {
     navigate(-1);

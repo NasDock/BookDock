@@ -1,9 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { useDesktopStore, type LocalFile } from '../stores/desktopStore';
+import { useEffect, useState } from 'react';
+import { useDesktopStore } from '../stores/desktopStore';
 import {
   getBooks,
   addBook,
-  updateReadingProgress,
   importLocalBook,
   openFileDialog,
   openFolderDialog,
@@ -34,14 +33,10 @@ export function LibraryScreen() {
     setBooks,
     selectedBook,
     selectBook,
-    isReaderOpen,
-    setIsReaderOpen,
-    ttsState,
     isTtsMode,
     setIsTtsMode,
     settings,
     updateSettings,
-    currentPath,
   } = useDesktopStore();
 
   const [activeTab, setActiveTab] = useState<'library' | 'local'>('library');
@@ -66,6 +61,7 @@ export function LibraryScreen() {
           currentPage: b.current_page,
           addedAt: b.added_at,
           lastReadAt: b.last_read_at,
+          fileSize: b.file_size ?? 0,
         }));
         setBooks(converted);
       })
@@ -89,6 +85,7 @@ export function LibraryScreen() {
           currentPage: book.current_page,
           addedAt: book.added_at,
           lastReadAt: book.last_read_at,
+          fileSize: book.file_size ?? 0,
         };
         setBooks([apiBook, ...books]);
         await addBook(book);
@@ -115,11 +112,6 @@ export function LibraryScreen() {
       // Fallback to inline reader
       selectBook(book);
     }
-  };
-
-  const handleCloseReader = () => {
-    selectBook(null);
-    setIsReaderOpen(false);
   };
 
   const filteredBooks = books.filter(

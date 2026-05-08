@@ -9,6 +9,7 @@ interface ReaderState extends ReaderConfig {
   margin: number;
   mode: ReaderMode;
   textDirection: 'ltr' | 'rtl';
+  theme: ReaderMode;
 
   setFontSize: (size: number) => void;
   setFontFamily: (family: string) => void;
@@ -16,16 +17,19 @@ interface ReaderState extends ReaderConfig {
   setMargin: (margin: number) => void;
   setMode: (mode: ReaderMode) => void;
   setTextDirection: (direction: 'ltr' | 'rtl') => void;
+  setTheme: (theme: ReaderMode) => void;
+  toggleTheme: () => void;
   resetToDefaults: () => void;
 }
 
-const defaultConfig: ReaderConfig = {
+const defaultConfig = {
   fontSize: 18,
   fontFamily: 'Georgia, serif',
   lineHeight: 1.8,
   margin: 40,
-  mode: 'light',
-  textDirection: 'ltr',
+  mode: 'light' as ReaderMode,
+  textDirection: 'ltr' as const,
+  theme: 'light' as ReaderMode,
 };
 
 export const useReaderStore = create<ReaderState>()(
@@ -39,6 +43,8 @@ export const useReaderStore = create<ReaderState>()(
       setMargin: (margin) => set({ margin }),
       setMode: (mode) => set({ mode }),
       setTextDirection: (textDirection) => set({ textDirection }),
+      setTheme: (theme) => set({ theme }),
+      toggleTheme: () => set((state) => ({ theme: state.theme === 'dark' ? 'light' : 'dark' })),
       resetToDefaults: () => set(defaultConfig),
     }),
     {

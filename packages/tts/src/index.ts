@@ -1,4 +1,5 @@
 import { TTSVoice, getApiClient } from '@bookdock/api-client';
+export type { TTSVoice } from '@bookdock/api-client';
 
 export interface TTSConfig {
   voiceId?: string;

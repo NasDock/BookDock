@@ -1,4 +1,4 @@
-import { Book, ApiResponse } from '@bookdock/api-client';
+import { Book } from '@bookdock/api-client';
 import { getApiClient } from '@bookdock/api-client';
 
 export type ReaderMode = 'light' | 'dark' | 'sepia';
@@ -25,6 +25,12 @@ export interface BookRenderer {
   getPosition: () => ReaderPosition;
   setPosition: (position: ReaderPosition) => void;
   render: () => Promise<void>;
+  onLocationChange?: (callback: (position: ReaderPosition) => void) => void;
+  applyConfig?: (config: ReaderConfig) => void;
+  goTo?: (position: string) => Promise<void>;
+  goToPosition?: (position: ReaderPosition) => Promise<void>;
+  nextPage?: () => void;
+  prevPage?: () => void;
 }
 
 // EPUB Reader Component using epub.js
@@ -44,7 +50,7 @@ export class EpubReader implements BookRenderer {
     const { default: ePub } = await import('epubjs');
     
     if (fileBlob) {
-      this.book = ePub(fileBlob);
+      this.book = ePub(await fileBlob.arrayBuffer() as any);
     } else if (fileUrl) {
       this.book = ePub(fileUrl);
     } else {
@@ -58,7 +64,6 @@ export class EpubReader implements BookRenderer {
   async render(): Promise<void> {
     if (!this.book) throw new Error('Book not initialized');
 
-    const spine = this.book.spine;
     this.rendition = this.book.renderTo(this.container, {
       width: '100%',
       height: '100%',
@@ -78,13 +83,13 @@ export class EpubReader implements BookRenderer {
       return { percentage: 0 };
     }
 
-    const location = this.rendition.currentLocation();
-    const percentage = location.start?.percentage ?? 0;
-    const currentPage = location.start?.index ?? 0;
-    const totalPages = this.book?.spine?.length ?? 0;
+    const location = this.rendition.currentLocation() as any;
+    const percentage = location?.start?.percentage ?? 0;
+    const currentPage = location?.start?.index ?? 0;
+    const totalPages = (this.book as any)?.spine?.length ?? 0;
 
     return {
-      cfi: location.start?.cfi,
+      cfi: location?.start?.cfi,
       currentPage,
       totalPages,
       percentage: Math.round(percentage * 100),
@@ -124,10 +129,7 @@ export class EpubReader implements BookRenderer {
     };
 
     const colors = themeColors[config.mode ?? 'light'];
-    this.rendition.themes.override('body', {
-      background: colors.body,
-      color: colors.text,
-    });
+    this.rendition.themes.override('body', `${colors.body} | ${colors.text}`);
   }
 
   onLocationChange(callback: (location: ReaderPosition) => void): void {

@@ -1,4 +1,4 @@
-import React from 'react';
+import type { JSX } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { LibraryScreen } from '../screens/LibraryScreen';

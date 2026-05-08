@@ -17,6 +17,7 @@ interface Book {
   current_page?: number;
   added_at: string;
   last_read_at?: string;
+  file_size?: number;
 }
 
 // ============================================================================
@@ -277,7 +278,7 @@ export function useFileBrowser() {
 }
 
 export function useTTS() {
-  const { ttsState, setTtsState, settings, updateSettings } = useDesktopStore();
+  const { ttsState, setTtsState, settings } = useDesktopStore();
 
   const speak = useCallback(
     async (text: string, bookId?: string) => {
