@@ -179,12 +179,12 @@ class ApiClient {
 
   // Reading progress
   async updateReadingProgress(bookId: string, progress: number, currentPage?: number): Promise<ApiResponse> {
-    const { data } = await this.client.put(`/books/${bookId}/progress`, { progress, currentPage });
+    const { data } = await this.client.post(`/reading-progress/books/${bookId}`, { progress, currentPage });
     return data;
   }
 
   async getReadingProgress(bookId: string): Promise<ApiResponse<{ progress: number; currentPage?: number }>> {
-    const { data } = await this.client.get(`/books/${bookId}/progress`);
+    const { data } = await this.client.get(`/reading-progress/books/${bookId}`);
     return data;
   }
 
