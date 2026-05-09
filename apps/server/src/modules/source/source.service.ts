@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '@prisma/client';
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'crypto';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { readdir, stat, readFile } from 'fs/promises';
 import { join } from 'path';
 import { PRISMA_CLIENT } from '../../config/database.module';
 import {
@@ -20,11 +21,10 @@ import {
     SyncResultDto,
     ConnectionTestResultDto,
     SourceType,
-    WebDAVConfigDto,
+    LocalConfigDto,
     SMBConfigDto,
     FTPConfigDto,
 } from './dto/source.dto';
-import { WebDAVClientWrapper, FileItem as WebDAVFileItem } from '@bookdock/webdav';
 import { SMBClientWrapper, FileItem as SMBFileItem } from '@bookdock/smb';
 import { FTPClientWrapper, FileItem as FTPFileItem } from '@bookdock/ftp';
 
@@ -42,7 +42,7 @@ interface StoredSource {
     createdAt: string;
     updatedAt: string;
     // Connection configs (encrypted passwords)
-    webdavConfig?: WebDAVConfigDto & { _encryptedPassword?: string };
+    localConfig?: LocalConfigDto;
     smbConfig?: SMBConfigDto & { _encryptedPassword?: string };
     ftpConfig?: FTPConfigDto & { _encryptedPassword?: string };
 }
@@ -80,7 +80,7 @@ export class SourceService {
         const now = new Date().toISOString();
 
         // Encrypt passwords before storing
-        const webdavConfig = dto.webdavConfig ? this.encryptPasswordsInWebDAVConfig(dto.webdavConfig) : undefined;
+        const localConfig = dto.localConfig ?? undefined;
         const smbConfig = dto.smbConfig ? this.encryptPasswordsInSMBConfig(dto.smbConfig) : undefined;
         const ftpConfig = dto.ftpConfig ? this.encryptPasswordsInFTPConfig(dto.ftpConfig) : undefined;
 
@@ -97,7 +97,7 @@ export class SourceService {
             bookCount: 0,
             createdAt: now,
             updatedAt: now,
-            webdavConfig,
+            localConfig,
             smbConfig,
             ftpConfig,
         };
@@ -132,9 +132,7 @@ export class SourceService {
         const existing = sources[idx];
 
         // Encrypt any new passwords
-        const webdavConfig = dto.webdavConfig
-            ? this.encryptPasswordsInWebDAVConfig(dto.webdavConfig)
-            : existing.webdavConfig;
+        const localConfig = dto.localConfig ?? existing.localConfig;
         const smbConfig = dto.smbConfig
             ? this.encryptPasswordsInSMBConfig(dto.smbConfig)
             : existing.smbConfig;
@@ -149,7 +147,7 @@ export class SourceService {
             ...(dto.autoSync !== undefined && { autoSync: dto.autoSync }),
             ...(dto.syncIntervalSecs !== undefined && { syncIntervalSecs: dto.syncIntervalSecs }),
             ...(dto.formats !== undefined && { formats: dto.formats }),
-            webdavConfig,
+            localConfig,
             smbConfig,
             ftpConfig,
             updatedAt: new Date().toISOString(),
@@ -199,7 +197,7 @@ export class SourceService {
             bookCount: 0,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            webdavConfig: dto.webdavConfig,
+            localConfig: dto.localConfig,
             smbConfig: dto.smbConfig,
             ftpConfig: dto.ftpConfig,
         };
@@ -210,14 +208,16 @@ export class SourceService {
     private async testConnectionByType(source: StoredSource): Promise<ConnectionTestResultDto> {
         try {
             switch (source.type) {
-                case 'webdav': {
-                    if (!source.webdavConfig?.url) {
-                        throw new BadRequestException('WebDAV URL is required');
+                case 'local': {
+                    const localPath = source.localConfig?.path || this.configService.get<string>('app.sourceLocalPath', '/data/sources');
+                    if (!existsSync(localPath)) {
+                        throw new BadRequestException(`Local path does not exist: ${localPath}`);
                     }
-                    const config = this.decryptWebDAVConfig(source.webdavConfig);
-                    const client = new WebDAVClientWrapper();
-                    const result = await client.testConnection(config as any);
-                    return result;
+                    const items = await readdir(localPath);
+                    return {
+                        success: true,
+                        serverInfo: `Local directory at ${localPath} (${items.length} items)`,
+                    };
                 }
                 case 'smb': {
                     if (!source.smbConfig?.share) {
@@ -261,13 +261,24 @@ export class SourceService {
 
         try {
             switch (source.type) {
-                case 'webdav': {
-                    const config = this.decryptWebDAVConfig(source.webdavConfig!);
-                    const client = new WebDAVClientWrapper();
-                    await client.connect(config as any);
-                    const files = await client.listFiles(remotePath);
-                    client.disconnect();
-                    return files.map((f) => this.webdavFileToDto(f));
+                case 'local': {
+                    const localPath = source.localConfig?.path || this.configService.get<string>('app.sourceLocalPath', '/data/sources');
+                    const targetPath = join(localPath, remotePath);
+                    const entries = await readdir(targetPath, { withFileTypes: true });
+                    const files: SourceFileItemDto[] = [];
+                    for (const entry of entries) {
+                        const entryPath = join(remotePath, entry.name);
+                        const fullPath = join(localPath, entryPath);
+                        const entryStat = await stat(fullPath);
+                        files.push({
+                            path: entryPath,
+                            name: entry.name,
+                            size: entryStat.size,
+                            lastModified: entryStat.mtime,
+                            isDirectory: entry.isDirectory(),
+                        });
+                    }
+                    return files;
                 }
                 case 'smb': {
                     const config = this.decryptSMBConfig(source.smbConfig!);
@@ -307,13 +318,10 @@ export class SourceService {
 
         try {
             switch (source.type) {
-                case 'webdav': {
-                    const config = this.decryptWebDAVConfig(source.webdavConfig!);
-                    const client = new WebDAVClientWrapper();
-                    await client.connect(config as any);
-                    const data = await client.downloadFile(remotePath);
-                    client.disconnect();
-                    return data;
+                case 'local': {
+                    const localPath = source.localConfig?.path || this.configService.get<string>('app.sourceLocalPath', '/data/sources');
+                    const filePath = join(localPath, remotePath);
+                    return await readFile(filePath);
                 }
                 case 'smb': {
                     const config = this.decryptSMBConfig(source.smbConfig!);
@@ -449,24 +457,6 @@ export class SourceService {
         return decrypted.toString('utf8');
     }
 
-    private encryptPasswordsInWebDAVConfig(config: WebDAVConfigDto): WebDAVConfigDto & { _encryptedPassword?: string } {
-        if (config.password) {
-            return { ...config, _encryptedPassword: this.encrypt(config.password), password: undefined };
-        }
-        return config as WebDAVConfigDto & { _encryptedPassword?: string };
-    }
-
-    private decryptWebDAVConfig(config: WebDAVConfigDto & { _encryptedPassword?: string }): WebDAVConfigDto {
-        const decrypted: WebDAVConfigDto = { ...config };
-        if (config._encryptedPassword) {
-            decrypted.password = this.decrypt(config._encryptedPassword);
-        }
-        // Ensure required fields have defaults
-        decrypted.username ??= '';
-        decrypted.password ??= '';
-        return decrypted;
-    }
-
     private encryptPasswordsInSMBConfig(config: SMBConfigDto): SMBConfigDto & { _encryptedPassword?: string } {
         if (config.password) {
             return { ...config, _encryptedPassword: this.encrypt(config.password), password: undefined };
@@ -503,8 +493,8 @@ export class SourceService {
 
     private getBasePath(source: StoredSource): string {
         switch (source.type) {
-            case 'webdav':
-                return source.webdavConfig?.basePath || '/';
+            case 'local':
+                return source.localConfig?.path || this.configService.get<string>('app.sourceLocalPath', '/data/sources');
             case 'smb':
                 return source.smbConfig?.basePath || '/';
             case 'ftp':
@@ -526,10 +516,10 @@ export class SourceService {
             id: source.id,
             name: source.name,
             type: source.type,
-            url: source.webdavConfig?.url || source.smbConfig?.share,
+            url: source.smbConfig?.share,
             host: source.ftpConfig?.host,
             basePath: this.getBasePath(source),
-            username: source.webdavConfig?.username || source.smbConfig?.username || source.ftpConfig?.username,
+            username: source.smbConfig?.username || source.ftpConfig?.username,
             enabled: source.enabled,
             autoSync: source.autoSync,
             syncIntervalSecs: source.syncIntervalSecs,
@@ -539,16 +529,6 @@ export class SourceService {
             bookCount: source.bookCount,
             createdAt: new Date(source.createdAt),
             updatedAt: new Date(source.updatedAt),
-        };
-    }
-
-    private webdavFileToDto(file: WebDAVFileItem): SourceFileItemDto {
-        return {
-            path: file.path,
-            name: file.name,
-            size: file.size,
-            lastModified: file.lastModified,
-            isDirectory: file.isDirectory,
         };
     }
 

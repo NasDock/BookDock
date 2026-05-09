@@ -77,8 +77,8 @@ export function useBookReader({
           const progressResponse = await apiClient.getReadingProgress(book.id);
           if (progressResponse.success && progressResponse.data) {
             const savedPosition: ReaderPosition = {
-              percentage: progressResponse.data.progress,
-              currentPage: progressResponse.data.currentPage,
+              percentage: progressResponse.data.progressPct,
+              currentPage: progressResponse.data.currentChapter,
             };
             await newReader.setPosition(savedPosition);
             setPosition(savedPosition);

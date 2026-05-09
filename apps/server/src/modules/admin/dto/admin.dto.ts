@@ -15,7 +15,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { UserRole } from '@prisma/client';
+import { UserRole } from '../../../common/types/prisma-compat';
 
 export class UserQueryDto {
   @ApiPropertyOptional({ default: 1 })

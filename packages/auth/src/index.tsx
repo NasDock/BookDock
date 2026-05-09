@@ -1,6 +1,20 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
 import { User, getApiClient, ApiResponse } from '@bookdock/api-client';
 
+export function PremiumBadge({ className }: { className?: string }) {
+  return (
+    <span
+      className={[
+        'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold',
+        'bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-sm',
+        className || '',
+      ].join(' ')}
+    >
+      VIP
+    </span>
+  );
+}
+
 export interface AuthState {
   user: User | null;
   token: string | null;

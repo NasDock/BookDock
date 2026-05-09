@@ -12,8 +12,8 @@ import {
   IsArray,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ReadingStatus } from '../../../common/types/prisma-compat';
 import { Type } from 'class-transformer';
-import { ReadingStatus } from '@prisma/client';
 
 export class UpdateReadingProgressDto {
   @ApiPropertyOptional({ enum: ReadingStatus })
@@ -44,6 +44,28 @@ export class UpdateReadingProgressDto {
   @IsString()
   @IsOptional()
   bookmarkNote?: string;
+
+  @ApiPropertyOptional({ description: 'Overall progress percentage (0-100)' })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  @IsOptional()
+  progressPct?: number;
+
+  @ApiPropertyOptional({ description: 'Current chapter index (for txt/epub chapter-based reading)' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  currentChapter?: number;
+
+  @ApiPropertyOptional({ description: 'Scroll offset within current chapter (pixels)' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  scrollOffset?: number;
 }
 
 export class ReadingProgressQueryDto {
@@ -94,6 +116,12 @@ export class ReadingProgressResponseDto {
 
   @ApiProperty()
   progressPct: number;
+
+  @ApiPropertyOptional()
+  currentChapter?: number;
+
+  @ApiPropertyOptional()
+  scrollOffset?: number;
 
   @ApiProperty()
   timeSpentSecs: number;

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { PrismaClient, UserRole } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
@@ -90,7 +90,7 @@ export class AdminService {
   ): Promise<AdminUserResponseDto> {
     // Prevent self-demotion from admin
     const admin = await this.prisma.user.findUnique({ where: { id: adminId } });
-    if (adminId === targetUserId && dto.role && dto.role !== UserRole.admin) {
+    if (adminId === targetUserId && dto.role && dto.role !== 'admin') {
       throw new ForbiddenException('Cannot demote yourself from admin');
     }
 
@@ -117,7 +117,7 @@ export class AdminService {
 
     const user = await this.prisma.user.findUnique({ where: { id: targetUserId } });
     if (!user) throw new NotFoundException(`User ${targetUserId} not found`);
-    if (user.role === UserRole.admin) {
+    if (user.role === 'admin') {
       throw new ForbiddenException('Cannot delete another admin');
     }
 

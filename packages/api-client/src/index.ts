@@ -167,6 +167,16 @@ class ApiClient {
     return data;
   }
 
+  async getChapters(id: string): Promise<ApiResponse<{ title: string; index: number }[]>> {
+    const { data } = await this.client.get(`/books/${id}/chapters`);
+    return data;
+  }
+
+  async getChapterContent(id: string, chapterIndex: number): Promise<ApiResponse<{ title: string; content: string }>> {
+    const { data } = await this.client.get(`/books/${id}/content?chapter=${chapterIndex}`);
+    return data;
+  }
+
   async getBookFileBlob(id: string): Promise<Blob> {
     const { data } = await this.client.get(`/books/${id}/download`, { responseType: 'blob' });
     return data;
@@ -178,12 +188,16 @@ class ApiClient {
   }
 
   // Reading progress
-  async updateReadingProgress(bookId: string, progress: number, currentPage?: number): Promise<ApiResponse> {
-    const { data } = await this.client.post(`/reading-progress/books/${bookId}`, { progress, currentPage });
+  async updateReadingProgress(bookId: string, progressPct: number, currentChapter?: number, scrollOffset?: number): Promise<ApiResponse> {
+    const { data } = await this.client.post(`/reading-progress/books/${bookId}`, {
+      progressPct,
+      currentChapter,
+      scrollOffset,
+    });
     return data;
   }
 
-  async getReadingProgress(bookId: string): Promise<ApiResponse<{ progress: number; currentPage?: number }>> {
+  async getReadingProgress(bookId: string): Promise<ApiResponse<{ progressPct: number; currentChapter?: number; scrollOffset?: number }>> {
     const { data } = await this.client.get(`/reading-progress/books/${bookId}`);
     return data;
   }

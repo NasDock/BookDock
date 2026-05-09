@@ -116,6 +116,22 @@ export class BooksController {
     return res.send(stream);
   }
 
+  @Get(':id/chapters')
+  @ApiOperation({ summary: 'Get book chapters' })
+  async getChapters(@Param('id', ParseUUIDPipe) id: string) {
+    return this.booksService.getChapters(id);
+  }
+
+  @Get(':id/content')
+  @ApiOperation({ summary: 'Get chapter content' })
+  async getChapterContent(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('chapter') chapter: string,
+  ) {
+    const index = parseInt(chapter || '0', 10);
+    return this.booksService.getChapterContent(id, index);
+  }
+
   @Get(':id/download')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -125,11 +141,12 @@ export class BooksController {
     @Res() res: Response,
   ) {
     const { path, filename, contentType } = await this.booksService.download(id);
+    const encoded = encodeURIComponent(filename);
     res.set({
       'Content-Type': contentType,
-      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Disposition': `attachment; filename="${encoded}"; filename*=UTF-8''${encoded}`,
     });
-    return res.download(path);
+    res.download(path);
   }
 
   @Post(':id/tags')

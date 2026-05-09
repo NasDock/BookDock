@@ -1,5 +1,4 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UserRole } from '@prisma/client';
 import {
     IsEmail,
     IsEnum,
@@ -9,6 +8,7 @@ import {
     MinLength,
     IsPhoneNumber,
 } from 'class-validator';
+import { UserRole } from '../../../common/types/prisma-compat';
 
 export class RegisterDto {
   @ApiProperty({ example: 'user@example.com' })
@@ -32,16 +32,17 @@ export class RegisterDto {
   @IsOptional()
   displayName?: string;
 
-  @ApiPropertyOptional({ enum: UserRole, default: UserRole.user })
+  @ApiPropertyOptional({ enum: UserRole, default: 'user' })
   @IsEnum(UserRole)
   @IsOptional()
   role?: UserRole;
 }
 
 export class LoginDto {
-  @ApiProperty({ example: 'user@example.com' })
-  @IsEmail()
-  email: string;
+  @ApiProperty({ example: 'johndoe' })
+  @IsString()
+  @MinLength(2)
+  username: string;
 
   @ApiProperty({ example: 'password123' })
   @IsString()
@@ -116,13 +117,16 @@ export class UserInfoDto {
   @ApiPropertyOptional()
   avatarUrl?: string;
 
+  @ApiPropertyOptional()
+  membership?: string;
+
   @ApiProperty()
   createdAt: Date;
 }
 
 export class AuthResponseDto {
   @ApiProperty()
-  accessToken: string;
+  token: string;
 
   @ApiProperty()
   refreshToken: string;

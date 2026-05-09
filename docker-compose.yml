@@ -69,7 +69,7 @@ services:
       # TTS Service
       TTS_API_URL: http://tts:5000
       # App
-      PORT: 3000
+      PORT: 8080
       API_BASE_URL: ${API_BASE_URL:-http://localhost}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
     volumes:
@@ -82,7 +82,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/health", "-o", "/dev/null"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health", "-o", "/dev/null"]
       interval: 30s
       timeout: 10s
       retries: 3

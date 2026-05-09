@@ -4,10 +4,13 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { PrismaClient, Book, BookFormat } from '@prisma/client';
+import { PrismaClient, Book } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { createReadStream, statSync, existsSync } from 'fs';
+import { readdir, stat, readFile } from 'fs/promises';
 import { join } from 'path';
+import * as iconv from 'iconv-lite';
+import { BookFormat } from '../../common/types/prisma-compat';
 import { PRISMA_CLIENT } from '../../config/database.module';
 import {
   CreateBookDto,
@@ -79,16 +82,165 @@ export class BooksService {
     return this.toBookResponse(book);
   }
 
+  async scanLocalBooks(): Promise<number> {
+    const ebookExts = ['txt', 'epub', 'pdf', 'mobi', 'azw3', 'fb2', 'djvu'];
+    let added = 0;
+
+    try {
+      const entries = await readdir(this.nasEbookPath);
+      for (const entry of entries) {
+        const ext = entry.split('.').pop()?.toLowerCase() || '';
+        if (!ebookExts.includes(ext)) continue;
+
+        const filePath = entry;
+        const existing = await this.prisma.book.findFirst({
+          where: { filePath, isDeleted: false },
+        });
+        if (existing) continue;
+
+        const fullPath = join(this.nasEbookPath, entry);
+        const fileStat = await stat(fullPath);
+        const title = entry.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+
+        await this.prisma.book.create({
+          data: {
+            title,
+            author: 'Unknown',
+            format: ext,
+            filePath,
+            fileSize: BigInt(fileStat.size),
+            language: 'zh',
+            metadata: '{}',
+          },
+        });
+        added++;
+      }
+    } catch {
+      // ignore scan errors
+    }
+    return added;
+  }
+
+
+  // ─── Chapter Parsing ─────────────────────────────────────────────────────
+
+  private async readTextFile(fullPath: string): Promise<string> {
+    const buffer = await readFile(fullPath);
+    // UTF-8 BOM
+    if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
+      return buffer.toString('utf-8');
+    }
+    // Try UTF-8 first, fallback to GBK if replacement characters appear
+    const utf8 = buffer.toString('utf-8');
+    if (!utf8.includes('\uFFFD')) {
+      return utf8;
+    }
+    return iconv.decode(buffer, 'gbk');
+  }
+
+  private async parseTxtChapters(filePath: string): Promise<{ title: string; startLine: number }[]> {
+    const fullPath = join(this.nasEbookPath, filePath);
+    if (!existsSync(fullPath)) return [];
+
+    const text = await this.readTextFile(fullPath);
+    const lines = text.split(/\r?\n/);
+
+    // Patterns for chapter detection (Chinese novels)
+    const chapterPatterns = [
+      /^\s*前言\s*$/i,
+      /^\s*引子\s*$/i,
+      /^\s*楔子\s*$/i,
+      /^\s*序[章言]?\s*$/i,
+      /^\s*第[一二三四五六七八九十百千万零\d]+[章回节卷部集]\s*.*/,
+      /^\s*第\d+[章回节卷部集]\s*.*/,
+      /^\s*[\d零一二三四五六七八九十百千万]+\s*[、.．]\s*.*/,
+      /^\s*附录[一二三四五六七八九十]?\s*$/i,
+      /^\s*后记\s*$/i,
+      /^\s*尾声\s*$/i,
+    ];
+
+    const chapters: { title: string; startLine: number }[] = [];
+    lines.forEach((line, index) => {
+      for (const pattern of chapterPatterns) {
+        if (pattern.test(line)) {
+          chapters.push({ title: line.trim(), startLine: index });
+          break;
+        }
+      }
+    });
+
+    // If no chapters found, treat whole file as one chapter
+    if (chapters.length === 0) {
+      chapters.push({ title: '正文', startLine: 0 });
+    }
+
+    return chapters;
+  }
+
+  async getChapters(id: string): Promise<{ title: string; index: number }[]> {
+    const book = await this.prisma.book.findUnique({
+      where: { id, isDeleted: false },
+    });
+    if (!book) throw new NotFoundException('Book not found');
+
+    if (book.format === 'txt') {
+      const chapters = await this.parseTxtChapters(book.filePath);
+      return chapters.map((c, i) => ({ title: c.title, index: i }));
+    }
+
+    // For non-txt, return a single chapter placeholder
+    return [{ title: '全文', index: 0 }];
+  }
+
+  async getChapterContent(id: string, chapterIndex: number): Promise<{ title: string; content: string }> {
+    const book = await this.prisma.book.findUnique({
+      where: { id, isDeleted: false },
+    });
+    if (!book) throw new NotFoundException('Book not found');
+
+    if (book.format !== 'txt') {
+      throw new NotFoundException('Chapter content only supported for txt files');
+    }
+
+    const chapters = await this.parseTxtChapters(book.filePath);
+    if (chapterIndex < 0 || chapterIndex >= chapters.length) {
+      throw new NotFoundException('Chapter not found');
+    }
+
+    const fullPath = join(this.nasEbookPath, book.filePath);
+    const text = await this.readTextFile(fullPath);
+    const lines = text.split(/\r?\n/);
+
+    const startLine = chapters[chapterIndex].startLine;
+    const endLine = chapterIndex + 1 < chapters.length
+      ? chapters[chapterIndex + 1].startLine
+      : lines.length;
+
+    const contentLines = lines.slice(startLine + 1, endLine); // skip chapter title line
+    const content = contentLines.join('\n').trim();
+
+    return {
+      title: chapters[chapterIndex].title,
+      content: content || '(本章无内容)',
+    };
+  }
+
   async findAll(query: BookQueryDto): Promise<PaginatedBooksDto> {
     const { page = 1, limit = 20, search, format, author, language, sortBy = 'createdAt', order = 'desc' } = query;
     const skip = (page - 1) * limit;
+
+    // Auto-scan local books if DB is empty
+    const totalCount = await this.prisma.book.count({ where: { isDeleted: false } });
+    if (totalCount === 0) {
+      await this.scanLocalBooks();
+    }
 
     const where: Record<string, unknown> = { isDeleted: false };
     if (format) where.format = format;
     if (language) where.language = language;
     if (author) where.author = { contains: author, mode: 'insensitive' };
     if (search) {
-      where.ftsVector = { search };
+      where.title = { contains: search, mode: 'insensitive' };
     }
 
     const [books, total] = await Promise.all([
@@ -105,7 +257,7 @@ export class BooksService {
     ]);
 
     return {
-      data: books.map((b) => this.toBookResponse(b)),
+      books: books.map((b) => this.toBookResponse(b)),
       total,
       page,
       limit,
@@ -209,7 +361,7 @@ export class BooksService {
     return {
       path: join(this.nasEbookPath, book.filePath),
       filename: `${book.title}.${book.format}`,
-      contentType: formatMimeTypes[book.format],
+      contentType: formatMimeTypes[book.format as BookFormat],
     };
   }
 
@@ -217,7 +369,7 @@ export class BooksService {
     const books = await this.prisma.$queryRaw<
       Array<{
         id: string; title: string; author: string | null; description: string | null;
-        cover_url: string | null; format: BookFormat; language: string;
+        cover_url: string | null; format: string; language: string;
       }>
     >`
       SELECT id, title, author, description, cover_url, format, language
@@ -235,7 +387,7 @@ export class BooksService {
       author: b.author || undefined,
       description: b.description || undefined,
       coverUrl: b.cover_url || undefined,
-      format: b.format,
+      format: b.format as BookFormat,
       language: b.language,
       filePath: '',
       metadata: {},
@@ -306,7 +458,7 @@ export class BooksService {
     return this.findOne(bookId);
   }
 
-  private toBookResponse(book: any): BookResponseDto {
+  private toBookResponse(book: any): BookResponseDto & { fileType: string; addedAt: Date } {
     return {
       id: book.id,
       title: book.title,
@@ -317,18 +469,20 @@ export class BooksService {
       publishedDate: book.publishedDate || undefined,
       language: book.language,
       format: book.format,
+      fileType: book.format,
       filePath: book.filePath,
       fileHash: book.fileHash || undefined,
-      fileSize: book.fileSize || undefined,
+      fileSize: book.fileSize ? Number(book.fileSize) : undefined,
       pageCount: book.pageCount || undefined,
       coverUrl: book.coverUrl || undefined,
       metadata: book.metadata || {},
       readCount: book.readCount,
       downloadCount: book.downloadCount,
       createdAt: book.createdAt,
+      addedAt: book.createdAt,
       updatedAt: book.updatedAt,
       tags: book.bookTags?.map((bt: any) => bt.tag.name) || [],
-    };
+    } as any;
   }
 
   private generateCoverPlaceholder(title: string, filePath: string): string {

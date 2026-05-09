@@ -97,139 +97,11 @@ const BookCard: React.FC<{ book: Book; onSelect: () => void }> = ({ book, onSele
   );
 };
 
-const BookDetailModal: React.FC<{ book: Book; onClose: () => void }> = ({ book, onClose }) => {
-  const navigate = useNavigate();
-  const { deleteBook } = useLibraryStore();
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
-
-  const nasBook = book as BookWithSource;
-  const isNas = !!nasBook._sourceId;
-
-  const handleRead = () => {
-    onClose();
-    if (isNas) {
-      // For NAS books, we need to download first or open a streaming reader
-      navigate(`/book/${book.id}?source=${nasBook._sourceId}&path=${encodeURIComponent(book.filePath)}`);
-    } else {
-      navigate(`/book/${book.id}`);
-    }
-  };
-
-  const handleTTS = () => {
-    onClose();
-    navigate(`/book/${book.id}/tts`);
-  };
-
-  const handleDelete = async () => {
-    if (window.confirm(`确定要删除《${book.title}》吗？`)) {
-      setIsDeleting(true);
-      await deleteBook(book.id);
-      onClose();
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto animate-slideUp"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="relative">
-          <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700">
-            {book.coverUrl ? (
-              <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500">
-                <span className="text-6xl text-white font-bold">{book.title.charAt(0)}</span>
-              </div>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 w-8 h-8 bg-black/50 rounded-full flex items-center justify-center text-white hover:bg-black/70 transition-colors"
-          >
-            ✕
-          </button>
-        </div>
-
-        <div className="p-6">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white">{book.title}</h2>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">{book.author || '未知作者'}</p>
-
-          <div className="flex flex-wrap gap-2 mt-4">
-            <span className="px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-sm">
-              {book.fileType.toUpperCase()}
-            </span>
-            <span className="px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-sm">
-              {formatFileSize(book.fileSize)}
-            </span>
-            <span className="px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-sm">
-              添加于 {formatDate(book.addedAt)}
-            </span>
-          </div>
-
-          {book.description && (
-            <p className="mt-4 text-gray-600 dark:text-gray-300 text-sm leading-relaxed">
-              {book.description}
-            </p>
-          )}
-
-          {book.publisher && (
-            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-              出版社: {book.publisher}
-            </p>
-          )}
-
-          {isNas && (
-            <div className="mt-3 p-2 bg-orange-50 dark:bg-orange-900/20 rounded-lg text-xs text-orange-600 dark:text-orange-300">
-              ☁️ 来自 NAS 书源 · {nasBook._sourceType?.toUpperCase()}
-            </div>
-          )}
-
-          {book.readingProgress !== undefined && book.readingProgress > 0 && (
-            <div className="mt-4">
-              <div className="flex items-center justify-between text-sm mb-1">
-                <span className="text-gray-500 dark:text-gray-400">阅读进度</span>
-                <span className="font-medium text-blue-500">{book.readingProgress}%</span>
-              </div>
-              <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full">
-                <div
-                  className="h-full bg-blue-500 rounded-full transition-all"
-                  style={{ width: `${book.readingProgress}%` }}
-                />
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-3 mt-6">
-            <Button className="flex-1" onClick={handleRead}>
-              📖 {book.readingProgress ? '继续阅读' : '开始阅读'}
-            </Button>
-            <Button variant="secondary" className="flex-1" onClick={handleTTS}>
-              🔊 听书
-            </Button>
-          </div>
-
-          <Button
-            variant="ghost"
-            className="w-full mt-3 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-            onClick={handleDelete}
-            disabled={isDeleting}
-          >
-            {isDeleting ? '删除中...' : '🗑️ 删除'}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 export default function Library() {
   const navigate = useNavigate();
   const { books, isLoading, error, searchQuery, fetchBooks, setSearchQuery } = useLibraryStore();
   const { user } = useAuthStore();
-  const [selectedBook, setSelectedBook] = useState<Book | null>(null);
+
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   // Source filter state
@@ -396,7 +268,7 @@ export default function Library() {
   };
 
   const handleBookSelect = (book: Book) => {
-    setSelectedBook(book);
+    navigate(`/book/${book.id}`);
   };
 
   const toggleSortOrder = () => {
@@ -698,7 +570,7 @@ export default function Library() {
       </section>
 
       {/* Book Detail Modal */}
-      {selectedBook && <BookDetailModal book={selectedBook} onClose={() => setSelectedBook(null)} />}
+
     </div>
   );
 }

@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useEffect } from 'react';
 import { Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
-import { useAuth, PremiumBadge } from '@bookdock/auth';
+import { AuthProvider, useAuth, PremiumBadge } from '@bookdock/auth';
 import { initApiClient } from '@bookdock/api-client';
 import { Button } from '@bookdock/ui';
 
@@ -168,6 +168,19 @@ function Layout({ children }: { children: React.ReactNode }) {
 // ============ App Routes ============
 
 function AppRoutes() {
+  const { token } = useAuth();
+
+  useEffect(() => {
+    initApiClient({
+      baseURL: apiBaseUrl,
+      getAuthToken: () => token || localStorage.getItem('bookdock_auth_token'),
+      onAuthError: () => {
+        localStorage.removeItem('bookdock_auth_token');
+        localStorage.removeItem('bookdock_auth_user');
+      },
+    });
+  }, [token]);
+
   return (
     <Layout>
       <Routes>
@@ -224,19 +237,6 @@ function AppRoutes() {
 }
 
 function App() {
-  const { token } = useAuth();
-
-  useEffect(() => {
-    initApiClient({
-      baseURL: apiBaseUrl,
-      getAuthToken: () => token || localStorage.getItem('bookdock_auth_token'),
-      onAuthError: () => {
-        localStorage.removeItem('bookdock_auth_token');
-        localStorage.removeItem('bookdock_auth_user');
-      },
-    });
-  }, [token]);
-
   return (
     <AuthProvider
       apiBaseUrl={apiBaseUrl}

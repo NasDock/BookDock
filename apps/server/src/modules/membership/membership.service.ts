@@ -160,11 +160,12 @@ export class MembershipService {
     // For now, we'll simulate by updating user role
     const plan = this.getPlan(dto.plan);
 
+    const existingPrefs = JSON.parse((await this.prisma.user.findUnique({ where: { id: userId } }))?.preferences || '{}');
     const sub = await this.prisma.user.update({
       where: { id: userId },
       data: {
-        preferences: {
-          ...((await this.prisma.user.findUnique({ where: { id: userId } }))?.preferences as object || {}),
+        preferences: JSON.stringify({
+          ...existingPrefs,
           subscription: {
             plan: dto.plan,
             status: SubscriptionStatus.ACTIVE,
@@ -172,7 +173,7 @@ export class MembershipService {
             currentPeriodEnd: new Date(Date.now() + 30 * 24 * 3600 * 1000),
             autoRenew: true,
           },
-        },
+        }),
       },
     });
 
@@ -198,13 +199,13 @@ export class MembershipService {
     const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
-        preferences: {
+        preferences: JSON.stringify({
           subscription: {
             plan: dto.plan || current.plan,
             status: current.status,
             autoRenew: dto.autoRenew !== undefined ? dto.autoRenew : current.autoRenew,
           },
-        },
+        }),
       },
     });
 
@@ -222,14 +223,14 @@ export class MembershipService {
     await this.prisma.user.update({
       where: { id: userId },
       data: {
-        preferences: {
+        preferences: JSON.stringify({
           subscription: {
             plan: current.plan,
             status: SubscriptionStatus.CANCELLED,
             cancelledAt: new Date(),
             autoRenew: false,
           },
-        },
+        }),
       },
     });
 

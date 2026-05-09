@@ -10,7 +10,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { TtsVoiceGender } from '@prisma/client';
+import { TtsVoiceGender } from '../../../common/types/prisma-compat';
 
 export class CreateTtsJobDto {
   @ApiPropertyOptional()

@@ -14,7 +14,7 @@ import {
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { BookFormat } from '@prisma/client';
+import { BookFormat } from '../../../common/types/prisma-compat';
 
 export class CreateBookDto {
   @ApiProperty({ example: 'The Great Gatsby' })
@@ -186,7 +186,7 @@ export class BookResponseDto {
   fileHash?: string;
 
   @ApiPropertyOptional()
-  fileSize?: bigint;
+  fileSize?: number;
 
   @ApiPropertyOptional()
   pageCount?: number;
@@ -215,7 +215,7 @@ export class BookResponseDto {
 
 export class PaginatedBooksDto {
   @ApiProperty({ type: [BookResponseDto] })
-  data: BookResponseDto[];
+  books: BookResponseDto[];
 
   @ApiProperty()
   total: number;

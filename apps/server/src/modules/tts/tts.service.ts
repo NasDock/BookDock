@@ -7,7 +7,8 @@ import {
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { PrismaClient, TtsJobStatus } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
+import { TtsJobStatus } from '../../common/types/prisma-compat';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { PRISMA_CLIENT } from '../../config/database.module';

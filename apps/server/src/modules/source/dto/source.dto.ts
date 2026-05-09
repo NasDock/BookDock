@@ -16,34 +16,14 @@ import {
     IsObject,
 } from 'class-validator';
 
-export type SourceType = 'webdav' | 'smb' | 'ftp';
+export type SourceType = 'local' | 'smb' | 'ftp';
 
-// ─── WebDAV Config ───────────────────────────────────────────────────────────
+// ─── Local Config ────────────────────────────────────────────────────────────
 
-export class WebDAVConfigDto {
-    @ApiProperty({ example: 'https://nas.example.com/dav' })
+export class LocalConfigDto {
+    @ApiProperty({ example: '/data/ebooks', description: 'Local filesystem path to the ebook directory' })
     @IsString()
-    url: string;
-
-    @ApiPropertyOptional({ example: 'admin' })
-    @IsString()
-    @IsOptional()
-    username?: string;
-
-    @ApiPropertyOptional()
-    @IsString()
-    @IsOptional()
-    password?: string;
-
-    @ApiPropertyOptional({ description: 'Ignore SSL certificate errors', default: false })
-    @IsBoolean()
-    @IsOptional()
-    rejectUnauthorized?: boolean;
-
-    @ApiPropertyOptional({ example: '/ebooks' })
-    @IsString()
-    @IsOptional()
-    basePath?: string;
+    path: string;
 }
 
 // ─── SMB Config ──────────────────────────────────────────────────────────────
@@ -126,16 +106,16 @@ export class CreateSourceDto {
     @MaxLength(200)
     name: string;
 
-    @ApiProperty({ enum: ['webdav', 'smb', 'ftp'] })
-    @IsEnum(['webdav', 'smb', 'ftp'])
+    @ApiProperty({ enum: ['local', 'smb', 'ftp'] })
+    @IsEnum(['local', 'smb', 'ftp'])
     type: SourceType;
 
-    @ApiPropertyOptional({ description: 'WebDAV connection config' })
+    @ApiPropertyOptional({ description: 'Local filesystem connection config' })
     @IsObject()
     @IsOptional()
     @ValidateNested()
     @Type(() => Object)
-    webdavConfig?: WebDAVConfigDto;
+    localConfig?: LocalConfigDto;
 
     @ApiPropertyOptional({ description: 'SMB connection config' })
     @IsObject()
@@ -181,12 +161,12 @@ export class UpdateSourceDto {
     @IsOptional()
     enabled?: boolean;
 
-    @ApiPropertyOptional({ description: 'WebDAV connection config' })
+    @ApiPropertyOptional({ description: 'Local filesystem connection config' })
     @IsObject()
     @IsOptional()
     @ValidateNested()
     @Type(() => Object)
-    webdavConfig?: WebDAVConfigDto;
+    localConfig?: LocalConfigDto;
 
     @ApiPropertyOptional({ description: 'SMB connection config' })
     @IsObject()
@@ -228,11 +208,11 @@ export class SourceResponseDto {
     @ApiProperty()
     name: string;
 
-    @ApiProperty({ enum: ['webdav', 'smb', 'ftp'] })
+    @ApiProperty({ enum: ['local', 'smb', 'ftp'] })
     type: SourceType;
 
     @ApiPropertyOptional()
-    url?: string;        // WebDAV URL or SMB share
+    url?: string;        // SMB share
 
     @ApiPropertyOptional()
     host?: string;        // FTP host

@@ -9,73 +9,42 @@
 
 generator client {
   provider        = "prisma-client-js"
-  previewFeatures = ["fullTextSearch", "fullTextIndex"]
+
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
+
 }
 
 // =============================================================================
 // Enums (map to PostgreSQL ENUMs)
 // =============================================================================
 
-enum UserRole {
-  admin
-  user
-  guest
-}
 
-enum BookFormat {
-  epub
-  pdf
-  mobi
-  azw3
-  fb2
-  txt
-  djvu
-  other
-}
 
-enum ReadingStatus {
-  unread
-  reading
-  completed
-  abandoned
-}
 
-enum TtsJobStatus {
-  pending
-  processing
-  completed
-  failed
-}
 
-enum TtsVoiceGender {
-  male
-  female
-  neutral
-}
 
 // =============================================================================
 // Models
 // =============================================================================
 
 model User {
-  id            String    @id @default(uuid()) @db.Uuid
-  email         String    @unique @db.VarChar(255)
-  username      String    @unique @db.VarChar(100)
-  passwordHash  String    @map("password_hash") @db.VarChar(255)
-  displayName   String?   @map("display_name") @db.VarChar(200)
-  role          UserRole  @default(user)
+  id            String    @id @default(uuid())
+  email         String    @unique
+  username      String    @unique
+  passwordHash  String    @map("password_hash")
+  displayName   String?   @map("display_name")
+  role          String    @default("user")
   avatarUrl     String?   @map("avatar_url")
-  preferences   Json      @default("{}")
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  lastLoginAt   DateTime? @map("last_login_at") @db.Timestamptz
+  preferences   String    @default("{}")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  lastLoginAt   DateTime? @map("last_login_at")
   isActive      Boolean   @default(true) @map("is_active")
-  phone         String?   @unique @map("phone") @db.VarChar(20)
+  phone         String?   @unique @map("phone")
 
   // Relations
   collections        Collection[]
@@ -91,26 +60,26 @@ model User {
 }
 
 model Book {
-  id            String      @id @default(uuid()) @db.Uuid
-  title         String      @db.VarChar(500)
-  author        String?     @db.VarChar(500)
-  authorSort    String?     @map("author_sort") @db.VarChar(500)
-  description   String?     @db.Text
-  isbn          String?     @map("isbn") @db.VarChar(20)
-  publisher     String?     @db.VarChar(300)
-  publishedDate DateTime?   @map("published_date") @db.Date
-  language      String      @default("en") @db.VarChar(10)
-  format        BookFormat  @default(other)
-  filePath      String      @map("file_path") @db.Text
-  fileHash      String?     @map("file_hash") @db.VarChar(64)
+  id            String      @id @default(uuid())
+  title         String     
+  author        String?    
+  authorSort    String?     @map("author_sort")
+  description   String?    
+  isbn          String?     @map("isbn")
+  publisher     String?    
+  publishedDate DateTime?   @map("published_date")
+  language      String      @default("en")
+  format        String      @default("other")
+  filePath      String      @map("file_path")
+  fileHash      String?     @map("file_hash")
   fileSize      BigInt?     @map("file_size")
   pageCount     Int?        @map("page_count")
-  coverUrl      String?     @map("cover_url") @db.Text
-  metadata      Json        @default("{}")
+  coverUrl      String?     @map("cover_url")
+  metadata      String      @default("{}")
   readCount     Int         @default(0) @map("read_count")
   downloadCount Int         @default(0) @map("download_count")
-  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
   isDeleted     Boolean     @default(false) @map("is_deleted")
 
   // Full-text search (PostgreSQL tsvector - managed via raw SQL trigger)
@@ -135,15 +104,15 @@ model Book {
 }
 
 model Collection {
-  id          String    @id @default(uuid()) @db.Uuid
-  userId      String    @map("user_id") @db.Uuid
-  name        String    @db.VarChar(200)
-  description String?   @db.Text
-  coverUrl    String?   @map("cover_url") @db.Text
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  name        String   
+  description String?  
+  coverUrl    String?   @map("cover_url")
   isPublic    Boolean   @default(false) @map("is_public")
   sortOrder   Int       @default(0) @map("sort_order")
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   // Relations
   user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -154,11 +123,11 @@ model Collection {
 }
 
 model CollectionItem {
-  id           String   @id @default(uuid()) @db.Uuid
-  collectionId String   @map("collection_id") @db.Uuid
-  bookId       String   @map("book_id") @db.Uuid
+  id           String   @id @default(uuid())
+  collectionId String   @map("collection_id")
+  bookId       String   @map("book_id")
   sortOrder    Int      @default(0) @map("sort_order")
-  addedAt      DateTime @default(now()) @map("added_at") @db.Timestamptz
+  addedAt      DateTime @default(now()) @map("added_at")
 
   // Relations
   collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
@@ -171,23 +140,25 @@ model CollectionItem {
 }
 
 model ReadingProgress {
-  id            String        @id @default(uuid()) @db.Uuid
-  userId        String        @map("user_id") @db.Uuid
-  bookId        String        @map("book_id") @db.Uuid
-  status        ReadingStatus @default(unread)
+  id            String        @id @default(uuid())
+  userId        String        @map("user_id")
+  bookId        String        @map("book_id")
+  status        String        @default("unread")
   // EPUB location
-  epubCfi       String?       @map("epub_cfi") @db.Text
+  epubCfi       String?       @map("epub_cfi")
   // PDF location
   pdfPage       Int?          @map("pdf_page")
   // Mobi location
   mobiLocation  Int?          @map("mobi_location")
   // Progress
-  progressPct   Decimal       @default(0) @map("progress_pct") @db.Decimal(5, 2)
+  progressPct   Float         @default(0) @map("progress_pct")
+  currentChapter Int?         @map("current_chapter")
+  scrollOffset  Int?          @map("scroll_offset")
   timeSpentSecs Int           @default(0) @map("time_spent_secs")
-  lastReadAt    DateTime?     @map("last_read_at") @db.Timestamptz
-  bookmarkNote  String?       @map("bookmark_note") @db.Text
-  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  lastReadAt    DateTime?     @map("last_read_at")
+  bookmarkNote  String?       @map("bookmark_note")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -201,25 +172,25 @@ model ReadingProgress {
 }
 
 model Bookmark {
-  id             String    @id @default(uuid()) @db.Uuid
-  userId         String    @map("user_id") @db.Uuid
-  bookId         String    @map("book_id") @db.Uuid
-  chapterId      String?   @map("chapter_id") @db.Uuid
-  cfi            String?   @db.Text
-  percentage     Decimal?  @map("percentage") @db.Decimal(5, 2)
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  bookId         String    @map("book_id")
+  chapterId      String?   @map("chapter_id")
+  cfi            String?  
+  percentage     Float?    @map("percentage")
   // For highlights
   startOffset    Int?      @map("start_offset")
   endOffset      Int?      @map("end_offset")
-  text           String?   @db.Text
+  text           String?  
   // Legacy fields (kept for backwards compat)
-  title          String?   @db.VarChar(200)
-  location       String    @db.Text
-  locationType   String    @default("cfi") @map("location_type") @db.VarChar(20)
-  note           String?   @db.Text
-  highlightText  String?   @map("highlight_text") @db.Text
-  highlightColor String?   @map("highlight_color") @db.VarChar(20)
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  title          String?  
+  location       String   
+  locationType   String    @default("cfi") @map("location_type")
+  note           String?  
+  highlightText  String?   @map("highlight_text")
+  highlightColor String?   @map("highlight_color")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -231,25 +202,25 @@ model Bookmark {
 }
 
 model TtsJob {
-  id          String        @id @default(uuid()) @db.Uuid
-  userId      String?       @map("user_id") @db.Uuid
-  bookId      String?       @map("book_id") @db.Uuid
-  status      TtsJobStatus  @default(pending)
+  id          String        @id @default(uuid())
+  userId      String?       @map("user_id")
+  bookId      String?       @map("book_id")
+  status      String        @default("pending")
   voice       String        @default("en_US-lessac-medium")
-  gender      TtsVoiceGender @default(neutral)
+  gender      String         @default("neutral")
   sampleRate  Int           @default(22050)
-  startCfi    String?       @map("start_cfi") @db.Text
-  endCfi      String?       @map("end_cfi") @db.Text
-  outputPath  String?       @map("output_path") @db.Text
-  outputUrl   String?       @map("output_url") @db.Text
+  startCfi    String?       @map("start_cfi")
+  endCfi      String?       @map("end_cfi")
+  outputPath  String?       @map("output_path")
+  outputUrl   String?       @map("output_url")
   fileSize    BigInt?       @map("file_size")
-  durationSecs Decimal?     @map("duration_secs") @db.Decimal(10, 2)
-  errorMessage String?      @map("error_message") @db.Text
+  durationSecs Float?       @map("duration_secs")
+  errorMessage String?      @map("error_message")
   retryCount  Int           @default(0) @map("retry_count")
   maxRetries Int            @default(3) @map("max_retries")
-  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz
-  startedAt   DateTime?     @map("started_at") @db.Timestamptz
-  completedAt DateTime?     @map("completed_at") @db.Timestamptz
+  createdAt   DateTime      @default(now()) @map("created_at")
+  startedAt   DateTime?     @map("started_at")
+  completedAt DateTime?     @map("completed_at")
 
   // Relations
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -263,19 +234,19 @@ model TtsJob {
 }
 
 model TtsAudioFile {
-  id            String    @id @default(uuid()) @db.Uuid
-  bookId        String    @map("book_id") @db.Uuid
-  userId        String?   @map("user_id") @db.Uuid
-  filePath      String    @map("file_path") @db.Text
-  fileUrl       String?   @map("file_url") @db.Text
+  id            String    @id @default(uuid())
+  bookId        String    @map("book_id")
+  userId        String?   @map("user_id")
+  filePath      String    @map("file_path")
+  fileUrl       String?   @map("file_url")
   fileSize      BigInt?   @map("file_size")
-  durationSecs  Decimal?  @map("duration_secs") @db.Decimal(10, 2)
-  voice         String?   @db.VarChar(100)
+  durationSecs  Float?    @map("duration_secs")
+  voice         String?  
   sampleRate    Int?      @map("sample_rate")
-  startCfi      String?   @map("start_cfi") @db.Text
-  endCfi        String?   @map("end_cfi") @db.Text
-  contentHash   String?   @map("content_hash") @db.VarChar(64)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  startCfi      String?   @map("start_cfi")
+  endCfi        String?   @map("end_cfi")
+  contentHash   String?   @map("content_hash")
+  createdAt     DateTime  @default(now()) @map("created_at")
 
   // Relations
   book Book?  @relation(fields: [bookId], references: [id], onDelete: Cascade)
@@ -287,10 +258,10 @@ model TtsAudioFile {
 }
 
 model Tag {
-  id        String    @id @default(uuid()) @db.Uuid
-  name      String    @unique @db.VarChar(100)
-  color     String?   @db.VarChar(20)
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  id        String    @id @default(uuid())
+  name      String    @unique
+  color     String?  
+  createdAt DateTime  @default(now()) @map("created_at")
 
   // Relations
   bookTags BookTag[]
@@ -299,8 +270,8 @@ model Tag {
 }
 
 model BookTag {
-  bookId String @map("book_id") @db.Uuid
-  tagId  String @map("tag_id") @db.Uuid
+  bookId String @map("book_id")
+  tagId  String @map("tag_id")
 
   // Relations
   book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
@@ -313,13 +284,13 @@ model BookTag {
 }
 
 model Session {
-  id           String    @id @default(uuid()) @db.Uuid
-  userId       String    @map("user_id") @db.Uuid
-  refreshToken String    @map("refresh_token") @db.VarChar(500)
-  userAgent    String?   @map("user_agent") @db.Text
-  ipAddress    String?   @map("ip_address") @db.Inet
-  expiresAt    DateTime  @map("expires_at") @db.Timestamptz
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  refreshToken String    @map("refresh_token")
+  userAgent    String?   @map("user_agent")
+  ipAddress    String?   @map("ip_address")
+  expiresAt    DateTime  @map("expires_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -330,13 +301,13 @@ model Session {
 }
 
 model ApiKey {
-  id          String    @id @default(uuid()) @db.Uuid
-  userId      String    @map("user_id") @db.Uuid
-  name        String    @db.VarChar(200)
-  keyHash     String    @map("key_hash") @db.VarChar(64)
-  lastUsedAt  DateTime? @map("last_used_at") @db.Timestamptz
-  expiresAt   DateTime? @map("expires_at") @db.Timestamptz
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  name        String   
+  keyHash     String    @map("key_hash")
+  lastUsedAt  DateTime? @map("last_used_at")
+  expiresAt   DateTime? @map("expires_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
   isActive    Boolean   @default(true) @map("is_active")
 
   // Relations
@@ -349,13 +320,13 @@ model ApiKey {
 
 // VIP Members (phone-based lightweight accounts)
 model VipMember {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @unique @map("user_id") @db.Uuid
-  phone     String    @unique @db.VarChar(20)
+  id        String    @id @default(uuid())
+  userId    String    @unique @map("user_id")
+  phone     String    @unique
   level     String    @default("free") // "free" | "year" | "lifetime"
-  expiredAt DateTime? @map("expired_at") @db.Timestamptz // null = 永久
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  expiredAt DateTime? @map("expired_at") // null = 永久
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -364,14 +335,14 @@ model VipMember {
 
 // VIP Orders
 model VipOrder {
-  id        String    @id @default(uuid()) @db.Uuid
-  orderId   String    @unique @map("order_id") @db.VarChar(100)
-  userId    String    @map("user_id") @db.VarChar(100)
-  productId String    @map("product_id") @db.VarChar(20) // "year" | "lifetime"
+  id        String    @id @default(uuid())
+  orderId   String    @unique @map("order_id")
+  userId    String    @map("user_id")
+  productId String    @map("product_id") // "year" | "lifetime"
   amount    Float     // RMB (20 or 60)
   status    String    @default("pending") @map("status") // "pending" | "paid" | "expired"
-  paidAt    DateTime? @map("paid_at") @db.Timestamptz
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  paidAt    DateTime? @map("paid_at")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   @@index([userId])
   @@index([orderId])
@@ -379,14 +350,14 @@ model VipOrder {
 }
 
 model IndexerJob {
-  id          String    @id @default(uuid()) @db.Uuid
-  filePath    String    @map("file_path") @db.Text
+  id          String    @id @default(uuid())
+  filePath    String    @map("file_path")
   priority    Int       @default(0)
-  status      String    @default("pending") @db.VarChar(20)
+  status      String    @default("pending")
   attempts    Int       @default(0)
-  error       String?   @db.Text
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  processedAt DateTime? @map("processed_at") @db.Timestamptz
+  error       String?  
+  createdAt   DateTime  @default(now()) @map("created_at")
+  processedAt DateTime? @map("processed_at")
 
   @@index([status])
   @@index([createdAt])

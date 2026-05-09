@@ -26,7 +26,6 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { UserRole } from '@prisma/client';
 
 @ApiTags('Admin')
 @Controller('admin')
@@ -38,7 +37,7 @@ export class AdminController {
   // ── Users ───────────────────────────────────────────────────────────────────
 
   @Get('users')
-  @Roles(UserRole.admin)
+  @Roles('admin')
   @ApiOperation({ summary: 'List all users (admin only)' })
   @ApiResponse({ status: 200 })
   async listUsers(@Query() query: UserQueryDto) {
@@ -46,7 +45,7 @@ export class AdminController {
   }
 
   @Get('users/:userId')
-  @Roles(UserRole.admin)
+  @Roles('admin')
   @ApiOperation({ summary: 'Get user details (admin only)' })
   @ApiResponse({ status: 200, type: AdminUserResponseDto })
   async getUser(@Param('userId', ParseUUIDPipe) userId: string) {
@@ -54,7 +53,7 @@ export class AdminController {
   }
 
   @Put('users/:userId')
-  @Roles(UserRole.admin)
+  @Roles('admin')
   @ApiOperation({ summary: 'Update user (admin only)' })
   @ApiResponse({ status: 200, type: AdminUserResponseDto })
   async updateUser(
@@ -66,7 +65,7 @@ export class AdminController {
   }
 
   @Delete('users/:userId')
-  @Roles(UserRole.admin)
+  @Roles('admin')
   @ApiOperation({ summary: 'Delete user (admin only)' })
   async deleteUser(
     @Param('userId', ParseUUIDPipe) targetUserId: string,
@@ -79,7 +78,7 @@ export class AdminController {
   // ── Data Sources ─────────────────────────────────────────────────────────────
 
   @Get('data-sources')
-  @Roles(UserRole.admin)
+  @Roles('admin')
   @ApiOperation({ summary: 'List ebook data sources' })
   @ApiResponse({ status: 200, type: [DataSourceResponseDto] })
   async listDataSources() {
@@ -87,7 +86,7 @@ export class AdminController {
   }
 
   @Post('data-sources')
-  @Roles(UserRole.admin)
+  @Roles('admin')
   @ApiOperation({ summary: 'Create a new data source' })
   @ApiResponse({ status: 201, type: DataSourceResponseDto })
   async createDataSource(@Body() dto: CreateDataSourceDto) {
@@ -95,7 +94,7 @@ export class AdminController {
   }
 
   @Put('data-sources/:sourceId')
-  @Roles(UserRole.admin)
+  @Roles('admin')
   @ApiOperation({ summary: 'Update a data source' })
   @ApiResponse({ status: 200, type: DataSourceResponseDto })
   async updateDataSource(
@@ -106,7 +105,7 @@ export class AdminController {
   }
 
   @Delete('data-sources/:sourceId')
-  @Roles(UserRole.admin)
+  @Roles('admin')
   @ApiOperation({ summary: 'Delete a data source' })
   async deleteDataSource(@Param('sourceId') sourceId: string) {
     await this.adminService.deleteDataSource(sourceId);
@@ -116,7 +115,7 @@ export class AdminController {
   // ── Sync Jobs ────────────────────────────────────────────────────────────────
 
   @Post('sync')
-  @Roles(UserRole.admin)
+  @Roles('admin')
   @ApiOperation({ summary: 'Trigger a manual data sync' })
   @ApiResponse({ status: 200, type: SyncJobResponseDto })
   async triggerSync(@Body() dto: TriggerSyncDto) {
@@ -124,7 +123,7 @@ export class AdminController {
   }
 
   @Get('sync-jobs')
-  @Roles(UserRole.admin)
+  @Roles('admin')
   @ApiOperation({ summary: 'List sync/indexer jobs' })
   @ApiResponse({ status: 200, type: [SyncJobResponseDto] })
   async listSyncJobs(@Query('limit') limit = 50) {
@@ -134,7 +133,7 @@ export class AdminController {
   // ── System Stats ─────────────────────────────────────────────────────────────
 
   @Get('stats')
-  @Roles(UserRole.admin)
+  @Roles('admin')
   @ApiOperation({ summary: 'Get system statistics' })
   @ApiResponse({ status: 200, type: SystemStatsDto })
   async getSystemStats() {

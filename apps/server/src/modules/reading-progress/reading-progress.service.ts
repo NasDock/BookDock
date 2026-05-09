@@ -3,7 +3,7 @@ import {
     Injectable,
     NotFoundException,
 } from '@nestjs/common';
-import { PrismaClient, ReadingStatus } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { PRISMA_CLIENT } from '../../config/database.module';
 import {
     BookBookmarkDto,
@@ -32,12 +32,14 @@ export class ReadingProgressService {
       create: {
         userId,
         bookId,
-        status: dto.status || ReadingStatus.reading,
+        status: dto.status || 'reading',
         epubCfi: dto.epubCfi,
         pdfPage: dto.pdfPage,
         mobiLocation: dto.mobiLocation,
         bookmarkNote: dto.bookmarkNote,
-        progressPct: 0,
+        progressPct: dto.progressPct ?? 0,
+        currentChapter: dto.currentChapter ?? 0,
+        scrollOffset: dto.scrollOffset ?? 0,
         lastReadAt: new Date(),
       },
       update: {
@@ -46,6 +48,9 @@ export class ReadingProgressService {
         ...(dto.pdfPage !== undefined && { pdfPage: dto.pdfPage }),
         ...(dto.mobiLocation !== undefined && { mobiLocation: dto.mobiLocation }),
         ...(dto.bookmarkNote !== undefined && { bookmarkNote: dto.bookmarkNote }),
+        ...(dto.progressPct !== undefined && { progressPct: dto.progressPct }),
+        ...(dto.currentChapter !== undefined && { currentChapter: dto.currentChapter }),
+        ...(dto.scrollOffset !== undefined && { scrollOffset: dto.scrollOffset }),
         lastReadAt: new Date(),
       },
       include: { book: { select: { id: true, title: true, author: true, coverUrl: true, format: true } } },
@@ -91,7 +96,20 @@ export class ReadingProgressService {
     });
 
     if (!progress) {
-      throw new NotFoundException(`Reading progress for book ${bookId} not found`);
+      // Return default progress for first-time readers
+      return {
+        id: '',
+        bookId,
+        status: 'unread',
+        progressPct: 0,
+        currentChapter: 0,
+        scrollOffset: 0,
+        epubCfi: undefined,
+        timeSpentSecs: 0,
+        lastReadAt: undefined,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
     }
 
     return this.toProgressResponse(progress);
@@ -179,8 +197,8 @@ export class ReadingProgressService {
 
   async getStats(userId: string): Promise<ReadingStatsDto> {
     const [total, reading, totalTime, avgProgress] = await Promise.all([
-      this.prisma.readingProgress.count({ where: { userId, status: ReadingStatus.completed } }),
-      this.prisma.readingProgress.count({ where: { userId, status: ReadingStatus.reading } }),
+      this.prisma.readingProgress.count({ where: { userId, status: 'completed' } }),
+      this.prisma.readingProgress.count({ where: { userId, status: 'reading' } }),
       this.prisma.readingProgress.aggregate({ _sum: { timeSpentSecs: true }, where: { userId } }),
       this.prisma.readingProgress.aggregate({ _avg: { progressPct: true }, where: { userId } }),
     ]);
@@ -202,6 +220,8 @@ export class ReadingProgressService {
       pdfPage: p.pdfPage || undefined,
       mobiLocation: p.mobiLocation || undefined,
       progressPct: Number(p.progressPct),
+      currentChapter: p.currentChapter ?? undefined,
+      scrollOffset: p.scrollOffset ?? undefined,
       timeSpentSecs: p.timeSpentSecs,
       lastReadAt: p.lastReadAt || undefined,
       bookmarkNote: p.bookmarkNote || undefined,

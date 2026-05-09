@@ -19,7 +19,6 @@
   "dependencies": {
     "@bookdock/ftp": "workspace:^",
     "@bookdock/smb": "workspace:^",
-    "@bookdock/webdav": "workspace:^",
     "@nestjs/bullmq": "^10.2.0",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^3.2.0",
@@ -34,6 +33,7 @@
     "bullmq": "^5.4.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "iconv-lite": "^0.4.24",
     "ioredis": "^5.3.2",
     "multer": "^1.4.5-lts.1",
     "passport": "^0.7.0",

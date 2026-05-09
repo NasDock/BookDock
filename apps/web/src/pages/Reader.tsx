@@ -1,10 +1,9 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getApiClient, Book } from '@bookdock/api-client';
-import { useBookReader } from '../hooks/useBookReader';
 import { useReaderStore } from '../stores/themeStore';
 import { Button } from '@bookdock/ui';
-import type { ReaderMode, ReaderPosition } from '@bookdock/ebook-reader';
+import type { ReaderMode } from '@bookdock/ebook-reader';
 
 // ==================== Bookmark ====================
 interface Bookmark {
@@ -16,8 +15,102 @@ interface Bookmark {
   percentage: number;
 }
 
-// ==================== Reader Settings Panel ====================
-interface ReaderSettingsProps {
+// ==================== Chapter Drawer (TOC) - LEFT ====================
+interface ChapterDrawerProps {
+  chapters: { title: string; index: number }[];
+  currentChapter: number;
+  isOpen: boolean;
+  onClose: () => void;
+  onSelectChapter: (index: number) => void;
+}
+
+function ChapterDrawer({ chapters, currentChapter, isOpen, onClose, onSelectChapter }: ChapterDrawerProps) {
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isOpen && listRef.current) {
+      const active = listRef.current.querySelector('[data-active="true"]');
+      if (active) {
+        active.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 transition-opacity"
+        onClick={onClose}
+      />
+      {/* Drawer - LEFT */}
+      <div className="fixed top-0 left-0 bottom-0 w-80 max-w-[85vw] bg-white dark:bg-gray-900 shadow-2xl z-50 flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">📑 目录</h2>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Chapter list */}
+        <div ref={listRef} className="flex-1 overflow-y-auto py-2">
+          {chapters.length === 0 ? (
+            <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+              <div className="text-3xl mb-2">📄</div>
+              <p className="text-sm">暂无章节信息</p>
+            </div>
+          ) : (
+            <div className="space-y-0.5 px-2">
+              {chapters.map((chapter, idx) => {
+                const isActive = idx === currentChapter;
+                return (
+                  <button
+                    key={chapter.index}
+                    data-active={isActive}
+                    onClick={() => {
+                      onSelectChapter(idx);
+                      onClose();
+                    }}
+                    className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                      isActive
+                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium'
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-xs min-w-[1.5rem] text-center ${
+                          isActive ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'
+                        }`}
+                      >
+                        {idx + 1}
+                      </span>
+                      <span className="truncate">{chapter.title}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Footer info */}
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500 text-center">
+          共 {chapters.length} 章 · 当前第 {currentChapter + 1} 章
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ==================== Settings Drawer - RIGHT ====================
+interface SettingsDrawerProps {
   mode: ReaderMode;
   fontSize: number;
   lineHeight: number;
@@ -28,13 +121,14 @@ interface ReaderSettingsProps {
   onLineHeightChange: (height: number) => void;
   onFontFamilyChange: (family: string) => void;
   onMarginChange: (margin: number) => void;
+  isOpen: boolean;
   onClose: () => void;
   bookmarks: Bookmark[];
   onAddBookmark: () => void;
   onGoToBookmark: (bookmark: Bookmark) => void;
 }
 
-function ReaderSettings({
+function SettingsDrawer({
   mode,
   fontSize,
   lineHeight,
@@ -45,283 +139,362 @@ function ReaderSettings({
   onLineHeightChange,
   onFontFamilyChange,
   onMarginChange,
+  isOpen,
   onClose,
   bookmarks,
   onAddBookmark,
   onGoToBookmark,
-}: ReaderSettingsProps) {
+}: SettingsDrawerProps) {
   const [activeTab, setActiveTab] = useState<'display' | 'bookmarks'>('display');
 
+  if (!isOpen) return null;
+
   return (
-    <div className="absolute top-14 right-4 w-80 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden z-50">
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-700">
-        <button
-          onClick={() => setActiveTab('display')}
-          className={`flex-1 py-3 text-sm font-medium transition-colors ${
-            activeTab === 'display'
-              ? 'text-blue-500 border-b-2 border-blue-500'
-              : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-          }`}
-        >
-          📖 显示
-        </button>
-        <button
-          onClick={() => setActiveTab('bookmarks')}
-          className={`flex-1 py-3 text-sm font-medium transition-colors ${
-            activeTab === 'bookmarks'
-              ? 'text-blue-500 border-b-2 border-blue-500'
-              : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-          }`}
-        >
-          🔖 书签 ({bookmarks.length})
-        </button>
-      </div>
-
-      <div className="p-4 max-h-96 overflow-y-auto">
-        {activeTab === 'display' ? (
-          <div className="space-y-5">
-            {/* Reading mode */}
-            <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-                阅读主题
-              </label>
-              <div className="flex gap-2">
-                {(['light', 'dark', 'sepia'] as ReaderMode[]).map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => onModeChange(m)}
-                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                      mode === m
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
-                    }`}
-                  >
-                    {m === 'light' ? '☀️' : m === 'dark' ? '🌙' : '📜'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Font size */}
-            <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex justify-between">
-                <span>字体大小</span>
-                <span className="text-blue-500">{fontSize}px</span>
-              </label>
-              <input
-                type="range"
-                min="12"
-                max="32"
-                value={fontSize}
-                onChange={(e) => onFontSizeChange(parseInt(e.target.value))}
-                className="w-full accent-blue-500"
-              />
-              <div className="flex justify-between text-xs text-gray-400 mt-1">
-                <span style={{ fontSize: '12px' }}>A</span>
-                <span style={{ fontSize: '22px' }}>A</span>
-              </div>
-            </div>
-
-            {/* Line height */}
-            <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex justify-between">
-                <span>行间距</span>
-                <span className="text-blue-500">{lineHeight.toFixed(1)}</span>
-              </label>
-              <input
-                type="range"
-                min="1.2"
-                max="2.5"
-                step="0.1"
-                value={lineHeight}
-                onChange={(e) => onLineHeightChange(parseFloat(e.target.value))}
-                className="w-full accent-blue-500"
-              />
-            </div>
-
-            {/* Font family */}
-            <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                字体
-              </label>
-              <select
-                value={fontFamily}
-                onChange={(e) => onFontFamilyChange(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="Georgia, serif">衬线字体 (Georgia)</option>
-                <option value="Merriweather, serif">阅读字体 (Merriweather)</option>
-                <option value="system-ui, sans-serif">系统字体</option>
-                <option value="Arial, sans-serif">Arial</option>
-                <option value="Tahoma, sans-serif">Tahoma</option>
-                <option value="'Noto Serif SC', serif">思源宋体</option>
-                <option value="'Noto Sans SC', sans-serif">思源黑体</option>
-              </select>
-            </div>
-
-            {/* Margin */}
-            <div>
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex justify-between">
-                <span>页面边距</span>
-                <span className="text-blue-500">{margin}px</span>
-              </label>
-              <input
-                type="range"
-                min="20"
-                max="120"
-                value={margin}
-                onChange={(e) => onMarginChange(parseInt(e.target.value))}
-                className="w-full accent-blue-500"
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            <Button onClick={onAddBookmark} className="w-full" size="sm">
-              ➕ 添加书签
-            </Button>
-
-            {bookmarks.length === 0 ? (
-              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                <div className="text-4xl mb-2">🔖</div>
-                <p className="text-sm">暂无书签</p>
-                <p className="text-xs mt-1">点击上方按钮添加书签</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {bookmarks.map((bookmark) => (
-                  <button
-                    key={bookmark.id}
-                    onClick={() => onGoToBookmark(bookmark)}
-                    className="w-full p-3 text-left bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">
-                          书签 - {bookmark.percentage}%
-                        </p>
-                        {bookmark.note && (
-                          <p className="text-xs text-gray-500 mt-1">{bookmark.note}</p>
-                        )}
-                      </div>
-                      <span className="text-xs text-gray-400">
-                        {new Date(bookmark.createdAt).toLocaleDateString('zh-CN')}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Close button */}
-      <button
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 transition-opacity"
         onClick={onClose}
-        className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
-      >
-        ✕
-      </button>
-    </div>
+      />
+      {/* Drawer - RIGHT */}
+      <div className="fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] bg-white dark:bg-gray-900 shadow-2xl z-50 flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">⚙️ 设置</h2>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200 dark:border-gray-700 px-5">
+          <button
+            onClick={() => setActiveTab('display')}
+            className={`flex-1 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'display'
+                ? 'text-blue-500 border-b-2 border-blue-500'
+                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            📖 显示
+          </button>
+          <button
+            onClick={() => setActiveTab('bookmarks')}
+            className={`flex-1 py-3 text-sm font-medium transition-colors ${
+              activeTab === 'bookmarks'
+                ? 'text-blue-500 border-b-2 border-blue-500'
+                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+            }`}
+          >
+            🔖 书签 ({bookmarks.length})
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {activeTab === 'display' ? (
+            <div className="space-y-5">
+              {/* Reading mode */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                  阅读主题
+                </label>
+                <div className="flex gap-2">
+                  {(['light', 'dark', 'sepia'] as ReaderMode[]).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => onModeChange(m)}
+                      className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                        mode === m
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+                      }`}
+                    >
+                      {m === 'light' ? '☀️' : m === 'dark' ? '🌙' : '📜'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Font size */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex justify-between">
+                  <span>字体大小</span>
+                  <span className="text-blue-500">{fontSize}px</span>
+                </label>
+                <input
+                  type="range"
+                  min="12"
+                  max="32"
+                  value={fontSize}
+                  onChange={(e) => onFontSizeChange(parseInt(e.target.value))}
+                  className="w-full accent-blue-500"
+                />
+                <div className="flex justify-between text-xs text-gray-400 mt-1">
+                  <span style={{ fontSize: '12px' }}>A</span>
+                  <span style={{ fontSize: '22px' }}>A</span>
+                </div>
+              </div>
+
+              {/* Line height */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex justify-between">
+                  <span>行间距</span>
+                  <span className="text-blue-500">{lineHeight.toFixed(1)}</span>
+                </label>
+                <input
+                  type="range"
+                  min="1.2"
+                  max="2.5"
+                  step="0.1"
+                  value={lineHeight}
+                  onChange={(e) => onLineHeightChange(parseFloat(e.target.value))}
+                  className="w-full accent-blue-500"
+                />
+              </div>
+
+              {/* Font family */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  字体
+                </label>
+                <select
+                  value={fontFamily}
+                  onChange={(e) => onFontFamilyChange(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="Georgia, serif">衬线字体 (Georgia)</option>
+                  <option value="Merriweather, serif">阅读字体 (Merriweather)</option>
+                  <option value="system-ui, sans-serif">系统字体</option>
+                  <option value="Arial, sans-serif">Arial</option>
+                  <option value="Tahoma, sans-serif">Tahoma</option>
+                  <option value="'Noto Serif SC', serif">思源宋体</option>
+                  <option value="'Noto Sans SC', sans-serif">思源黑体</option>
+                </select>
+              </div>
+
+              {/* Margin */}
+              <div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex justify-between">
+                  <span>页面边距</span>
+                  <span className="text-blue-500">{margin}px</span>
+                </label>
+                <input
+                  type="range"
+                  min="20"
+                  max="120"
+                  value={margin}
+                  onChange={(e) => onMarginChange(parseInt(e.target.value))}
+                  className="w-full accent-blue-500"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <Button onClick={onAddBookmark} className="w-full" size="sm">
+                ➕ 添加书签
+              </Button>
+
+              {bookmarks.length === 0 ? (
+                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                  <div className="text-4xl mb-2">🔖</div>
+                  <p className="text-sm">暂无书签</p>
+                  <p className="text-xs mt-1">点击上方按钮添加书签</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {bookmarks.map((bookmark) => (
+                    <button
+                      key={bookmark.id}
+                      onClick={() => onGoToBookmark(bookmark)}
+                      className="w-full p-3 text-left bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
+                            书签 - {bookmark.percentage}%
+                          </p>
+                          {bookmark.note && (
+                            <p className="text-xs text-gray-500 mt-1">{bookmark.note}</p>
+                          )}
+                        </div>
+                        <span className="text-xs text-gray-400">
+                          {new Date(bookmark.createdAt).toLocaleDateString('zh-CN')}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   );
 }
 
 // ==================== Reader Controls ====================
 interface ReaderControlsProps {
   book: Book | null;
-  position: ReaderPosition;
+  currentChapter: number;
+  totalChapters: number;
+  chapterTitle: string;
   mode: ReaderMode;
-  fontSize: number;
-  onModeChange: (mode: ReaderMode) => void;
-  onFontSizeChange: (size: number) => void;
   onPrevPage: () => void;
   onNextPage: () => void;
   onGoBack: () => void;
   onGoToPage: (page: number) => void;
   onToggleAutoScroll: () => void;
   isAutoScroll: boolean;
-  bookmarks: Bookmark[];
-  onAddBookmark: () => void;
-  showSettings: boolean;
+  onToggleToc: () => void;
   onToggleSettings: () => void;
-  settingsPanel: React.ReactNode;
+  onAddBookmark: () => void;
+  showToc: boolean;
+  showSettings: boolean;
+  onNavigateTts: () => void;
 }
 
 function ReaderControls({
   book,
-  position,
-  mode,
-  fontSize,
-  onModeChange,
-  onFontSizeChange,
+  currentChapter,
+  totalChapters,
+  chapterTitle,
   onPrevPage,
   onNextPage,
   onGoBack,
   onGoToPage,
   onToggleAutoScroll,
   isAutoScroll,
-  bookmarks,
-  onAddBookmark,
-  showSettings,
+  onToggleToc,
   onToggleSettings,
-  settingsPanel,
+  onAddBookmark,
+  showToc,
+  showSettings,
+  onNavigateTts,
 }: ReaderControlsProps) {
-  const [showPageInput, setShowPageInput] = useState(false);
-  const [pageInput, setPageInput] = useState('');
-
-  const handlePageSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const page = parseInt(pageInput);
-    if (page > 0 && page <= (position.totalPages || 100)) {
-      onGoToPage(page);
-    }
-    setShowPageInput(false);
-    setPageInput('');
-  };
-
   return (
     <div className="fixed top-0 left-0 right-0 z-50">
       {/* Top bar */}
       <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur border-b border-gray-200 dark:border-gray-700 shadow-sm">
-        <div className="flex items-center justify-between px-4 h-14">
+        <div className="flex items-center justify-between px-4 h-14 relative">
+          {/* Left: back */}
           <button
             onClick={onGoBack}
-            className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+            className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors z-10"
           >
             <span>←</span>
             <span className="text-sm hidden sm:inline">返回</span>
           </button>
 
-          <div className="flex items-center gap-2 sm:gap-4">
-            {/* Title (hidden on mobile) */}
-            <h1 className="text-sm font-medium text-gray-700 dark:text-gray-300 hidden md:block truncate max-w-[200px]">
-              {book?.title}
-            </h1>
-
-            {/* Page indicator */}
-            <button
-              onClick={() => setShowPageInput(!showPageInput)}
-              className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+          {/* Center: chapter title */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <h1
+              className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate max-w-[60%] text-center"
+              title={chapterTitle}
             >
-              <span>{position.currentPage ?? 0}</span>
-              <span className="text-gray-400">/</span>
-              <span>{position.totalPages ?? '?'}</span>
-            </button>
+              {chapterTitle || `第 ${currentChapter + 1} 章`}
+            </h1>
+          </div>
 
-            {/* Quick actions */}
+          {/* Right: settings */}
+          <button
+            onClick={onToggleSettings}
+            className={`p-2 rounded-lg transition-colors z-10 ${
+              showSettings
+                ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
+                : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
+            }`}
+            title="设置"
+          >
+            ⚙️
+          </button>
+        </div>
+      </div>
+
+      {/* Bottom navigation bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 z-50">
+        <div className="flex items-center justify-between gap-1 sm:gap-2 py-2 px-3 sm:px-4">
+          {/* Left: TOC + Bookmark */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onToggleToc}
+              className={`p-2 sm:p-2.5 rounded-lg transition-colors ${
+                showToc
+                  ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
+              }`}
+              title="目录"
+            >
+              📑
+            </button>
             <button
               onClick={onAddBookmark}
-              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-400"
               title="添加书签"
             >
               🔖
             </button>
+          </div>
+
+          {/* Center: prev + progress + next */}
+          <div className="flex items-center gap-1 sm:gap-2 flex-1 justify-center max-w-md">
+            <button
+              onClick={onPrevPage}
+              className="p-2 sm:p-2.5 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={currentChapter === 0}
+              title="上一章 (←)"
+            >
+              <span className="text-lg">‹</span>
+            </button>
+
+            <div className="flex-1 mx-1 sm:mx-2">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={totalChapters > 0 ? Math.round(((currentChapter + 1) / totalChapters) * 100) : 0}
+                onChange={(e) => {
+                  const pct = parseInt(e.target.value);
+                  const targetPage = Math.round((pct / 100) * totalChapters);
+                  onGoToPage(Math.max(1, targetPage));
+                }}
+                className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:hover:bg-blue-600"
+              />
+              <div className="flex justify-between text-[10px] text-gray-400 mt-0.5 px-1">
+                <span>0%</span>
+                <span className="text-blue-500 font-medium">
+                  {totalChapters > 0 ? Math.round(((currentChapter + 1) / totalChapters) * 100) : 0}%
+                </span>
+                <span>100%</span>
+              </div>
+            </div>
 
             <button
+              onClick={onNextPage}
+              className="p-2 sm:p-2.5 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={currentChapter >= totalChapters - 1}
+              title="下一章 (→)"
+            >
+              <span className="text-lg">›</span>
+            </button>
+          </div>
+
+          {/* Right: TTS + Timer */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onNavigateTts}
+              className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-400"
+              title="听书模式"
+            >
+              🔊
+            </button>
+            <button
               onClick={onToggleAutoScroll}
-              className={`p-2 rounded-lg transition-colors ${
+              className={`p-2 sm:p-2.5 rounded-lg transition-colors ${
                 isAutoScroll
                   ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
                   : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
@@ -330,89 +503,7 @@ function ReaderControls({
             >
               ⏱️
             </button>
-
-            {/* Settings toggle */}
-            <button
-              onClick={onToggleSettings}
-              className={`p-2 rounded-lg transition-colors ${
-                showSettings
-                  ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
-                  : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
-              }`}
-            >
-              ⚙️
-            </button>
           </div>
-        </div>
-
-        {/* Page input popup */}
-        {showPageInput && (
-          <form onSubmit={handlePageSubmit} className="absolute top-14 left-1/2 -translate-x-1/2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 p-3 z-50">
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                value={pageInput}
-                onChange={(e) => setPageInput(e.target.value)}
-                placeholder={`1-${position.totalPages || 100}`}
-                min={1}
-                max={position.totalPages || 100}
-                autoFocus
-                className="w-24 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <Button type="submit" size="sm">跳转</Button>
-              <Button type="button" size="sm" variant="ghost" onClick={() => setShowPageInput(false)}>取消</Button>
-            </div>
-          </form>
-        )}
-
-        {/* Settings panel */}
-        {showSettings && settingsPanel}
-      </div>
-
-      {/* Bottom navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-center gap-2 sm:gap-4 py-3 px-4">
-          <button
-            onClick={onPrevPage}
-            className="p-2 sm:p-3 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={position.currentPage === 1}
-            title="上一页 (←)"
-          >
-            <span className="text-xl">‹</span>
-          </button>
-
-          {/* Progress bar */}
-          <div className="flex-1 max-w-md mx-2">
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={position.percentage}
-              onChange={(e) => {
-                const pct = parseInt(e.target.value);
-                // Convert percentage to approximate page
-                if (position.totalPages) {
-                  const targetPage = Math.round((pct / 100) * position.totalPages);
-                  onGoToPage(targetPage);
-                }
-              }}
-              className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:hover:bg-blue-600"
-            />
-            <div className="flex justify-between text-xs text-gray-400 mt-1 px-1">
-              <span>0%</span>
-              <span className="text-blue-500 font-medium">{position.percentage}%</span>
-              <span>100%</span>
-            </div>
-          </div>
-
-          <button
-            onClick={onNextPage}
-            className="p-2 sm:p-3 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={position.currentPage === position.totalPages}
-            title="下一页 (→)"
-          >
-            <span className="text-xl">›</span>
-          </button>
         </div>
       </div>
     </div>
@@ -427,10 +518,11 @@ export default function Reader() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showToc, setShowToc] = useState(false);
   const [isAutoScroll, setIsAutoScroll] = useState(false);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const autoScrollTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  // contentRef is used for both reading area and auto-scroll
 
   const {
     mode,
@@ -465,47 +557,119 @@ export default function Reader() {
     localStorage.setItem(`bookdock_bookmarks_${id}`, JSON.stringify(newBookmarks));
   }, [id]);
 
-  const handlePositionChange = useCallback((pos: ReaderPosition) => {
-    console.log('Position changed:', pos);
-  }, []);
+  const [chapters, setChapters] = useState<{ title: string; index: number }[]>([]);
+  const [currentChapter, setCurrentChapter] = useState(0);
+  const [chapterContent, setChapterContent] = useState('');
+  const [isChapterLoading, setIsChapterLoading] = useState(false);
+  const [readerError, setReaderError] = useState<string | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const scrollPositionRef = useRef(0);
+  const prevChapterRef = useRef(0);
+  const [pendingScrollTop, setPendingScrollTop] = useState<number | null>(null);
 
-  const {
-    containerRef: readerContainerRef,
-    position,
-    isLoading: isReaderLoading,
-    error: readerError,
-    nextPage,
-    prevPage,
-    goToPosition,
-  } = useBookReader({
-    book,
-    autoSaveInterval: 5000,
-    onPositionChange: handlePositionChange,
-  });
+  // Fetch chapters + load cloud progress (parallel to avoid race)
+  useEffect(() => {
+    const fetchChaptersAndProgress = async () => {
+      if (!id) return;
+      try {
+        const apiClient = getApiClient();
+        // Fetch chapters and progress in parallel
+        const [chaptersRes, progressRes] = await Promise.allSettled([
+          apiClient.getChapters(id),
+          apiClient.getReadingProgress(id),
+        ]);
+
+        const chaptersData =
+          chaptersRes.status === 'fulfilled' && chaptersRes.value.success
+            ? chaptersRes.value.data
+            : null;
+        const progressData =
+          progressRes.status === 'fulfilled' && progressRes.value?.success
+            ? progressRes.value.data
+            : null;
+
+        if (chaptersData && chaptersData.length > 0) {
+          const savedChapter = progressData?.currentChapter ?? 0;
+          const savedScroll = progressData?.scrollOffset ?? 0;
+          if (savedChapter >= 0 && savedChapter < chaptersData.length) {
+            // Batch set states so fetchContent only runs once with correct chapter
+            setChapters(chaptersData);
+            setCurrentChapter(savedChapter);
+            setPendingScrollTop(savedScroll);
+          } else {
+            setChapters(chaptersData);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch chapters:', err);
+      }
+    };
+    fetchChaptersAndProgress();
+  }, [id]);
+
+  // Fetch chapter content (with cancellation to prevent race)
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchContent = async () => {
+      if (!id || chapters.length === 0) return;
+      setIsChapterLoading(true);
+      setReaderError(null);
+      try {
+        const apiClient = getApiClient();
+        const response = await apiClient.getChapterContent(id, currentChapter);
+        if (cancelled) return;
+        if (response.success && response.data) {
+          setChapterContent(response.data.content);
+        } else {
+          setReaderError(response.error || '加载章节失败');
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setReaderError((err as Error).message);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsChapterLoading(false);
+        }
+      }
+    };
+
+    fetchContent();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, currentChapter, chapters.length]);
+
+  const resetScroll = useCallback(() => {
+    scrollPositionRef.current = 0;
+  }, []);
 
   const handleAddBookmark = useCallback(() => {
     if (!book) return;
     const newBookmark: Bookmark = {
       id: Date.now().toString(),
       cfi: '',
-      position: position.currentPage || 0,
+      position: currentChapter,
       createdAt: new Date().toISOString(),
-      percentage: position.percentage,
+      percentage: Math.round(((currentChapter + 1) / chapters.length) * 100),
     };
     saveBookmarks([...bookmarks, newBookmark]);
-  }, [book, position, bookmarks, saveBookmarks]);
+  }, [book, currentChapter, chapters.length, bookmarks, saveBookmarks]);
 
   const handleGoToBookmark = useCallback((bookmark: Bookmark) => {
-    goToPosition({ percentage: bookmark.percentage, currentPage: bookmark.position });
+    setCurrentChapter(bookmark.position);
     setShowSettings(false);
-  }, [goToPosition]);
+    resetScroll();
+  }, [resetScroll]);
 
   // Auto scroll
   useEffect(() => {
-    if (isAutoScroll && containerRef.current) {
+    if (isAutoScroll && contentRef.current) {
       autoScrollTimerRef.current = setInterval(() => {
-        if (containerRef.current) {
-          containerRef.current.scrollTop += 2;
+        if (contentRef.current) {
+          contentRef.current.scrollTop += 2;
         }
       }, 50);
     } else if (autoScrollTimerRef.current) {
@@ -569,16 +733,107 @@ export default function Reader() {
   }, [setMargin]);
 
   const handleGoToPage = useCallback((page: number) => {
-    if (position.totalPages) {
-      const percentage = (page / position.totalPages) * 100;
-      goToPosition({ percentage, currentPage: page });
+    setCurrentChapter(page - 1);
+    resetScroll();
+  }, [resetScroll]);
+
+  const handleGoToChapter = useCallback((index: number) => {
+    setCurrentChapter(index);
+    scrollPositionRef.current = 0;
+    if (contentRef.current) {
+      contentRef.current.scrollTop = 0;
     }
-  }, [position.totalPages, goToPosition]);
+  }, []);
+
+  // Track scroll position + debounced save on scroll stop
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+
+    let scrollSaveTimer: NodeJS.Timeout | null = null;
+
+    const handler = () => {
+      const top = el.scrollTop;
+      scrollPositionRef.current = top;
+
+      // Debounced save: only scroll changes trigger save
+      if (scrollSaveTimer) clearTimeout(scrollSaveTimer);
+      scrollSaveTimer = setTimeout(() => {
+        if (!id || chapters.length === 0) return;
+        const progressPct = Math.round(((currentChapter + 1) / chapters.length) * 100);
+        getApiClient()
+          .updateReadingProgress(id, progressPct, currentChapter, top)
+          .then(() => console.log('Scroll progress saved:', { chapter: currentChapter, scrollTop: top }))
+          .catch((err) => console.warn('Failed to save scroll progress:', err));
+      }, 1500);
+    };
+
+    el.addEventListener('scroll', handler, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', handler);
+      if (scrollSaveTimer) clearTimeout(scrollSaveTimer);
+    };
+  }, [id, currentChapter, chapters.length]);
+
+  // Save immediately when chapter changes (skip during restore — restore effect saves itself)
+  useEffect(() => {
+    if (!id || chapters.length === 0 || pendingScrollTop !== null) return;
+    if (prevChapterRef.current === currentChapter) return; // avoid duplicate save when pendingScrollTop flips to null
+    prevChapterRef.current = currentChapter;
+
+    const progressPct = Math.round(((currentChapter + 1) / chapters.length) * 100);
+    const scrollTop = scrollPositionRef.current;
+    getApiClient()
+      .updateReadingProgress(id, progressPct, currentChapter, scrollTop)
+      .then(() => console.log('Chapter progress saved:', { chapter: currentChapter, pct: progressPct, scrollTop }))
+      .catch((err) => console.warn('Failed to save chapter progress:', err));
+  }, [id, currentChapter, chapters.length, pendingScrollTop]);
+
+  // Restore or reset scroll position after new chapter content renders
+  useEffect(() => {
+    if (!chapterContent || !contentRef.current) return;
+
+    const el = contentRef.current;
+
+    if (pendingScrollTop !== null) {
+      // Restoring saved position
+      const target = pendingScrollTop;
+      const timer = setTimeout(() => {
+        el.scrollTop = target;
+        scrollPositionRef.current = target;
+        setPendingScrollTop(null);
+
+        // Save restored progress immediately so DB has correct scrollTop
+        if (id && chapters.length > 0) {
+          const progressPct = Math.round(((currentChapter + 1) / chapters.length) * 100);
+          getApiClient()
+            .updateReadingProgress(id, progressPct, currentChapter, target)
+            .catch(() => {});
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    } else {
+      // Switching to new chapter — smooth scroll to top after content renders
+      const timer = setTimeout(() => {
+        el.scrollTo({ top: 0, behavior: 'smooth' });
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [chapterContent, pendingScrollTop, id, currentChapter, chapters.length]);
+
+  const prevPage = useCallback(() => {
+    setCurrentChapter((prev) => Math.max(0, prev - 1));
+    resetScroll();
+  }, [resetScroll]);
+
+  const nextPage = useCallback(() => {
+    setCurrentChapter((prev) => Math.min(chapters.length - 1, prev + 1));
+    resetScroll();
+  }, [chapters.length, resetScroll]);
 
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't handle if user is typing in an input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
@@ -597,14 +852,17 @@ export default function Reader() {
           break;
         case 'Home':
           e.preventDefault();
-          goToPosition({ percentage: 0, currentPage: 1 });
+          setCurrentChapter(0);
+          resetScroll();
           break;
         case 'End':
           e.preventDefault();
-          goToPosition({ percentage: 100, currentPage: position.totalPages });
+          setCurrentChapter(chapters.length - 1);
+          resetScroll();
           break;
         case 'Escape':
           setShowSettings(false);
+          setShowToc(false);
           break;
         case 'b':
           if (e.ctrlKey || e.metaKey) {
@@ -617,7 +875,7 @@ export default function Reader() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [nextPage, prevPage, goToPosition, position.totalPages, handleAddBookmark]);
+  }, [nextPage, prevPage, chapters.length, handleAddBookmark, resetScroll]);
 
   // Touch swipe handling
   useEffect(() => {
@@ -654,24 +912,9 @@ export default function Reader() {
     setIsAutoScroll(!isAutoScroll);
   };
 
-  const settingsPanel = (
-    <ReaderSettings
-      mode={mode}
-      fontSize={fontSize}
-      lineHeight={lineHeight}
-      fontFamily={fontFamily}
-      margin={margin}
-      onModeChange={handleModeChange}
-      onFontSizeChange={handleFontSizeChange}
-      onLineHeightChange={handleLineHeightChange}
-      onFontFamilyChange={handleFontFamilyChange}
-      onMarginChange={handleMarginChange}
-      onClose={() => setShowSettings(false)}
-      bookmarks={bookmarks}
-      onAddBookmark={handleAddBookmark}
-      onGoToBookmark={handleGoToBookmark}
-    />
-  );
+  const handleNavigateTts = useCallback(() => {
+    if (id) navigate(`/book/${id}/tts`);
+  }, [id, navigate]);
 
   if (isLoading) {
     return (
@@ -725,33 +968,59 @@ export default function Reader() {
     >
       <ReaderControls
         book={book}
-        position={position}
+        currentChapter={currentChapter}
+        totalChapters={chapters.length}
+        chapterTitle={chapters[currentChapter]?.title || ''}
         mode={mode}
-        fontSize={fontSize}
-        onModeChange={handleModeChange}
-        onFontSizeChange={handleFontSizeChange}
         onPrevPage={prevPage}
         onNextPage={nextPage}
         onGoBack={handleGoBack}
         onGoToPage={handleGoToPage}
         onToggleAutoScroll={handleToggleAutoScroll}
         isAutoScroll={isAutoScroll}
+        onToggleToc={() => setShowToc(!showToc)}
+        onToggleSettings={() => setShowSettings(!showSettings)}
+        onAddBookmark={handleAddBookmark}
+        showToc={showToc}
+        showSettings={showSettings}
+        onNavigateTts={handleNavigateTts}
+      />
+
+      {/* Chapter Drawer (TOC) - LEFT */}
+      <ChapterDrawer
+        chapters={chapters}
+        currentChapter={currentChapter}
+        isOpen={showToc}
+        onClose={() => setShowToc(false)}
+        onSelectChapter={handleGoToChapter}
+      />
+
+      {/* Settings Drawer - RIGHT */}
+      <SettingsDrawer
+        mode={mode}
+        fontSize={fontSize}
+        lineHeight={lineHeight}
+        fontFamily={fontFamily}
+        margin={margin}
+        onModeChange={handleModeChange}
+        onFontSizeChange={handleFontSizeChange}
+        onLineHeightChange={handleLineHeightChange}
+        onFontFamilyChange={handleFontFamilyChange}
+        onMarginChange={handleMarginChange}
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
         bookmarks={bookmarks}
         onAddBookmark={handleAddBookmark}
-        showSettings={showSettings}
-        onToggleSettings={() => setShowSettings(!showSettings)}
-        settingsPanel={settingsPanel}
+        onGoToBookmark={handleGoToBookmark}
       />
 
       {/* Reader container */}
       <div
-        ref={(el) => {
-          (readerContainerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-          (containerRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-        }}
+        ref={contentRef}
         className={`reading-container ${mode} pt-14 pb-20 overflow-auto`}
         style={{
           padding: `${margin}px`,
+          paddingBottom: `${margin + 80}px`,
           maxWidth: '800px',
           margin: '0 auto',
           minHeight: '100vh',
@@ -760,26 +1029,33 @@ export default function Reader() {
           lineHeight,
         }}
       >
-        {isReaderLoading && (
+        {isChapterLoading && (
           <div className="flex items-center justify-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
           </div>
         )}
 
-        {/* Keyboard shortcuts hint */}
-        <div className="fixed bottom-20 left-4 text-xs text-gray-400 dark:text-gray-500 opacity-50">
-          ← → 翻页 | 空格 下一页 | B 添加书签
-        </div>
-      </div>
+        {!isChapterLoading && chapterContent && (
+          <div>
+            {/* Chapter title */}
+            <h2
+              className="text-xl sm:text-2xl font-bold mb-6 pb-4 border-b border-gray-200 dark:border-gray-700"
+              style={{ fontFamily }}
+            >
+              {chapters[currentChapter]?.title || `第 ${currentChapter + 1} 章`}
+            </h2>
+            <div className="whitespace-pre-wrap leading-relaxed">
+              {chapterContent}
+            </div>
+          </div>
+        )}
 
-      {/* TTS button */}
-      <button
-        onClick={() => navigate(`/book/${id}/tts`)}
-        className="fixed bottom-24 right-6 w-14 h-14 bg-blue-500 hover:bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-105 z-40"
-        title="听书模式"
-      >
-        🔊
-      </button>
+        {!isChapterLoading && !chapterContent && !readerError && (
+          <div className="flex items-center justify-center h-64 text-gray-500">
+            本章无内容
+          </div>
+        )}
+      </div>
     </div>
   );
 }
