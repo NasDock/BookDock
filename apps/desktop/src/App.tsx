@@ -1,24 +1,253 @@
+import { useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
+import { AuthProvider, useAuth, PremiumBadge } from '@bookdock/auth';
+import { initApiClient } from '@bookdock/api-client';
+import { Button } from '@bookdock/ui';
+
+// Tauri imports (safe to import even in browser, just won't be used)
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+
+// Web Pages
+import Library from './pages/Library';
+import Reader from './pages/Reader';
+import ReaderTTS from './pages/Reader-TTS';
+import Settings from './pages/Settings';
+import Login from './pages/Login';
+import Admin from './pages/Admin';
+import AdminUsers from './pages/AdminUsers';
+import Membership from './pages/Membership';
+
+// Desktop Screens
 import { LibraryScreen } from './screens/Library';
 import { ReaderScreen } from './screens/Reader';
 import { SettingsScreen } from './screens/Settings';
+
+// Stores
 import { useDesktopStore } from './stores/desktopStore';
+import { useThemeStore } from './stores/authStore';
 import { useDesktopEvents } from './hooks/useDesktopCommands';
+
 import type { Book } from '@bookdock/api-client';
 import './styles.css';
 
-// Wrapper component for desktop events
-function DesktopApp() {
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+
+const isTauri = !!(window as any).__TAURI_IPC__;
+
+// ============ Web Route Wrappers ============
+
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  const location = useLocation();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+      </div>
+    );
+  }
+  if (user?.role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
+  return <>{children}</>;
+}
+
+function PremiumRoute({ children }: { children: React.ReactNode }) {
+  const { membership, isLoading } = useAuth();
+  const isPremium = membership === 'premium';
+  const location = useLocation();
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+      </div>
+    );
+  }
+  if (!isPremium) {
+    return <Navigate to="/membership" state={{ from: location }} replace />;
+  }
+  return <>{children}</>;
+}
+
+// ============ Web Layout ============
+
+function WebLayout({ children }: { children: React.ReactNode }) {
+  const { user, logout, isAuthenticated, membership } = useAuth();
+  const isPremium = membership === 'premium';
+  const location = useLocation();
+  const { theme, toggleTheme } = useThemeStore();
+
+  if (!isAuthenticated) {
+    return <>{children}</>;
+  }
+
+  const navItems = [
+    { path: '/', label: '书库', icon: '📚' },
+    { path: '/membership', label: '会员', icon: '👑' },
+    { path: '/settings', label: '设置', icon: '⚙️' },
+  ];
+
+  if (user?.role === 'admin') {
+    navItems.push({ path: '/admin', label: '管理', icon: '🔧' });
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <header className="sticky top-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center space-x-8">
+              <Link to="/" className="flex items-center space-x-2">
+                <span className="text-2xl">📖</span>
+                <span className="text-xl font-bold text-gray-900 dark:text-white">书仓</span>
+              </Link>
+              <nav className="flex space-x-1">
+                {navItems.map((item) => (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                      location.pathname === item.path
+                        ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <span className="mr-1">{item.icon}</span>
+                    {item.label}
+                  </Link>
+                ))}
+              </nav>
+            </div>
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                aria-label="Toggle theme"
+              >
+                {theme === 'dark' ? '☀️' : '🌙'}
+              </button>
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-600 dark:text-gray-400">{user?.username}</span>
+                  {isPremium && <PremiumBadge />}
+                  {!isPremium && (
+                    <Link
+                      to="/membership"
+                      className="ml-1 px-2 py-0.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors font-medium"
+                    >
+                      开通会员
+                    </Link>
+                  )}
+                </div>
+                <Button variant="ghost" size="sm" onClick={logout}>
+                  退出
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">{children}</main>
+    </div>
+  );
+}
+
+// ============ Web App Routes ============
+
+function WebAppRoutes() {
+  const { token } = useAuth();
+
+  useEffect(() => {
+    initApiClient({
+      baseURL: apiBaseUrl,
+      getAuthToken: () => token || localStorage.getItem('bookdock_auth_token'),
+      onAuthError: () => {
+        localStorage.removeItem('bookdock_auth_token');
+        localStorage.removeItem('bookdock_auth_user');
+      },
+    });
+  }, [token]);
+
+  return (
+    <WebLayout>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/membership" element={<Membership />} />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <Library />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/book/:id"
+          element={
+            <ProtectedRoute>
+              <Reader />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/book/:id/tts"
+          element={
+            <ProtectedRoute>
+              <PremiumRoute>
+                <ReaderTTS />
+              </PremiumRoute>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <ProtectedRoute>
+              <Settings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/*"
+          element={
+            <AdminRoute>
+              <Admin />
+            </AdminRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </WebLayout>
+  );
+}
+
+// ============ Desktop App Routes ============
+
+function DesktopAppRoutes() {
   useDesktopEvents();
 
   const { settings, selectedBook, selectBook, setBooks } = useDesktopStore();
   const [isReady, setIsReady] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-
-  const isTauri = !!(window as any).__TAURI_IPC__;
 
   // Apply theme
   useEffect(() => {
@@ -40,7 +269,6 @@ function DesktopApp() {
   // Listen for system theme changes
   useEffect(() => {
     if (settings.theme !== 'system') return;
-
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handler = (e: MediaQueryListEvent) => {
       if (e.matches) {
@@ -49,41 +277,33 @@ function DesktopApp() {
         document.documentElement.classList.remove('dark');
       }
     };
-
     mediaQuery.addEventListener('change', handler);
     return () => mediaQuery.removeEventListener('change', handler);
   }, [settings.theme]);
 
-  // Tauri: load books and listen for backend events
+  // Load books from Tauri backend
   useEffect(() => {
-    if (!isTauri) return;
-
+    const loadBooks = async () => {
+      setIsLoading(true);
+      try {
+        const result = await invoke<Book[]>('get_books');
+        setBooks(result);
+      } catch (error) {
+        console.error('Failed to load books:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
     loadBooks();
 
     const unlisten = listen<{ type: string; payload: unknown }>('book-event', (event) => {
       console.log('Received book event:', event.payload);
-      if (event.payload) {
-        // Handle book events
-      }
     });
 
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [isTauri]);
-
-  const loadBooks = async () => {
-    if (!isTauri) return;
-    setIsLoading(true);
-    try {
-      const result = await invoke<Book[]>('get_books');
-      setBooks(result);
-    } catch (error) {
-      console.error('Failed to load books:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, []);
 
   if (!isReady || isLoading) {
     return (
@@ -96,20 +316,12 @@ function DesktopApp() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <Routes>
-        {/* Main library */}
         <Route path="/" element={<LibraryScreen />} />
-
-        {/* Reader - may open in new window or inline */}
         <Route path="/reader/:id" element={<ReaderScreen />} />
-
-        {/* Settings */}
         <Route path="/settings" element={<SettingsScreen />} />
-
-        {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {/* Selected book inline reader overlay */}
       {selectedBook && (
         <div className="fixed inset-0 z-50 bg-white dark:bg-gray-900">
           <div className="h-full flex flex-col">
@@ -120,9 +332,7 @@ function DesktopApp() {
               >
                 ← 返回
               </button>
-              <span className="font-medium text-gray-900 dark:text-white">
-                {selectedBook.title}
-              </span>
+              <span className="font-medium text-gray-900 dark:text-white">{selectedBook.title}</span>
               <div className="w-20"></div>
             </header>
             <main className="flex-1 overflow-hidden">
@@ -131,38 +341,28 @@ function DesktopApp() {
           </div>
         </div>
       )}
-
-      {/* Non-Tauri Warning Overlay */}
-      {!isTauri && (
-        <div className="fixed inset-0 z-[100] bg-black/80 flex items-center justify-center backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-md text-center">
-            <div className="text-6xl mb-4">⚠️</div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
-              运行环境提示
-            </h2>
-            <p className="text-gray-600 dark:text-gray-400 mb-6">
-              检测到当前在普通浏览器中运行。桌面端应用的功能需要通过 Tauri 环境启动才能获得完整体验。
-            </p>
-            <div className="bg-gray-100 dark:bg-gray-900 p-4 rounded-lg font-mono text-sm text-left mb-6">
-              <p className="text-blue-500">$ pnpm dev:desktop</p>
-            </div>
-            <button
-              onClick={() => (window.location.href = '/')}
-              className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-            >
-              继续使用有限功能
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
+// ============ Root App ============
+
 function App() {
   return (
     <BrowserRouter>
-      <DesktopApp />
+      {isTauri ? (
+        <DesktopAppRoutes />
+      ) : (
+        <AuthProvider
+          apiBaseUrl={apiBaseUrl}
+          onAuthError={() => {
+            localStorage.removeItem('bookdock_auth_token');
+            localStorage.removeItem('bookdock_auth_user');
+          }}
+        >
+          <WebAppRoutes />
+        </AuthProvider>
+      )}
     </BrowserRouter>
   );
 }

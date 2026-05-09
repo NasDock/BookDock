@@ -1,14 +1,15 @@
-import { contextBridge as i, ipcRenderer as r } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
 console.log("Preload script loading...");
-i.exposeInMainWorld("electron", {
+contextBridge.exposeInMainWorld("electron", {
   // IPC methods
-  invoke: (e, ...o) => r.invoke(e, ...o),
+  invoke: (channel, ...args) => ipcRenderer.invoke(channel, ...args),
   // Custom listeners
-  on: (e, o) => {
-    const n = (s, ...t) => o(...t);
-    return r.on(e, n), () => r.removeListener(e, n);
+  on: (channel, callback) => {
+    const subscription = (_event, ...args) => callback(...args);
+    ipcRenderer.on(channel, subscription);
+    return () => ipcRenderer.removeListener(channel, subscription);
   },
   // Metadata or Env
-  isElectron: !0,
+  isElectron: true,
   platform: process.platform
 });
