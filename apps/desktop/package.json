@@ -2,6 +2,11 @@
   "name": "@bookdock/desktop",
   "version": "0.1.0",
   "private": true,
+  "author": "NasDock <team@nasdock.app>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NasDock/BookDock"
+  },
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
