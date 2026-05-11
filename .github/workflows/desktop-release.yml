@@ -1,0 +1,117 @@
+name: Release Desktop App
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+            command: build:mac
+          - os: windows-latest
+            platform: win
+            command: build:win
+          - os: ubuntu-latest
+            platform: linux
+            command: build:linux
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Desktop App
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: pnpm --filter @bookdock/desktop run ${{ matrix.command }}
+
+      - name: Build Changelog
+        id: build_changelog
+        uses: mikepenz/release-changelog-builder-action@v5
+        if: matrix.platform == 'mac' && startsWith(github.ref, 'refs/tags/')
+        with:
+          configurationJson: |
+            {
+              "template": "#{{CHANGELOG}}",
+              "categories": [
+                {
+                    "title": "## 新功能",
+                    "labels": ["feat", "feature", "Feat", "Feature"]
+                },
+                {
+                    "title": "## 修复",
+                    "labels": ["fix", "bug", "Fix", "Bug"]
+                },
+                {
+                    "title": "## 更新内容",
+                    "labels": []
+                }
+              ],
+              "label_extractor": [
+                {
+                  "pattern": "^\\s*(feat|fix|docs|style|refactor|perf|test|chore|revert|ci|build)(?:\\(.+\\))?!?: .+$",
+                  "target": "$1",
+                  "flags": "i"
+                }
+              ]
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Release Assets (Mac)
+        uses: softprops/action-gh-release@v2
+        if: matrix.platform == 'mac' && startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest*.yml
+          body: ${{ steps.build_changelog.outputs.changelog }}
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Release Assets (Win/Linux)
+        uses: softprops/action-gh-release@v2
+        if: matrix.platform != 'mac' && startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest*.yml
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
