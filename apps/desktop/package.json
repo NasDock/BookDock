@@ -68,7 +68,7 @@
       "output": "release"
     },
     "win": {
-      "icon": "public/logo.png",
+      "icon": "public/logo.ico",
       "target": [
         {
           "target": "nsis",
@@ -87,7 +87,7 @@
       "shortcutName": "BookDock"
     },
     "mac": {
-      "icon": "dist/logo.icns",
+      "icon": "public/logo.icns",
       "target": [
         {
           "target": "dmg",
