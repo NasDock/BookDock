@@ -187,6 +187,15 @@ class ApiClient {
     return data;
   }
 
+  async uploadBookFile(file: File): Promise<ApiResponse<Book>> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const { data } = await this.client.post('/books/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  }
+
   // Reading progress
   async updateReadingProgress(bookId: string, progressPct: number, currentChapter?: number, scrollOffset?: number): Promise<ApiResponse> {
     const { data } = await this.client.post(`/reading-progress/books/${bookId}`, {

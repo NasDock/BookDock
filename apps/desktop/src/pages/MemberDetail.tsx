@@ -148,7 +148,7 @@ export default function MemberDetail() {
           <Button variant="secondary" className="w-full" onClick={() => navigate('/member-benefits')}>
             会员权益说明
           </Button>
-          <Button variant="ghost" className="w-full text-gray-500" onClick={handleLogout}>
+          <Button variant="ghost" className="w-full" onClick={handleLogout}>
             退出登录
           </Button>
         </div>

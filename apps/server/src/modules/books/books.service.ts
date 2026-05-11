@@ -7,7 +7,7 @@ import {
 import { PrismaClient, Book } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { createReadStream, statSync, existsSync } from 'fs';
-import { readdir, stat, readFile } from 'fs/promises';
+import { readdir, stat, readFile, rename } from 'fs/promises';
 import { join } from 'path';
 import * as iconv from 'iconv-lite';
 import { BookFormat } from '../../common/types/prisma-compat';
@@ -73,6 +73,70 @@ export class BooksService {
         filePath: dto.filePath,
         fileHash,
         fileSize,
+      },
+      include: {
+        bookTags: { include: { tag: true } },
+      },
+    });
+
+    return this.toBookResponse(book);
+  }
+
+  async createFromUpload(file: Express.Multer.File): Promise<BookResponseDto> {
+    const ext = file.originalname.split('.').pop()?.toLowerCase() || '';
+    const ebookExts = ['txt', 'epub', 'pdf', 'mobi', 'azw3', 'fb2', 'djvu'];
+    if (!ebookExts.includes(ext)) {
+      throw new Error(`不支持的文件格式: ${ext}`);
+    }
+
+    const destPath = join(this.nasEbookPath, file.originalname);
+
+    // If file already exists, append a number
+    let finalFileName = file.originalname;
+    let finalDestPath = destPath;
+    let counter = 1;
+    while (existsSync(finalDestPath)) {
+      const nameWithoutExt = file.originalname.replace(/\.[^/.]+$/, '');
+      finalFileName = `${nameWithoutExt} (${counter}).${ext}`;
+      finalDestPath = join(this.nasEbookPath, finalFileName);
+      counter++;
+    }
+
+    await rename(file.path, finalDestPath);
+
+    const fileStat = statSync(finalDestPath);
+    const title = finalFileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+
+    const existing = await this.prisma.book.findFirst({
+      where: { filePath: finalFileName, isDeleted: false },
+    });
+    if (existing) {
+      return this.toBookResponse(existing);
+    }
+
+    const crypto = await import('crypto');
+    const hash = crypto.createHash('sha256');
+    let fileHash: string | undefined;
+    await new Promise<void>((resolve, reject) => {
+      createReadStream(finalDestPath)
+        .on('data', (chunk) => hash.update(chunk))
+        .on('end', () => {
+          fileHash = hash.digest('hex');
+          resolve();
+        })
+        .on('error', reject);
+    });
+
+    const book = await this.prisma.book.create({
+      data: {
+        title,
+        author: 'Unknown',
+        format: ext,
+        filePath: finalFileName,
+        fileSize: BigInt(fileStat.size),
+        fileHash,
+        language: 'zh',
+        metadata: '{}',
       },
       include: {
         bookTags: { include: { tag: true } },

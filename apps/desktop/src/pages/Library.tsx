@@ -116,6 +116,28 @@ export default function Library() {
   const [sortBy, setSortBy] = useState<SortOption>('addedAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [authorSearch, setAuthorSearch] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const apiClient = getApiClient();
+      const res = await apiClient.uploadBookFile(file);
+      if (res.success) {
+        await fetchBooks();
+      } else {
+        alert('上传失败: ' + (res.error || '未知错误'));
+      }
+    } catch (err: any) {
+      alert('上传失败: ' + err.message);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   // Fetch sources on mount
   useEffect(() => {
@@ -331,7 +353,19 @@ export default function Library() {
               </select>
             </div>
           )}
-          <Button onClick={() => navigate('/admin')}>📚 添加书籍</Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".txt,.epub,.pdf,.mobi,.azw3"
+            className="hidden"
+            onChange={handleUpload}
+          />
+          <Button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+          >
+            {uploading ? '⏳ 上传中...' : '📚 添加书籍'}
+          </Button>
         </div>
       </div>
 

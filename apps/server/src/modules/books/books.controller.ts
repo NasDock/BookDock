@@ -52,6 +52,24 @@ export class BooksController {
     return this.booksService.create(dto);
   }
 
+  @Post('upload')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload a local book file' })
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiResponse({ status: 201, type: BookResponseDto })
+  async uploadBook(
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [new MaxFileSizeValidator({ maxSize: 500 * 1024 * 1024 })],
+      }),
+    )
+    file: Express.Multer.File,
+  ) {
+    return this.booksService.createFromUpload(file);
+  }
+
   @Get()
   @ApiOperation({ summary: 'List all books with pagination and filters' })
   @ApiResponse({ status: 200, type: PaginatedBooksDto })

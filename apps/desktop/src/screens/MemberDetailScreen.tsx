@@ -96,7 +96,7 @@ export function MemberDetailScreen() {
 
         <div className="space-y-2">
           <a href="#/member-benefits" className="block w-full py-2 text-center bg-gray-200 dark:bg-gray-700 rounded-lg text-sm">会员权益说明</a>
-          <button onClick={handleLogout} className="w-full py-2 text-gray-500 text-sm">退出登录</button>
+          <button onClick={handleLogout} className="w-full py-2 text-gray-500 dark:text-gray-400 text-sm">退出登录</button>
         </div>
       </div>
     </div>
