@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { X } from 'lucide-react';
 import { cn } from './utils';
 
 export interface DialogProps {
@@ -52,7 +53,7 @@ export function Dialog({ open, onClose, title, children, footer, size = 'md' }: 
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
             >
-              ✕
+              <X className="w-5 h-5" />
             </button>
           </div>
         )}

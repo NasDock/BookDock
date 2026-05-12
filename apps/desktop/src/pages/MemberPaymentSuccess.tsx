@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, CardContent } from '@bookdock/ui';
+import { CheckCircle, Crown, BookOpen, ArrowRight } from 'lucide-react';
 
 export default function MemberPaymentSuccess() {
   const navigate = useNavigate();
@@ -49,11 +50,11 @@ export default function MemberPaymentSuccess() {
         {/* Success Icon */}
         <div className="mb-8">
           <div className="inline-flex items-center justify-center w-24 h-24 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full shadow-xl mb-6 animate-bounce">
-            <span className="text-5xl">✅</span>
+            <CheckCircle className="w-12 h-12 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">支付成功！</h1>
           <p className="text-gray-500 dark:text-gray-400">
-            恭喜您已成为 BookDock {levelName} 🎉
+            恭喜您已成为 BookDock {levelName}
           </p>
         </div>
 
@@ -62,7 +63,7 @@ export default function MemberPaymentSuccess() {
           <CardContent>
             <div className="space-y-4">
               <div className="flex items-center justify-center gap-3 p-4 bg-green-50 dark:bg-green-900/20 rounded-xl">
-                <span className="text-3xl">👑</span>
+                <Crown className="w-8 h-8 text-amber-500" />
                 <div className="text-left">
                   <p className="font-bold text-gray-900 dark:text-white">{levelName}</p>
                   <p className="text-sm text-green-600 dark:text-green-400">
@@ -86,10 +87,10 @@ export default function MemberPaymentSuccess() {
             className="w-full"
             style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
           >
-            👑 查看会员详情
+            <Crown className="w-4 h-4 mr-1" /> 查看会员详情
           </Button>
           <Button variant="secondary" onClick={handleGoHome} className="w-full">
-            📚 返回书架
+            <BookOpen className="w-4 h-4 mr-1" /> 返回书架
           </Button>
         </div>
 

@@ -4,6 +4,7 @@ import { getApiClient, Book } from '@bookdock/api-client';
 import { useReaderStore } from '../stores/themeStore';
 import { Button } from '@bookdock/ui';
 import type { ReaderMode } from '@bookdock/ebook-reader';
+import { ArrowLeft, Settings, BookOpen, Bookmark, ChevronLeft, ChevronRight, Volume2, Timer, X, Keyboard, Sun, Moon, ScrollText, Plus } from 'lucide-react';
 
 // ==================== Bookmark ====================
 interface Bookmark {
@@ -49,12 +50,12 @@ function ChapterDrawer({ chapters, currentChapter, isOpen, onClose, onSelectChap
       <div className="fixed top-0 left-0 bottom-0 w-80 max-w-[85vw] bg-white dark:bg-gray-900 shadow-2xl z-50 flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">📑 目录</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2"><BookOpen className="w-5 h-5" /> 目录</h2>
           <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
 
@@ -62,7 +63,7 @@ function ChapterDrawer({ chapters, currentChapter, isOpen, onClose, onSelectChap
         <div ref={listRef} className="flex-1 overflow-y-auto py-2">
           {chapters.length === 0 ? (
             <div className="text-center py-12 text-gray-400 dark:text-gray-500">
-              <div className="text-3xl mb-2">📄</div>
+              <div className="mb-2 flex justify-center"><BookOpen className="w-8 h-8" /></div>
               <p className="text-sm">暂无章节信息</p>
             </div>
           ) : (
@@ -160,12 +161,12 @@ function SettingsDrawer({
       <div className="fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] bg-white dark:bg-gray-900 shadow-2xl z-50 flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">⚙️ 设置</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white"><Settings className="w-5 h-5 inline mr-1" /> 设置</h2>
           <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
 
@@ -179,7 +180,7 @@ function SettingsDrawer({
                 : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
-            📖 显示
+            <BookOpen className="w-4 h-4 inline mr-1" /> 显示
           </button>
           <button
             onClick={() => setActiveTab('bookmarks')}
@@ -189,7 +190,7 @@ function SettingsDrawer({
                 : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
-            🔖 书签 ({bookmarks.length})
+            <Bookmark className="w-4 h-4 inline mr-1" /> 书签 ({bookmarks.length})
           </button>
         </div>
 
@@ -213,7 +214,7 @@ function SettingsDrawer({
                           : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
                       }`}
                     >
-                      {m === 'light' ? '☀️' : m === 'dark' ? '🌙' : '📜'}
+                      {m === 'light' ? <Sun className="w-5 h-5 mx-auto" /> : m === 'dark' ? <Moon className="w-5 h-5 mx-auto" /> : <ScrollText className="w-5 h-5 mx-auto" />}
                     </button>
                   ))}
                 </div>
@@ -294,13 +295,13 @@ function SettingsDrawer({
             </div>
           ) : (
             <div className="space-y-3">
-              <Button onClick={onAddBookmark} className="w-full" size="sm">
-                ➕ 添加书签
+              <Button onClick={onAddBookmark} className="w-full flex items-center justify-center gap-1" size="sm">
+                <Plus className="w-4 h-4" /> 添加书签
               </Button>
 
               {bookmarks.length === 0 ? (
                 <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                  <div className="text-4xl mb-2">🔖</div>
+                  <div className="mb-2 flex justify-center"><Bookmark className="w-10 h-10" /></div>
                   <p className="text-sm">暂无书签</p>
                   <p className="text-xs mt-1">点击上方按钮添加书签</p>
                 </div>
@@ -386,7 +387,7 @@ function ReaderControls({
             onClick={onGoBack}
             className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors z-10"
           >
-            <span>←</span>
+            <ArrowLeft className="w-4 h-4" />
             <span className="text-sm hidden sm:inline">返回</span>
           </button>
 
@@ -410,7 +411,7 @@ function ReaderControls({
             }`}
             title="设置"
           >
-            ⚙️
+            <Settings className="w-5 h-5" />
           </button>
         </div>
       </div>
@@ -429,14 +430,14 @@ function ReaderControls({
               }`}
               title="目录"
             >
-              📑
+              <BookOpen className="w-5 h-5" />
             </button>
             <button
               onClick={onAddBookmark}
               className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-400"
               title="添加书签"
             >
-              🔖
+              <Bookmark className="w-5 h-5" />
             </button>
           </div>
 
@@ -446,9 +447,9 @@ function ReaderControls({
               onClick={onPrevPage}
               className="p-2 sm:p-2.5 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={currentChapter === 0}
-              title="上一章 (←)"
+              title="上一章"
             >
-              <span className="text-lg">‹</span>
+              <ChevronLeft className="w-5 h-5" />
             </button>
 
             <div className="flex-1 mx-1 sm:mx-2">
@@ -479,7 +480,7 @@ function ReaderControls({
               disabled={currentChapter >= totalChapters - 1}
               title="下一章 (→)"
             >
-              <span className="text-lg">›</span>
+              <ChevronRight className="w-5 h-5" />
             </button>
           </div>
 
@@ -490,7 +491,7 @@ function ReaderControls({
               className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-400"
               title="听书模式"
             >
-              🔊
+              <Volume2 className="w-5 h-5" />
             </button>
             <button
               onClick={onToggleAutoScroll}
@@ -501,7 +502,7 @@ function ReaderControls({
               }`}
               title={isAutoScroll ? '关闭自动滚动' : '开启自动滚动'}
             >
-              ⏱️
+              <Timer className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -931,7 +932,7 @@ export default function Reader() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center max-w-md mx-auto px-4">
-          <div className="text-6xl mb-4">📕</div>
+          <div className="mb-4 flex justify-center"><BookOpen className="w-16 h-16 text-red-400" /></div>
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
             {error || readerError}
           </h2>
@@ -948,7 +949,7 @@ export default function Reader() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
-          <div className="text-6xl mb-4">📭</div>
+          <div className="mb-4 flex justify-center"><BookOpen className="w-16 h-16 text-gray-400" /></div>
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">书籍不存在</h2>
           <Button onClick={() => navigate('/')}>返回书库</Button>
         </div>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { X } from 'lucide-react';
 import { cn } from './utils';
 
 export interface ToastProps {
@@ -30,7 +31,7 @@ export function Toast({ message, type = 'info', visible, onClose }: ToastProps) 
         <span className="text-sm font-medium">{message}</span>
         {onClose && (
           <button onClick={onClose} className="text-white/80 hover:text-white ml-2">
-            ✕
+            <X className="w-4 h-4" />
           </button>
         )}
       </div>

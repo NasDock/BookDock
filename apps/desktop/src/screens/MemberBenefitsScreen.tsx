@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Crown, Sparkles, BookOpen, Headphones, Star, Ban, MessageCircle, Gift, Check } from 'lucide-react';
 
 const API_BASE = 'http://localhost:8080/api';
 
@@ -63,17 +64,24 @@ export function MemberBenefitsScreen() {
       <div className="max-w-4xl mx-auto">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl shadow mb-3">
-            <span className="text-2xl">👑</span>
+            <Crown className="w-7 h-7 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">会员特权</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">解锁全部功能</p>
         </div>
 
         <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl p-5 mb-6 text-white">
-          <h2 className="font-bold mb-2">✨ 会员专属特权</h2>
+          <h2 className="font-bold mb-2 flex items-center gap-2"><Sparkles className="w-4 h-4" /> 会员专属特权</h2>
           <div className="grid grid-cols-3 gap-2 text-sm">
-            {['📚 无限书籍', '🎧 语音朗读', '⭐ 新功能抢先', '🚫 去除广告', '💬 优先客服', '📖 高级阅读'].map(b => (
-              <span key={b}>{b}</span>
+            {[
+              { icon: <BookOpen className="w-3.5 h-3.5" />, text: '无限书籍' },
+              { icon: <Headphones className="w-3.5 h-3.5" />, text: '语音朗读' },
+              { icon: <Star className="w-3.5 h-3.5" />, text: '新功能抢先' },
+              { icon: <Ban className="w-3.5 h-3.5" />, text: '去除广告' },
+              { icon: <MessageCircle className="w-3.5 h-3.5" />, text: '优先客服' },
+              { icon: <BookOpen className="w-3.5 h-3.5" />, text: '高级阅读' },
+            ].map((b) => (
+              <span key={b.text} className="flex items-center gap-1">{b.icon} {b.text}</span>
             ))}
           </div>
         </div>
@@ -92,12 +100,12 @@ export function MemberBenefitsScreen() {
               <ul className="space-y-1 mb-4">
                 {product.features.map(f => (
                   <li key={f} className="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-300">
-                    <span className="text-green-500">✓</span> {f}
+                    <Check className="w-3.5 h-3.5 text-green-500" /> {f}
                   </li>
                 ))}
               </ul>
               {vipUser?.level === product.id && vipUser?.isVip ? (
-                <div className="text-center py-2 bg-green-50 dark:bg-green-900/20 rounded-lg text-green-600 text-sm font-medium">✓ 当前方案</div>
+                <div className="text-center py-2 bg-green-50 dark:bg-green-900/20 rounded-lg text-green-600 text-sm font-medium flex items-center justify-center gap-1"><Check className="w-3.5 h-3.5" /> 当前方案</div>
               ) : (
                 <div className="flex gap-2">
                   <button onClick={() => handleBuy(product.id)} disabled={isLoading}
@@ -116,7 +124,7 @@ export function MemberBenefitsScreen() {
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 mb-6">
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-2">📋 购买须知</h3>
+          <h3 className="font-semibold text-gray-900 dark:text-white mb-2">购买须知</h3>
           <ul className="text-sm text-gray-500 space-y-1">
             <li>• 年卡：购买后1年内有效</li>
             <li>• 永久卡：一次购买，终身有效</li>

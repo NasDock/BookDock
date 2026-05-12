@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@bookdock/ui';
+import { Crown, Sparkles, BookOpen, Headphones, Star, Ban, MessageCircle, ClipboardList, ArrowLeft, Check, Volume2, ShieldCheck, BookMarked } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
 
@@ -122,7 +123,7 @@ export default function MemberBenefits() {
         {/* Header */}
         <div className="text-center mb-10">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl shadow-xl mb-4">
-            <span className="text-3xl">👑</span>
+            <Crown className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">会员特权</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-2">解锁 BookDock 全部功能</p>
@@ -130,11 +131,21 @@ export default function MemberBenefits() {
 
         {/* VIP Benefits Banner */}
         <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl p-6 mb-8 text-white shadow-lg">
-          <h2 className="text-xl font-bold mb-3">✨ 会员专属特权</h2>
+          <h2 className="text-xl font-bold mb-3 flex items-center gap-2">
+            <Sparkles className="w-5 h-5" /> 会员专属特权
+          </h2>
           <div className="grid grid-cols-2 gap-3">
-            {['📚 无限书籍阅读', '🎧 智能语音朗读', '⭐ 抢先体验新功能', '🚫 去除全部广告', '💬 优先客服支持', '📖 高级阅读功能'].map((benefit) => (
-              <div key={benefit} className="flex items-center gap-2 text-sm">
-                <span>{benefit}</span>
+            {[
+              { icon: <BookOpen className="w-4 h-4" />, text: '无限书籍阅读' },
+              { icon: <Headphones className="w-4 h-4" />, text: '智能语音朗读' },
+              { icon: <Star className="w-4 h-4" />, text: '抢先体验新功能' },
+              { icon: <Ban className="w-4 h-4" />, text: '去除全部广告' },
+              { icon: <MessageCircle className="w-4 h-4" />, text: '优先客服支持' },
+              { icon: <BookMarked className="w-4 h-4" />, text: '高级阅读功能' },
+            ].map((benefit) => (
+              <div key={benefit.text} className="flex items-center gap-2 text-sm">
+                {benefit.icon}
+                <span>{benefit.text}</span>
               </div>
             ))}
           </div>
@@ -160,7 +171,7 @@ export default function MemberBenefits() {
                 <ul className="space-y-2">
                   {product.features.map((feature) => (
                     <li key={feature} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
-                      <span className="text-green-500">✓</span>
+                      <Check className="w-4 h-4 text-green-500" />
                       {feature}
                     </li>
                   ))}
@@ -168,7 +179,7 @@ export default function MemberBenefits() {
 
                 {vipUser?.level === product.id && vipUser?.isVip ? (
                   <div className="text-center py-2 bg-green-50 dark:bg-green-900/20 rounded-lg text-green-600 dark:text-green-400 text-sm font-medium">
-                    ✓ 当前方案
+                    <Check className="w-4 h-4 inline mr-1" /> 当前方案
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -200,7 +211,9 @@ export default function MemberBenefits() {
         {/* Purchase Notice */}
         <Card className="mb-8">
           <CardContent>
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-3">📋 购买须知</h3>
+            <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+              <ClipboardList className="w-5 h-5" /> 购买须知
+            </h3>
             <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
               <li>• 年卡：购买后1年内有效，到期后可续费</li>
               <li>• 永久卡：一次购买，终身有效</li>
@@ -237,9 +250,9 @@ export default function MemberBenefits() {
           <button
             type="button"
             onClick={() => navigate('/')}
-            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center justify-center gap-1 mx-auto"
           >
-            ← 返回书架
+            <ArrowLeft className="w-4 h-4" /> 返回书架
           </button>
         </div>
       </div>

@@ -14,6 +14,7 @@ import {
 } from '../hooks/useDesktopCommands';
 import { FileBrowser } from '../components/FileBrowser';
 import { TTSControls } from '../components/TTSControls';
+import { BookOpen, ArrowDown } from 'lucide-react';
 
 function formatDate(dateStr: string): string {
   try {
@@ -137,7 +138,7 @@ export function LibraryScreen() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <span className="text-3xl">📖</span>
+                <BookOpen className="w-8 h-8 text-blue-600" />
                 <h1 className="text-2xl font-bold text-gray-900 dark:text-white">BookDock</h1>
               </div>
               <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full">
@@ -155,9 +156,7 @@ export function LibraryScreen() {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-64 px-4 py-2 pl-10 bg-gray-100 dark:bg-gray-700 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                  🔍
-                </span>
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
               </div>
 
               {/* TTS toggle */}
@@ -170,7 +169,7 @@ export function LibraryScreen() {
                 }`}
                 title="听书模式"
               >
-                🔊
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
               </button>
 
               {/* Minimize to tray */}
@@ -179,7 +178,7 @@ export function LibraryScreen() {
                 className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
                 title="最小化到托盘"
               >
-                ⬇️
+                <ArrowDown className="w-5 h-5" />
               </button>
             </div>
           </div>
@@ -194,7 +193,7 @@ export function LibraryScreen() {
                   : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
               }`}
             >
-              📚 我的书库
+              <span className="flex items-center gap-1.5"><BookOpen className="w-4 h-4" /> 我的书库</span>
             </button>
             <button
               onClick={() => setActiveTab('local')}
@@ -204,7 +203,7 @@ export function LibraryScreen() {
                   : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
               }`}
             >
-              📂 本地文件
+              <span className="flex items-center gap-1.5"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg> 本地文件</span>
             </button>
           </div>
         </div>
@@ -273,20 +272,20 @@ export function LibraryScreen() {
                     onClick={handleImportFile}
                     className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors"
                   >
-                    📄 导入文件
+                    <span className="flex items-center gap-1.5"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> 导入文件</span>
                   </button>
                   <button
                     onClick={handleImportFolder}
                     className="px-4 py-2 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium transition-colors"
                   >
-                    📁 导入文件夹
+                    <span className="flex items-center gap-1.5"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" /></svg> 导入文件夹</span>
                   </button>
                 </div>
               </div>
 
               {filteredBooks.length === 0 ? (
                 <div className="text-center py-16">
-                  <div className="text-6xl mb-4">📚</div>
+                  <div className="mb-4"><BookOpen className="w-16 h-16 mx-auto text-gray-400" /></div>
                   <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
                     {searchQuery ? '没有找到匹配的书籍' : '您的书库是空的'}
                   </h3>
@@ -334,7 +333,7 @@ export function LibraryScreen() {
                         )}
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
                           <span className="opacity-0 group-hover:opacity-100 text-white text-3xl transition-opacity">
-                            📖
+                            <BookOpen className="w-8 h-8" />
                           </span>
                         </div>
                       </div>

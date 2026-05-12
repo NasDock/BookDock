@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "clsx": "^2.1.0",
+    "lucide-react": "^1.14.0",
     "tailwind-merge": "^2.2.1"
   },
   "peerDependencies": {

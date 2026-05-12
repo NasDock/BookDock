@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { Crown } from 'lucide-react';
 
 const API_BASE = 'http://localhost:8080/api';
 
@@ -80,7 +81,7 @@ export function MemberLoginScreen() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl shadow mb-4">
-            <span className="text-3xl">👑</span>
+            <Crown className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">会员登录</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">手机号快捷登录</p>

@@ -1,6 +1,14 @@
 import React, { useEffect } from 'react';
 import { useDesktopStore, type LocalFile } from '../stores/desktopStore';
 import { useFileBrowser, importLocalBook, addBook } from '../hooks/useDesktopCommands';
+import {
+  Folder,
+  BookOpen,
+  FileText,
+  File,
+  ArrowUp,
+  FolderOpen,
+} from 'lucide-react';
 
 function formatFileSize(bytes: number): string {
   if (bytes === 0) return '-';
@@ -10,20 +18,20 @@ function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-function getFileIcon(file: LocalFile): string {
-  if (file.is_dir) return '📁';
+function getFileIcon(file: LocalFile): React.ReactNode {
+  if (file.is_dir) return <Folder className="w-5 h-5 text-blue-500" />;
   const ext = file.name.split('.').pop()?.toLowerCase();
   switch (ext) {
     case 'epub':
-      return '📕';
+      return <BookOpen className="w-5 h-5 text-amber-500" />;
     case 'pdf':
-      return '📗';
+      return <FileText className="w-5 h-5 text-red-500" />;
     case 'mobi':
-      return '📘';
+      return <BookOpen className="w-5 h-5 text-blue-400" />;
     case 'txt':
-      return '📄';
+      return <FileText className="w-5 h-5 text-gray-500" />;
     default:
-      return '📋';
+      return <File className="w-5 h-5 text-gray-400" />;
   }
 }
 
@@ -91,7 +99,7 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({ onBookSelected }) => {
           className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700"
           title="返回上级目录"
         >
-          ⬆️
+          <ArrowUp className="w-4 h-4 text-gray-600 dark:text-gray-300" />
         </button>
         <div className="flex-1 px-3 py-1.5 bg-white dark:bg-gray-700 rounded text-sm text-gray-600 dark:text-gray-300 truncate">
           {currentPath || '选择目录...'}
@@ -102,7 +110,7 @@ export const FileBrowser: React.FC<FileBrowserProps> = ({ onBookSelected }) => {
       <div className="flex-1 overflow-y-auto">
         {files.length === 0 ? (
           <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-            <div className="text-4xl mb-3">📂</div>
+            <FolderOpen className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600" />
             <p>此目录为空</p>
             <p className="text-sm mt-1">拖放文件到此处添加书籍</p>
           </div>

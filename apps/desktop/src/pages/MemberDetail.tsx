@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@bookdock/ui';
+import { Crown, Gift, BookOpen, Headphones, Star, Ban, MessageCircle, Smartphone, ArrowLeft } from 'lucide-react';
 
 export default function MemberDetail() {
   const navigate = useNavigate();
@@ -42,7 +43,7 @@ export default function MemberDetail() {
         {/* Header */}
         <div className="text-center mb-8">
           <div className={`inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br ${levelColor} rounded-2xl shadow-xl mb-4`}>
-            <span className="text-4xl">👑</span>
+            <Crown className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">我的会员</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">感谢您对 BookDock 的支持</p>
@@ -74,18 +75,20 @@ export default function MemberDetail() {
           </div>
 
           <CardContent className="p-6">
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-4">🎁 会员特权</h3>
+            <h3 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <Gift className="w-5 h-5" /> 会员特权
+            </h3>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { icon: '📚', text: '无限书籍阅读' },
-                { icon: '🎧', text: '智能语音朗读' },
-                { icon: '⭐', text: '抢先体验新功能' },
-                { icon: '🚫', text: '去除全部广告' },
-                { icon: '💬', text: '优先客服支持' },
-                { icon: '📖', text: '高级阅读功能' },
+                { icon: <BookOpen className="w-4 h-4" />, text: '无限书籍阅读' },
+                { icon: <Headphones className="w-4 h-4" />, text: '智能语音朗读' },
+                { icon: <Star className="w-4 h-4" />, text: '抢先体验新功能' },
+                { icon: <Ban className="w-4 h-4" />, text: '去除全部广告' },
+                { icon: <MessageCircle className="w-4 h-4" />, text: '优先客服支持' },
+                { icon: <BookOpen className="w-4 h-4" />, text: '高级阅读功能' },
               ].map((item) => (
                 <div key={item.text} className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <span>{item.icon}</span>
+                  <span className="text-gray-500 dark:text-gray-400">{item.icon}</span>
                   <span className="text-sm text-gray-700 dark:text-gray-300">{item.text}</span>
                 </div>
               ))}
@@ -120,7 +123,9 @@ export default function MemberDetail() {
         {/* Account Info */}
         <Card className="mb-6">
           <CardContent>
-            <h3 className="font-semibold text-gray-900 dark:text-white mb-4">📱 账户信息</h3>
+            <h3 className="font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <Smartphone className="w-5 h-5" /> 账户信息
+            </h3>
             <div className="space-y-3">
               <div className="flex justify-between items-center py-2 border-b border-gray-100 dark:border-gray-700">
                 <span className="text-gray-500 dark:text-gray-400 text-sm">手机号</span>
@@ -158,9 +163,9 @@ export default function MemberDetail() {
           <button
             type="button"
             onClick={() => navigate('/')}
-            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center justify-center gap-1 mx-auto"
           >
-            ← 返回书架
+            <ArrowLeft className="w-4 h-4" /> 返回书架
           </button>
         </div>
       </div>

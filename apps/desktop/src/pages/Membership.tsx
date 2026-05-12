@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth, PremiumBadge } from '@bookdock/auth';
 import { getApiClient } from '@bookdock/api-client';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@bookdock/ui';
+import { Crown, Volume2, BookOpen, Bookmark, Zap, Check, PartyPopper, X, Loader2, CreditCard, MessageCircle, Wallet } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
 const VIP_TOKEN_KEY = 'bookdock_vip_token';
@@ -239,7 +240,7 @@ export default function Membership() {
       {/* Header */}
       <div className="text-center mb-12">
         <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl shadow-lg mb-4">
-          <span className="text-3xl">👑</span>
+          <Crown className="w-8 h-8 text-white" />
         </div>
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
           {vipUser?.isVip ? '您已是会员' : '升级会员'}
@@ -267,7 +268,7 @@ export default function Membership() {
                 <p className="text-xl font-bold text-gray-900 dark:text-white">
                   {PLAN_LABELS[vipUser.level] || vipUser.level}
                   {vipUser.isVip && (
-                    <span className="ml-2 text-sm font-normal text-green-600 dark:text-green-400">✓ 已激活</span>
+                    <span className="ml-2 text-sm font-normal text-green-600 dark:text-green-400"><Check className="w-4 h-4 inline" /> 已激活</span>
                   )}
                 </p>
                 {vipUser.phone && (
@@ -331,7 +332,7 @@ export default function Membership() {
                 <ul className="space-y-2 mb-6">
                   {product.features.map((feature, i) => (
                     <li key={i} className="flex items-start gap-2 text-sm">
-                      <span className="text-green-500 mt-0.5">✓</span>
+                      <Check className="w-4 h-4 text-green-500 mt-0.5" />
                       <span className="text-gray-600 dark:text-gray-400">{feature}</span>
                     </li>
                   ))}
@@ -368,13 +369,13 @@ export default function Membership() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {[
-          { icon: '🔊', title: '无限朗读', desc: 'TTS 无限时长' },
-          { icon: '📚', title: '无限藏书', desc: '无上传限制' },
-          { icon: '🔖', title: '无限书签', desc: '每本书无限书签' },
-          { icon: '⚡', title: '专属客服', desc: '优先响应' },
+          { icon: <Volume2 className="w-8 h-8" />, title: '无限朗读', desc: 'TTS 无限时长' },
+          { icon: <BookOpen className="w-8 h-8" />, title: '无限藏书', desc: '无上传限制' },
+          { icon: <Bookmark className="w-8 h-8" />, title: '无限书签', desc: '每本书无限书签' },
+          { icon: <Zap className="w-8 h-8" />, title: '专属客服', desc: '优先响应' },
         ].map((benefit) => (
           <div key={benefit.title} className="text-center p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
-            <div className="text-3xl mb-2">{benefit.icon}</div>
+            <div className="text-3xl mb-2 text-gray-600 dark:text-gray-400">{benefit.icon}</div>
             <p className="font-medium text-gray-900 dark:text-white text-sm">{benefit.title}</p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{benefit.desc}</p>
           </div>
@@ -405,7 +406,7 @@ export default function Membership() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6">
             {paymentSuccess ? (
               <div className="text-center py-8">
-                <div className="text-6xl mb-4">🎉</div>
+                <div className="text-6xl mb-4"><PartyPopper className="w-16 h-16 mx-auto text-amber-500" /></div>
                 <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">支付成功！</h3>
                 <p className="text-gray-500 dark:text-gray-400 mb-4">
                   您现在是 <strong>{selectedProduct.name}</strong> 了！
@@ -441,7 +442,7 @@ export default function Membership() {
               <>
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-lg font-bold text-gray-900 dark:text-white">确认支付</h3>
-                  <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+                  <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 text-xl"><X className="w-5 h-5" /></button>
                 </div>
 
                 <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
@@ -459,9 +460,9 @@ export default function Membership() {
                   <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">选择支付方式</p>
                   <div className="grid grid-cols-3 gap-2">
                     {[
-                      { id: 'simulated', label: '模拟支付', icon: '💳', desc: '测试用' },
-                      { id: 'wechat', label: '微信支付', icon: '💚', desc: '推荐' },
-                      { id: 'alipay', label: '支付宝', icon: '💙', desc: '推荐' },
+                      { id: 'simulated', label: '模拟支付', icon: <CreditCard className="w-5 h-5 mx-auto mb-1" />, desc: '测试用' },
+                      { id: 'wechat', label: '微信支付', icon: <MessageCircle className="w-5 h-5 mx-auto mb-1" />, desc: '推荐' },
+                      { id: 'alipay', label: '支付宝', icon: <Wallet className="w-5 h-5 mx-auto mb-1" />, desc: '推荐' },
                     ].map((method) => (
                       <button
                         key={method.id}
@@ -494,7 +495,7 @@ export default function Membership() {
                 >
                   {paying ? (
                     <span className="flex items-center justify-center gap-2">
-                      <span className="animate-spin">⟳</span>
+                      <Loader2 className="w-4 h-4 animate-spin" />
                       创建订单中...
                     </span>
                   ) : (

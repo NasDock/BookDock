@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@bookdock/auth';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@bookdock/ui';
 import { getApiClient } from '@bookdock/api-client';
+import { BookOpen, Key, Smartphone, Monitor, EyeOff, Eye, ArrowLeft, Sparkles, Rocket, Link2, Loader2, Check, Lightbulb } from 'lucide-react';
 
 interface NASConfig {
   host: string;
@@ -267,7 +268,7 @@ export default function Login() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl shadow-xl mb-4 transform hover:scale-105 transition-transform">
-            <span className="text-4xl">📖</span>
+            <BookOpen className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">书仓</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">您的私人电子书库</p>
@@ -303,10 +304,10 @@ export default function Login() {
           <CardHeader>
             <CardTitle className="text-center">
               {loginType === 'account'
-                ? mode === 'login' ? '🔑 登录账户' : '📝 注册账户'
+                ? mode === 'login' ? <><Key className="w-5 h-5 inline mr-1" /> 登录账户</> : <><Sparkles className="w-5 h-5 inline mr-1" /> 注册账户</>
                 : loginType === 'phone'
-                ? mode === 'login' ? '📱 手机登录' : '📱 手机注册'
-                : '🖥️ NAS 连接设置'
+                ? mode === 'login' ? <><Smartphone className="w-5 h-5 inline mr-1" /> 手机登录</> : <><Smartphone className="w-5 h-5 inline mr-1" /> 手机注册</>
+                : <><Monitor className="w-5 h-5 inline mr-1" /> NAS 连接设置</>
               }
             </CardTitle>
           </CardHeader>
@@ -346,7 +347,7 @@ export default function Login() {
 
                 {smsSent && (
                   <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                    <p className="text-sm text-green-600 dark:text-green-400">✓ 验证码已发送，请查收短信</p>
+                    <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1"><Check className="w-4 h-4" /> 验证码已发送，请查收短信</p>
                   </div>
                 )}
 
@@ -386,10 +387,10 @@ export default function Login() {
                 <Button type="submit" disabled={isLoading} className="w-full">
                   {isLoading ? (
                     <span className="flex items-center justify-center gap-2">
-                      <span className="animate-spin">⟳</span>
+                      <Loader2 className="w-4 h-4 animate-spin" />
                       {mode === 'login' ? '登录中...' : '注册中...'}
                     </span>
-                  ) : mode === 'login' ? '📱 登录' : '✨ 注册'
+                  ) : mode === 'login' ? <><Smartphone className="w-4 h-4 mr-1" /> 登录</> : <><Sparkles className="w-4 h-4 mr-1" /> 注册</>
                   }
                 </Button>
 
@@ -406,7 +407,7 @@ export default function Login() {
 
                 <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
                   <p className="text-xs text-blue-600 dark:text-blue-400 text-center">
-                    💡 演示：验证码任意6位数字，服务器会验证<br />
+                    <Lightbulb className="w-4 h-4 inline mr-1" /> 演示：验证码任意6位数字，服务器会验证<br />
                     <span className="text-blue-400">（实际发送的验证码会打印在服务器日志）</span>
                   </p>
                 </div>
@@ -492,10 +493,10 @@ export default function Login() {
                 <Button type="submit" disabled={isLoading} className="w-full">
                   {isLoading ? (
                     <span className="flex items-center justify-center gap-2">
-                      <span className="animate-spin">⟳</span>
+                      <Loader2 className="w-4 h-4 animate-spin" />
                       {mode === 'login' ? '登录中...' : '注册中...'}
                     </span>
-                  ) : mode === 'login' ? '🚀 登录' : '✨ 注册'
+                  ) : mode === 'login' ? <><Rocket className="w-4 h-4 mr-1" /> 登录</> : <><Sparkles className="w-4 h-4 mr-1" /> 注册</>
                   }
                 </Button>
               </form>
@@ -580,7 +581,7 @@ export default function Login() {
                       onClick={() => setShowNasPassword(!showNasPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     >
-                      {showNasPassword ? '🙈' : '👁️'}
+                      {showNasPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
                 </div>
@@ -594,10 +595,10 @@ export default function Login() {
                 <Button type="submit" disabled={nasIsConnecting} className="w-full" variant="secondary">
                   {nasIsConnecting ? (
                     <span className="flex items-center justify-center gap-2">
-                      <span className="animate-spin">⟳</span>
+                      <Loader2 className="w-4 h-4 animate-spin" />
                       连接中...
                     </span>
-                  ) : '🔗 连接 NAS'
+                  ) : <><Link2 className="w-4 h-4 mr-1" /> 连接 NAS</>
                   }
                 </Button>
               </form>
@@ -627,7 +628,7 @@ export default function Login() {
         {loginType === 'account' && (
           <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
             <p className="text-sm text-blue-600 dark:text-blue-400 text-center mb-3">
-              💡 演示模式：快速体验书仓功能
+              <Lightbulb className="w-4 h-4 inline mr-1" /> 演示模式：快速体验书仓功能
             </p>
             <Button type="button" variant="secondary" onClick={handleDemoLogin} disabled={isLoading} className="w-full">
               使用演示账户登录
@@ -639,9 +640,9 @@ export default function Login() {
           <button
             type="button"
             onClick={() => navigate('/')}
-            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center justify-center gap-1 mx-auto"
           >
-            ← 返回首页
+            <ArrowLeft className="w-4 h-4" /> 返回首页
           </button>
         </div>
       </div>

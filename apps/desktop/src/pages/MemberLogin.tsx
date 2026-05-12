@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@bookdock/ui';
+import { Crown, Smartphone, Sparkles, Clock, ArrowLeft, Loader2 } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
 
@@ -106,7 +107,7 @@ export default function MemberLogin() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl shadow-xl mb-4">
-            <span className="text-4xl">👑</span>
+            <Crown className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">会员登录</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">手机号快捷登录，解锁全部特权</p>
@@ -114,7 +115,9 @@ export default function MemberLogin() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-center">📱 手机号登录</CardTitle>
+            <CardTitle className="text-center flex items-center justify-center gap-2">
+              <Smartphone className="w-5 h-5" /> 手机号登录
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">
@@ -162,7 +165,15 @@ export default function MemberLogin() {
 
               {/* Hint */}
               <p className="text-xs text-gray-400 text-center">
-                {countdown === 0 ? '👆 点击上方按钮获取验证码' : `⏳ 请 ${countdown} 秒后重新获取`}
+                {countdown === 0 ? (
+                  <span className="flex items-center justify-center gap-1">
+                    <Smartphone className="w-3 h-3" /> 点击上方按钮获取验证码
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-1">
+                    <Clock className="w-3 h-3" /> 请 {countdown} 秒后重新获取
+                  </span>
+                )}
               </p>
 
               {error && (
@@ -179,11 +190,13 @@ export default function MemberLogin() {
               >
                 {isLoading ? (
                   <span className="flex items-center justify-center gap-2">
-                    <span className="animate-spin">⟳</span>
+                    <Loader2 className="w-4 h-4 animate-spin" />
                     登录中...
                   </span>
                 ) : (
-                  '✨ 登录 / 注册'
+                  <span className="flex items-center justify-center gap-2">
+                    <Sparkles className="w-4 h-4" /> 登录 / 注册
+                  </span>
                 )}
               </Button>
             </form>
@@ -206,9 +219,9 @@ export default function MemberLogin() {
           <button
             type="button"
             onClick={() => navigate('/login')}
-            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
+            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center justify-center gap-1 mx-auto"
           >
-            ← 返回账户登录
+            <ArrowLeft className="w-4 h-4" /> 返回账户登录
           </button>
         </div>
       </div>

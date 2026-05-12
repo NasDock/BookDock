@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Gift, BookOpen, Headphones, Star, Ban, MessageCircle, Smartphone, Crown } from 'lucide-react';
 
 export function MemberDetailScreen() {
   const [vipUser, setVipUser] = useState<any>(null);
@@ -51,11 +52,21 @@ export function MemberDetailScreen() {
 
         {/* Privileges */}
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 mb-4">
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-3">🎁 会员特权</h3>
+          <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+            <Gift className="w-4 h-4" /> 会员特权
+          </h3>
           <div className="grid grid-cols-2 gap-2">
-            {['📚 无限书籍阅读', '🎧 语音朗读', '⭐ 抢先体验', '🚫 去除广告', '💬 优先客服', '📖 高级阅读'].map(item => (
-              <div key={item} className="flex items-center gap-1.5 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg text-xs text-gray-700 dark:text-gray-300">
-                {item}
+            {[
+              { icon: <BookOpen className="w-3.5 h-3.5" />, text: '无限书籍阅读' },
+              { icon: <Headphones className="w-3.5 h-3.5" />, text: '语音朗读' },
+              { icon: <Star className="w-3.5 h-3.5" />, text: '抢先体验' },
+              { icon: <Ban className="w-3.5 h-3.5" />, text: '去除广告' },
+              { icon: <MessageCircle className="w-3.5 h-3.5" />, text: '优先客服' },
+              { icon: <BookOpen className="w-3.5 h-3.5" />, text: '高级阅读' },
+            ].map((item) => (
+              <div key={item.text} className="flex items-center gap-1.5 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg text-xs text-gray-700 dark:text-gray-300">
+                {item.icon}
+                <span>{item.text}</span>
               </div>
             ))}
           </div>
@@ -79,7 +90,7 @@ export function MemberDetailScreen() {
 
         {/* Account */}
         <div className="bg-white dark:bg-gray-800 rounded-xl p-4 mb-4">
-          <h3 className="font-semibold text-gray-900 dark:text-white mb-3">📱 账户信息</h3>
+          <h3 className="font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2"><Smartphone className="w-4 h-4" /> 账户信息</h3>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between py-1 border-b border-gray-100 dark:border-gray-700">
               <span className="text-gray-500">手机号</span>

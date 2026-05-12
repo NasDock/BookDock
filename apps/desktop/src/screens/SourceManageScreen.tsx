@@ -7,11 +7,25 @@ import {
   type SourceType,
   type ConnectionTestResult,
 } from '@bookdock/api-client';
+import {
+  Cloud,
+  FolderOpen,
+  Monitor,
+  Plus,
+  Pencil,
+  Trash2,
+  CheckCircle,
+  XCircle,
+  AlertTriangle,
+  RefreshCw,
+  Link,
+  Folder,
+} from 'lucide-react';
 
-const SOURCE_TYPE_OPTIONS: { value: SourceType; label: string; icon: string }[] = [
-  { value: 'webdav', label: 'WebDAV', icon: '☁️' },
-  { value: 'smb', label: 'SMB / SMB2', icon: '📁' },
-  { value: 'ftp', label: 'FTP / FTPS', icon: '🖥️' },
+const SOURCE_TYPE_OPTIONS: { value: SourceType; label: string; icon: React.ReactNode }[] = [
+  { value: 'webdav', label: 'WebDAV', icon: <Cloud className="w-4 h-4" /> },
+  { value: 'smb', label: 'SMB / SMB2', icon: <FolderOpen className="w-4 h-4" /> },
+  { value: 'ftp', label: 'FTP / FTPS', icon: <Monitor className="w-4 h-4" /> },
 ];
 
 const FORMAT_OPTIONS = ['epub', 'pdf', 'mobi', 'txt', 'azw3', 'fb2', 'djvu'];
@@ -68,10 +82,10 @@ const emptyForm = (type: SourceType = 'webdav'): FormState => ({
   formats: ['epub', 'pdf', 'txt'],
 });
 
-const TYPE_ICONS: Record<SourceType, string> = {
-  webdav: '☁️',
-  smb: '📁',
-  ftp: '🖥️',
+const TYPE_ICONS: Record<SourceType, React.ReactNode> = {
+  webdav: <Cloud className="w-5 h-5" />,
+  smb: <FolderOpen className="w-5 h-5" />,
+  ftp: <Monitor className="w-5 h-5" />,
 };
 
 export function SourceManageScreen() {
@@ -306,9 +320,9 @@ export function SourceManageScreen() {
   };
 
   const getStatusLabel = (source: EbookSource) => {
-    if (source.lastError) return { text: '⚠️ 连接异常', color: 'text-red-500' };
-    if (source.lastSyncAt) return { text: '🟢 已同步', color: 'text-green-500' };
-    return { text: '⚪ 未同步', color: 'text-gray-400' };
+    if (source.lastError) return { text: '连接异常', color: 'text-red-500' };
+    if (source.lastSyncAt) return { text: '已同步', color: 'text-green-500' };
+    return { text: '未同步', color: 'text-gray-400' };
   };
 
   return (
@@ -317,7 +331,7 @@ export function SourceManageScreen() {
       <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
         <div className="px-6 py-4 flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">📡 书源管理</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">书源管理</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
               管理 NAS / 远程书库，同步电子书到本地书架
             </p>
@@ -326,7 +340,7 @@ export function SourceManageScreen() {
             onClick={openAddModal}
             className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
           >
-            <span>➕</span> 添加书源
+            <Plus className="w-4 h-4" /> 添加书源
           </button>
         </div>
       </header>
@@ -339,7 +353,9 @@ export function SourceManageScreen() {
           </div>
         ) : sources.length === 0 ? (
           <div className="text-center py-20">
-            <div className="text-6xl mb-4">📡</div>
+            <div className="mb-4 flex justify-center">
+              <Cloud className="w-16 h-16 text-gray-400" />
+            </div>
             <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">暂无书源</h3>
             <p className="text-gray-500 dark:text-gray-400 mb-6">添加 NAS 书源，将远程书籍同步到 BookDock</p>
             <button
@@ -362,7 +378,7 @@ export function SourceManageScreen() {
                   <div className="flex items-start gap-4">
                     {/* Icon */}
                     <div className="w-12 h-12 bg-blue-50 dark:bg-blue-900/30 rounded-xl flex items-center justify-center text-2xl flex-shrink-0">
-                      {(TYPE_ICONS as Record<string, string>)[source.type] || '📂'}
+                      {(TYPE_ICONS as Record<string, React.ReactNode>)[source.type] || <Folder className="w-5 h-5" />}
                     </div>
 
                     {/* Info */}
@@ -407,8 +423,8 @@ export function SourceManageScreen() {
                       </div>
 
                       {source.lastError && (
-                        <div className="mt-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg text-xs text-red-600 dark:text-red-400">
-                          ⚠️ {source.lastError}
+                        <div className="mt-2 px-3 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5" /> {source.lastError}
                         </div>
                       )}
                     </div>
@@ -423,7 +439,7 @@ export function SourceManageScreen() {
                         {isSyncing ? (
                           <div className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                         ) : (
-                          '🔄'
+                          <RefreshCw className="w-3.5 h-3.5" />
                         )}
                         同步
                       </button>
@@ -431,7 +447,7 @@ export function SourceManageScreen() {
                         onClick={() => openEditModal(source)}
                         className="px-3 py-1.5 text-xs rounded-lg bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-400 font-medium transition-colors flex items-center gap-1.5"
                       >
-                        ✏️ 编辑
+                        <Pencil className="w-3.5 h-3.5" /> 编辑
                       </button>
                       {deleteConfirmId === source.id ? (
                         <div className="flex gap-1">
@@ -453,7 +469,7 @@ export function SourceManageScreen() {
                           onClick={() => setDeleteConfirmId(source.id)}
                           className="px-3 py-1.5 text-xs rounded-lg bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 font-medium transition-colors flex items-center gap-1.5"
                         >
-                          🗑️ 删除
+                          <Trash2 className="w-3.5 h-3.5" /> 删除
                         </button>
                       )}
                     </div>
@@ -471,14 +487,14 @@ export function SourceManageScreen() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
             {/* Modal header */}
             <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-shrink-0">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-                {editingSource ? '✏️ 编辑书源' : '➕ 添加书源'}
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                {editingSource ? <><Pencil className="w-4 h-4" /> 编辑书源</> : <><Plus className="w-4 h-4" /> 添加书源</>}
               </h2>
               <button
                 onClick={closeModal}
                 className="w-8 h-8 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
               >
-                ✕
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
 
@@ -515,7 +531,7 @@ export function SourceManageScreen() {
                           : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-400'
                       }`}
                     >
-                      <span>{opt.icon}</span>
+                      {opt.icon}
                       <span>{opt.label}</span>
                     </button>
                   ))}
@@ -762,7 +778,7 @@ export function SourceManageScreen() {
                   {testing ? (
                     <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    '🔗'
+                    <Link className="w-4 h-4" />
                   )}
                   测试连接
                 </button>
@@ -775,7 +791,7 @@ export function SourceManageScreen() {
                         : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400'
                     }`}
                   >
-                    <span>{testResult.success ? '✅' : '❌'}</span>
+                    {testResult.success ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
                     <span className="flex-1">
                       {testResult.success
                         ? (testResult.message || '连接成功！')

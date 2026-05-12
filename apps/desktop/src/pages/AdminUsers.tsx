@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getApiClient } from '@bookdock/api-client';
 import { Button, Card, CardHeader, CardTitle, CardContent, Input } from '@bookdock/ui';
+import { Crown, ArrowLeft, X, Check } from 'lucide-react';
 
 interface VipInfo {
   vipLevel: string;
@@ -164,7 +165,8 @@ export default function AdminUsers() {
     };
     return (
       <span className={`ml-1 px-1.5 py-0.5 rounded text-xs font-medium ${colors[level] || ''}`}>
-        👑 {labels[level] || level}
+        <Crown className="w-3 h-3 inline mr-0.5" />
+        {labels[level] || level}
       </span>
     );
   };
@@ -178,9 +180,10 @@ export default function AdminUsers() {
             <div className="flex items-center gap-4">
               <button
                 onClick={() => navigate('/admin')}
-                className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1"
               >
-                ← 返回
+                <ArrowLeft className="w-4 h-4" />
+                返回
               </button>
               <h1 className="text-xl font-bold text-gray-900 dark:text-white">用户管理</h1>
               <span className="text-sm text-gray-500">共 {total} 位用户</span>
@@ -304,7 +307,7 @@ export default function AdminUsers() {
                                 : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                             } ${user.role === 'admin' ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                           >
-                            {user.isActive ? '✓ 正常' : '✕ 禁用'}
+                            {user.isActive ? <><Check className="w-3 h-3" /> 正常</> : <><X className="w-3 h-3" /> 禁用</>}
                           </button>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
@@ -397,7 +400,7 @@ export default function AdminUsers() {
                   onClick={() => setShowDetail(false)}
                   className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                 >
-                  ✕
+                  <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
@@ -427,7 +430,7 @@ export default function AdminUsers() {
                 <div>
                   <label className="text-xs text-gray-500 dark:text-gray-400">状态</label>
                   <p className="text-sm text-gray-900 dark:text-white">
-                    {selectedUser.isActive ? '✓ 正常' : '✕ 禁用'}
+                    {selectedUser.isActive ? <><Check className="w-3 h-3 inline" /> 正常</> : <><X className="w-3 h-3 inline" /> 禁用</>}
                   </p>
                 </div>
                 <div>
@@ -453,8 +456,17 @@ export default function AdminUsers() {
                 <div>
                   <label className="text-xs text-gray-500 dark:text-gray-400">会员等级</label>
                   <p className="text-sm text-gray-900 dark:text-white">
-                    {selectedUser.vipLevel === 'year' ? '👑 年费会员' :
-                     selectedUser.vipLevel === 'lifetime' ? '👑 永久会员' : '免费用户'}
+                    {selectedUser.vipLevel === 'year' ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Crown className="w-3 h-3 text-amber-500" />
+                        年费会员
+                      </span>
+                    ) : selectedUser.vipLevel === 'lifetime' ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Crown className="w-3 h-3 text-purple-500" />
+                        永久会员
+                      </span>
+                    ) : '免费用户'}
                     {selectedUser.vipExpiredAt && (
                       <span className="text-xs text-gray-500 ml-1">
                         (到期: {new Date(selectedUser.vipExpiredAt).toLocaleDateString('zh-CN')})
@@ -483,7 +495,7 @@ export default function AdminUsers() {
                   onClick={() => setShowVipModal(false)}
                   className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                 >
-                  ✕
+                  <X className="w-5 h-5" />
                 </button>
               </div>
               <p className="text-sm text-gray-500 mt-1">

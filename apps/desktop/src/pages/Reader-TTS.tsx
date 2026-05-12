@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getApiClient, Book } from '@bookdock/api-client';
 import { useTTS } from '../hooks/useTTS';
 import { Button } from '@bookdock/ui';
+import { ArrowLeft, Settings, Volume2, FileText, RotateCcw, Square, Pause, Play, SkipBack, SkipForward, BookOpen } from 'lucide-react';
 
 // Text chunk for TTS processing
 interface TextChunk {
@@ -155,9 +156,9 @@ function PlaybackControls({
         <button
           onClick={onSkipBack}
           className="p-3 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors active:scale-95"
-          title="后退10秒 (←)"
+          title="后退10秒"
         >
-          <span className="text-xl">⏪</span>
+          <SkipBack className="w-5 h-5" />
         </button>
 
         {/* Stop */}
@@ -166,7 +167,7 @@ function PlaybackControls({
           className="p-3 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors active:scale-95"
           title="停止"
         >
-          <span className="text-xl">⏹</span>
+          <Square className="w-5 h-5" />
         </button>
 
         {/* Play/Pause */}
@@ -180,11 +181,11 @@ function PlaybackControls({
           } disabled:opacity-50 shadow-lg`}
         >
           {isLoading ? (
-            <span className="animate-spin text-2xl">⟳</span>
+            <RotateCcw className="w-6 h-6 animate-spin" />
           ) : isPlaying ? (
-            '⏸'
+            <Pause className="w-6 h-6" />
           ) : (
-            '▶'
+            <Play className="w-6 h-6" />
           )}
         </button>
 
@@ -194,7 +195,7 @@ function PlaybackControls({
           className="p-3 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors active:scale-95"
           title="前进10秒 (→)"
         >
-          <span className="text-xl">⏩</span>
+          <SkipForward className="w-5 h-5" />
         </button>
       </div>
 
@@ -437,7 +438,7 @@ export default function ReaderTTS() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center max-w-md mx-auto px-4">
-          <div className="text-6xl mb-4">📕</div>
+          <div className="mb-4 flex justify-center"><BookOpen className="w-16 h-16 text-red-400" /></div>
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
             {error || ttsError}
           </h2>
@@ -451,7 +452,7 @@ export default function ReaderTTS() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
-          <div className="text-6xl mb-4">📭</div>
+          <div className="mb-4 flex justify-center"><BookOpen className="w-16 h-16 text-gray-400" /></div>
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">书籍不存在</h2>
           <Button onClick={() => navigate('/')}>返回书库</Button>
         </div>
@@ -468,12 +469,12 @@ export default function ReaderTTS() {
             onClick={handleGoBack}
             className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
           >
-            <span>←</span>
+            <ArrowLeft className="w-4 h-4" />
             <span className="text-sm">返回</span>
           </button>
 
           <div className="flex items-center gap-2">
-            <span className="text-lg">🔊</span>
+            <Volume2 className="w-5 h-5" />
             <span className="font-medium text-gray-900 dark:text-white">听书模式</span>
           </div>
 
@@ -485,7 +486,7 @@ export default function ReaderTTS() {
                 : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
             }`}
           >
-            ⚙️
+            <Settings className="w-5 h-5" />
           </button>
         </div>
       </header>
@@ -619,7 +620,7 @@ export default function ReaderTTS() {
                 </div>
               ) : (
                 <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                  <div className="text-5xl mb-4">📄</div>
+                  <FileText className="w-12 h-12 mx-auto mb-4" />
                   <p>无法提取文本内容</p>
                 </div>
               )}
@@ -667,7 +668,7 @@ export default function ReaderTTS() {
 
           {/* Keyboard shortcuts hint */}
           <div className="bg-gray-100 dark:bg-gray-800/50 p-2 text-center text-xs text-gray-500 dark:text-gray-400">
-            空格 播放/暂停 | ← → 跳过章节 | 点击章节按钮跳转
+            空格 播放/暂停 | 左右方向键 跳过章节 | 点击章节按钮跳转
           </div>
         </div>
       </main>

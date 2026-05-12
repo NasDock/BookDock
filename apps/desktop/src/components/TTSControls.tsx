@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Pause, Play, Square, X, ChevronUp, ChevronDown, Volume2 } from 'lucide-react';
 import { useDesktopStore } from '../stores/desktopStore';
 import { useTTS, getSystemVoices } from '../hooks/useDesktopCommands';
 
@@ -88,7 +89,7 @@ export const TTSControls: React.FC<TTSControlsProps> = ({ text, bookId, onClose 
               : 'bg-blue-500 hover:bg-blue-600 text-white'
           } disabled:opacity-50`}
         >
-          {ttsState.isPlaying ? '⏸' : '▶'}
+          {ttsState.isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
         </button>
 
         <button
@@ -96,7 +97,7 @@ export const TTSControls: React.FC<TTSControlsProps> = ({ text, bookId, onClose 
           className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
           title="停止"
         >
-          ⏹
+          <Square className="w-5 h-5" />
         </button>
 
         {/* Progress indicator */}
@@ -119,7 +120,7 @@ export const TTSControls: React.FC<TTSControlsProps> = ({ text, bookId, onClose 
           onClick={() => setIsExpanded(!isExpanded)}
           className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
         >
-          {isExpanded ? '▲' : '▼'}
+          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
 
         {onClose && (
@@ -127,7 +128,7 @@ export const TTSControls: React.FC<TTSControlsProps> = ({ text, bookId, onClose 
             onClick={onClose}
             className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         )}
       </div>
@@ -206,7 +207,7 @@ export const TTSControls: React.FC<TTSControlsProps> = ({ text, bookId, onClose 
               disabled={!text}
               className="flex-1 py-2 px-4 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors disabled:opacity-50"
             >
-              🔊 开始朗读
+              <Volume2 className="w-4 h-4 mr-1" /> 开始朗读
             </button>
             <button
               onClick={() => {
@@ -221,7 +222,7 @@ export const TTSControls: React.FC<TTSControlsProps> = ({ text, bookId, onClose 
               disabled={!text}
               className="flex-1 py-2 px-4 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg transition-colors disabled:opacity-50"
             >
-              {ttsState.isPlaying ? '⏸ 暂停' : ttsState.isPaused ? '▶ 继续' : '▶ 播放'}
+              {ttsState.isPlaying ? <><Pause className="w-4 h-4 mr-1" /> 暂停</> : ttsState.isPaused ? <><Play className="w-4 h-4 mr-1" /> 继续</> : <><Play className="w-4 h-4 mr-1" /> 播放</>}
             </button>
           </div>
 

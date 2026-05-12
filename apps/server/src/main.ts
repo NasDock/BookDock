@@ -45,8 +45,8 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
-  logger.log(`🚀 BookDock API running on http://0.0.0.0:${port}/api`);
-  logger.log(`📚 Swagger docs: http://0.0.0.0:${port}/api/docs`);
+  logger.log(`BookDock API running on http://0.0.0.0:${port}/api`);
+  logger.log(`Swagger docs: http://0.0.0.0:${port}/api/docs`);
 }
 
 bootstrap();

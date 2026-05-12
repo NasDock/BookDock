@@ -6,6 +6,7 @@ import {
   openFolderDialog,
   minimizeToTray,
 } from '../hooks/useDesktopCommands';
+import { Settings, Sun, Moon, Monitor, Keyboard } from 'lucide-react';
 
 export function SettingsScreen() {
   const { settings, updateSettings, setTheme } = useDesktopStore();
@@ -60,7 +61,9 @@ export function SettingsScreen() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
       <div className="max-w-2xl mx-auto px-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-8">⚙️ 设置</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-8 flex items-center gap-2">
+          <Settings className="w-6 h-6" /> 设置
+        </h1>
 
         {/* Appearance */}
         <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
@@ -87,7 +90,13 @@ export function SettingsScreen() {
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                     }`}
                   >
-                    {theme === 'light' ? '☀️ 浅色' : theme === 'dark' ? '🌙 深色' : '💻 跟随系统'}
+                    {theme === 'light' ? (
+                      <span className="flex items-center gap-1.5"><Sun className="w-4 h-4" /> 浅色</span>
+                    ) : theme === 'dark' ? (
+                      <span className="flex items-center gap-1.5"><Moon className="w-4 h-4" /> 深色</span>
+                    ) : (
+                      <span className="flex items-center gap-1.5"><Monitor className="w-4 h-4" /> 跟随系统</span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -122,7 +131,7 @@ export function SettingsScreen() {
         {/* NAS Paths */}
         <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            📁 NAS/本地路径
+            NAS/本地路径
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
             添加 NAS 挂载路径或本地文件夹，BookDock 将自动扫描其中的电子书。
@@ -144,7 +153,7 @@ export function SettingsScreen() {
                     onClick={() => handleRemoveNasPath(path)}
                     className="ml-2 p-1 text-gray-400 hover:text-red-500"
                   >
-                    ✕
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                   </button>
                 </div>
               ))
@@ -162,7 +171,7 @@ export function SettingsScreen() {
         {/* TTS Settings */}
         <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            🔊 听书设置
+            听书设置
           </h2>
 
           <div className="space-y-4">
@@ -243,8 +252,8 @@ export function SettingsScreen() {
 
         {/* Keyboard Shortcuts */}
         <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            ⌨️ 全局快捷键
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <Keyboard className="w-5 h-5" /> 全局快捷键
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
             即使应用在后台运行，这些快捷键也可用。
@@ -280,8 +289,8 @@ export function SettingsScreen() {
 
         {/* System */}
         <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            🖥️ 系统
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <Monitor className="w-5 h-5" /> 系统
           </h2>
 
           <div className="space-y-4">

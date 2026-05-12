@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getApiClient } from '@bookdock/api-client';
 import { Button } from '@bookdock/ui';
+import { Crown, ArrowLeft, Check, X } from 'lucide-react';
 
 interface AdminUser {
   id: string;
@@ -117,8 +118,8 @@ export function AdminUsersScreen() {
       lifetime: 'bg-purple-100 text-purple-700',
     };
     return (
-      <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${colors[level] || ''}`}>
-        👑 {level === 'year' ? '年费' : '永久'}
+      <span className={`px-1.5 py-0.5 rounded text-xs font-medium flex items-center gap-0.5 ${colors[level] || ''}`}>
+        <Crown className="w-3 h-3" /> {level === 'year' ? '年费' : '永久'}
       </span>
     );
   };
@@ -129,8 +130,8 @@ export function AdminUsersScreen() {
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <button onClick={() => navigate('/admin')} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
-              ← 返回
+            <button onClick={() => navigate('/admin')} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1">
+              <ArrowLeft className="w-4 h-4" /> 返回
             </button>
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">用户管理</h1>
             <span className="text-sm text-gray-500">共 {total} 位用户</span>
@@ -206,7 +207,11 @@ export function AdminUsersScreen() {
                             user.isActive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
                           }`}
                         >
-                          {user.isActive ? '✓ 正常' : '✕ 禁用'}
+                          {user.isActive ? (
+                            <span className="flex items-center gap-0.5"><Check className="w-3 h-3" /> 正常</span>
+                          ) : (
+                            <span className="flex items-center gap-0.5"><X className="w-3 h-3" /> 禁用</span>
+                          )}
                         </button>
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -252,7 +257,9 @@ export function AdminUsersScreen() {
             <div className="p-6 border-b border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white">用户详情</h2>
-                <button onClick={() => setShowDetail(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">✕</button>
+                <button onClick={() => setShowDetail(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
               </div>
             </div>
             <div className="p-6 space-y-4">
@@ -287,7 +294,9 @@ export function AdminUsersScreen() {
             <div className="p-6 border-b border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold text-gray-900 dark:text-white">会员管理</h2>
-                <button onClick={() => setShowVipModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">✕</button>
+                <button onClick={() => setShowVipModal(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
               </div>
               <p className="text-sm text-gray-500 mt-1">用户: {selectedUser.displayName || selectedUser.username}</p>
             </div>

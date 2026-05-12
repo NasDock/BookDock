@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { CheckCircle, Crown, BookOpen } from 'lucide-react';
 
 export function MemberPaymentSuccessScreen() {
   const [countdown, setCountdown] = useState(3);
@@ -23,14 +24,14 @@ export function MemberPaymentSuccessScreen() {
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-emerald-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center p-6">
       <div className="max-w-sm w-full text-center">
         <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full shadow-xl mb-6">
-          <span className="text-4xl">✅</span>
+          <CheckCircle className="w-10 h-10 text-white" />
         </div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">支付成功！</h1>
-        <p className="text-gray-500 dark:text-gray-400 mb-6">恭喜您已成为 BookDock {levelName} 🎉</p>
+        <p className="text-gray-500 dark:text-gray-400 mb-6">恭喜您已成为 BookDock {levelName}</p>
 
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 mb-6">
           <div className="flex items-center justify-center gap-3 p-3 bg-green-50 dark:bg-green-900/20 rounded-xl mb-4">
-            <span className="text-2xl">👑</span>
+            <Crown className="w-7 h-7 text-amber-500" />
             <div className="text-left">
               <p className="font-bold text-gray-900 dark:text-white">{levelName}</p>
               <p className="text-sm text-green-600">{vipUser?.level === 'lifetime' ? '永久有效' : '1年有效期'}</p>
@@ -42,10 +43,10 @@ export function MemberPaymentSuccessScreen() {
         <div className="space-y-2">
           <a href="#/member-detail" className="block w-full py-2.5 rounded-lg text-white text-center font-medium"
             style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}>
-            👑 查看会员详情
+            <Crown className="w-4 h-4 inline mr-1 align-text-bottom" /> 查看会员详情
           </a>
           <a href="#/" className="block w-full py-2.5 text-center bg-gray-200 dark:bg-gray-700 rounded-lg text-sm">
-            📚 返回书架
+            <BookOpen className="w-4 h-4 inline mr-1 align-text-bottom" /> 返回书架
           </a>
         </div>
         {countdown > 0 && <p className="text-xs text-gray-400 mt-3">{countdown} 秒后自动返回...</p>}

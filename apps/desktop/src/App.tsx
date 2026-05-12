@@ -3,6 +3,15 @@ import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react
 import { AuthProvider, useAuth, PremiumBadge } from '@bookdock/auth';
 import { initApiClient } from '@bookdock/api-client';
 import { Button } from '@bookdock/ui';
+import {
+  BookOpen,
+  Crown,
+  Settings as SettingsIcon,
+  Wrench,
+  Sun,
+  Moon,
+  ArrowLeft,
+} from 'lucide-react';
 
 // Tauri imports (safe to import even in browser, just won't be used)
 import { listen } from '@tauri-apps/api/event';
@@ -101,13 +110,13 @@ function WebLayout({ children }: { children: React.ReactNode }) {
   }
 
   const navItems = [
-    { path: '/', label: '书库', icon: '📚' },
-    { path: '/membership', label: '会员', icon: '👑' },
-    { path: '/settings', label: '设置', icon: '⚙️' },
+    { path: '/', label: '书库', icon: BookOpen },
+    { path: '/membership', label: '会员', icon: Crown },
+    { path: '/settings', label: '设置', icon: SettingsIcon },
   ];
 
   if (user?.role === 'admin') {
-    navItems.push({ path: '/admin', label: '管理', icon: '🔧' });
+    navItems.push({ path: '/admin', label: '管理', icon: Wrench });
   }
 
   return (
@@ -117,24 +126,27 @@ function WebLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-8">
               <Link to="/" className="flex items-center space-x-2">
-                <span className="text-2xl">📖</span>
+                <BookOpen className="w-6 h-6 text-gray-900 dark:text-white" />
                 <span className="text-xl font-bold text-gray-900 dark:text-white">书仓</span>
               </Link>
               <nav className="flex space-x-1">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      location.pathname === item.path
-                        ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
-                        : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    <span className="mr-1">{item.icon}</span>
-                    {item.label}
-                  </Link>
-                ))}
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        location.pathname === item.path
+                          ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                          : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      <Icon className="w-4 h-4 mr-1" />
+                      {item.label}
+                    </Link>
+                  );
+                })}
               </nav>
             </div>
             <div className="flex items-center space-x-4">
@@ -143,7 +155,11 @@ function WebLayout({ children }: { children: React.ReactNode }) {
                 className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 aria-label="Toggle theme"
               >
-                {theme === 'dark' ? '☀️' : '🌙'}
+                {theme === 'dark' ? (
+                  <Sun className="w-5 h-5" />
+                ) : (
+                  <Moon className="w-5 h-5" />
+                )}
               </button>
               <div className="flex items-center space-x-3">
                 <div className="flex items-center gap-2">
@@ -330,7 +346,8 @@ function DesktopAppRoutes() {
                 onClick={() => selectBook(null)}
                 className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
               >
-                ← 返回
+                <ArrowLeft className="w-4 h-4" />
+                返回
               </button>
               <span className="font-medium text-gray-900 dark:text-white">{selectedBook.title}</span>
               <div className="w-20"></div>

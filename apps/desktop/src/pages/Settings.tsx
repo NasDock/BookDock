@@ -5,14 +5,15 @@ import { useThemeStore } from '../stores/authStore';
 import { useReaderStore as useReaderStore2 } from '../stores/themeStore';
 import { getApiClient, User } from '@bookdock/api-client';
 import type { ReaderMode } from '@bookdock/ebook-reader';
+import { Monitor, Sun, Moon, ScrollText, Volume2, Star, Lock, HardDrive, Info, MousePointerClick, BookOpen, Hand } from 'lucide-react';
 
 // ==================== Page Turn Mode ====================
 type PageTurnMode = 'swipe' | 'click' | 'scroll';
 
-const PAGE_TURN_PRESETS: Record<PageTurnMode, { icon: string; label: string; desc: string }> = {
-  swipe: { icon: '👆', label: '滑动翻页', desc: '左右滑动或点击屏幕边缘翻页' },
-  click: { icon: '🖱️', label: '点击翻页', desc: '点击屏幕中央或边缘翻页' },
-  scroll: { icon: '📜', label: '滚动模式', desc: '滚动阅读，支持自动滚动' },
+const PAGE_TURN_PRESETS: Record<PageTurnMode, { icon: React.ReactNode; label: string; desc: string }> = {
+  swipe: { icon: <Hand className="w-5 h-5" />, label: '滑动翻页', desc: '左右滑动或点击屏幕边缘翻页' },
+  click: { icon: <MousePointerClick className="w-5 h-5" />, label: '点击翻页', desc: '点击屏幕中央或边缘翻页' },
+  scroll: { icon: <ScrollText className="w-5 h-5" />, label: '滚动模式', desc: '滚动阅读，支持自动滚动' },
 };
 
 // ==================== Font Size Preset ====================
@@ -33,10 +34,10 @@ const LINE_HEIGHT_PRESETS: Record<LineHeightPreset, { label: string; height: num
 };
 
 // ==================== Reader Theme Preset ====================
-const READER_THEME_PRESETS: Record<ReaderMode, { icon: string; label: string; bg: string; text: string }> = {
-  light: { icon: '☀️', label: '浅色', bg: '#ffffff', text: '#333333' },
-  dark: { icon: '🌙', label: '深色', bg: '#1a1a1a', text: '#e0e0e0' },
-  sepia: { icon: '📜', label: '护眼', bg: '#f5ebe0', text: '#5c4b37' },
+const READER_THEME_PRESETS: Record<ReaderMode, { icon: React.ReactNode; label: string; bg: string; text: string }> = {
+  light: { icon: <Sun className="w-5 h-5" />, label: '浅色', bg: '#ffffff', text: '#333333' },
+  dark: { icon: <Moon className="w-5 h-5" />, label: '深色', bg: '#1a1a1a', text: '#e0e0e0' },
+  sepia: { icon: <ScrollText className="w-5 h-5" />, label: '护眼', bg: '#f5ebe0', text: '#5c4b37' },
 };
 
 // ==================== Password Change Section ====================
@@ -84,7 +85,7 @@ function PasswordChangeSection() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>🔐 修改密码</CardTitle>
+        <CardTitle><Lock className="w-5 h-5 inline mr-1" /> 修改密码</CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleChangePassword} className="space-y-4">
@@ -175,7 +176,7 @@ function StorageSection() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>💾 存储空间</CardTitle>
+        <CardTitle><HardDrive className="w-5 h-5 inline mr-1" /> 存储空间</CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -306,7 +307,7 @@ export default function Settings() {
 
   const renderThemeOption = (
     value: 'light' | 'dark' | 'system',
-    icon: string,
+    icon: React.ReactNode,
     label: string
   ) => (
     <button
@@ -333,7 +334,7 @@ export default function Settings() {
       {/* Profile Section */}
       <Card>
         <CardHeader>
-          <CardTitle>👤 账户信息</CardTitle>
+          <CardTitle><span className="inline-flex items-center gap-1"><Info className="w-5 h-5" /> 账户信息</span></CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -372,7 +373,7 @@ export default function Settings() {
         {membership !== 'premium' && (
           <CardFooter>
             <Button onClick={handleUpgrade} className="w-full bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 border-0">
-              ⭐ 升级到 Premium
+              <Star className="w-4 h-4 mr-1" /> 升级到 Premium
             </Button>
           </CardFooter>
         )}
@@ -381,7 +382,7 @@ export default function Settings() {
       {/* Appearance Section */}
       <Card>
         <CardHeader>
-          <CardTitle>🎨 外观</CardTitle>
+          <CardTitle><span className="inline-flex items-center gap-1"><Monitor className="w-5 h-5" /> 外观</span></CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -390,9 +391,9 @@ export default function Settings() {
                 主题模式
               </label>
               <div className="flex gap-3">
-                {renderThemeOption('light', '☀️', '浅色')}
-                {renderThemeOption('dark', '🌙', '深色')}
-                {renderThemeOption('system', '💻', '跟随系统')}
+                {renderThemeOption('light', <Sun className="w-5 h-5" />, '浅色')}
+                {renderThemeOption('dark', <Moon className="w-5 h-5" />, '深色')}
+                {renderThemeOption('system', <Monitor className="w-5 h-5" />, '跟随系统')}
               </div>
             </div>
           </div>
@@ -402,7 +403,7 @@ export default function Settings() {
       {/* Reader Settings Section */}
       <Card>
         <CardHeader>
-          <CardTitle>📖 阅读设置</CardTitle>
+          <CardTitle><span className="inline-flex items-center gap-1"><BookOpen className="w-5 h-5" /> 阅读设置</span></CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
@@ -426,7 +427,7 @@ export default function Settings() {
                         : 'bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
                     }`}
                   >
-                    <span className="text-xl">{info.icon}</span>
+                    <span>{info.icon}</span>
                     <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{info.label}</span>
                   </button>
                 ))}
@@ -589,7 +590,7 @@ export default function Settings() {
       {/* TTS Settings Section */}
       <Card>
         <CardHeader>
-          <CardTitle>🔊 语音朗读设置</CardTitle>
+          <CardTitle><Volume2 className="w-5 h-5 inline mr-1" /> 语音朗读设置</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -681,7 +682,7 @@ export default function Settings() {
               }}
               className="text-sm text-blue-500 hover:text-blue-600 underline"
             >
-              🔊 试听当前设置
+              <Volume2 className="w-4 h-4 inline mr-1" /> 试听当前设置
             </button>
 
             <Button
@@ -708,11 +709,11 @@ export default function Settings() {
       {/* About Section */}
       <Card>
         <CardHeader>
-          <CardTitle>ℹ️ 关于</CardTitle>
+          <CardTitle><Info className="w-5 h-5 inline mr-1" /> 关于</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2 text-sm text-gray-500 dark:text-gray-400">
-            <p>📖 BookDock 书仓</p>
+            <p className="inline-flex items-center gap-1"><BookOpen className="w-4 h-4" /> BookDock 书仓</p>
             <p>版本 1.0.0</p>
             <p>专为 NAS 用户打造的电子书阅读器</p>
           </div>

@@ -1,6 +1,14 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@bookdock/ui';
+import {
+  Crown,
+  BookOpen,
+  Headphones,
+  Star,
+  Ban,
+  Check,
+} from 'lucide-react';
 
 interface NoVipBlockProps {
   message?: string;
@@ -11,12 +19,19 @@ export default function NoVipBlock({
 }: NoVipBlockProps) {
   const navigate = useNavigate();
 
+  const benefits = [
+    { icon: BookOpen, text: '无限书籍阅读' },
+    { icon: Headphones, text: '智能语音朗读' },
+    { icon: Star, text: '抢先体验新功能' },
+    { icon: Ban, text: '去除全部广告' },
+  ];
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 max-w-sm mx-4 text-center shadow-2xl">
         {/* Icon */}
         <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full mb-4">
-          <span className="text-3xl">👑</span>
+          <Crown className="w-8 h-8 text-white" />
         </div>
 
         {/* Title */}
@@ -35,9 +50,11 @@ export default function NoVipBlock({
             会员特权
           </p>
           <div className="space-y-1.5">
-            {['📚 无限书籍阅读', '🎧 智能语音朗读', '⭐ 抢先体验新功能', '🚫 去除全部广告'].map((b) => (
-              <p key={b} className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-2">
-                <span className="text-green-500">✓</span> {b}
+            {benefits.map((b) => (
+              <p key={b.text} className="text-sm text-gray-600 dark:text-gray-300 flex items-center gap-2">
+                <Check className="w-4 h-4 text-green-500" />
+                <b.icon className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                {b.text}
               </p>
             ))}
           </div>

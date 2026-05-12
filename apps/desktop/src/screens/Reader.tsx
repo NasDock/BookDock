@@ -6,6 +6,7 @@ import {
   updateReadingProgress,
 } from '../hooks/useDesktopCommands';
 import { TTSControls } from '../components/TTSControls';
+import { ArrowLeft, Sun, Moon, ScrollText, BookOpen, Keyboard } from 'lucide-react';
 
 // Simple EPUB renderer for desktop
 // In production, you'd use epub.js bundled with the app
@@ -149,21 +150,21 @@ BookDock 桌面版阅读器
 
 功能特点：
 
-📚 多格式支持
+多格式支持
 支持 EPUB、PDF、TXT 等主流电子书格式。
 
-🔊 听书模式
+听书模式
 内置 TTS 语音朗读功能，让您的双眼得到休息。
 
-📁 本地文件访问
+本地文件访问
 直接读取 NAS 挂载路径的电子书，无需导入。
 
-⌨️ 全局快捷键
+<Keyboard className="w-4 h-4 inline mr-1" /> 全局快捷键
 • Ctrl+Shift+B: 播放/暂停听书
 • Ctrl+Shift+N: 下一段
 • Ctrl+Shift+P: 上一段
 
-🪟 窗口管理
+<span className="inline-flex items-center gap-1"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2V6z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12h16" /></svg> 窗口管理</span>
 支持多窗口阅读，可调整窗口大小和位置。
 
 正在开发中...
@@ -277,7 +278,9 @@ BookDock 桌面版阅读器
     return (
       <div className={`h-screen ${bgClass} flex items-center justify-center`}>
         <div className="text-center">
-          <div className="text-6xl mb-4">📕</div>
+          <div className="mb-4 flex justify-center">
+            <BookOpen className="w-16 h-16 text-red-400" />
+          </div>
           <h2 className="text-xl font-semibold mb-2">加载失败</h2>
           <p className="text-gray-500 mb-4">{error}</p>
           <button
@@ -301,7 +304,7 @@ BookDock 桌面版阅读器
               onClick={handleGoBack}
               className="flex items-center gap-2 hover:opacity-70 transition-opacity"
             >
-              <span>←</span>
+              <ArrowLeft className="w-4 h-4" />
               <span className="text-sm">返回</span>
             </button>
 
@@ -327,7 +330,7 @@ BookDock 桌面版阅读器
                 }`}
                 title="听书模式"
               >
-                🔊
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" /></svg>
               </button>
 
               {/* Settings */}
@@ -344,7 +347,7 @@ BookDock 桌面版阅读器
                   }}
                   className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
                 >
-                  {mode === 'light' ? '☀️' : mode === 'dark' ? '🌙' : '📜'}
+                  {mode === 'light' ? <Sun className="w-5 h-5" /> : mode === 'dark' ? <Moon className="w-5 h-5" /> : <ScrollText className="w-5 h-5" />}
                 </button>
               </div>
             </div>
