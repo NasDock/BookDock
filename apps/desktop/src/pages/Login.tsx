@@ -3,8 +3,18 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@bookdock/auth';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@bookdock/ui';
-import { getApiClient } from '@bookdock/api-client';
-import { BookOpen, Key, Smartphone, Monitor, EyeOff, Eye, ArrowLeft, Sparkles, Rocket, Link2, Loader2, Check, Lightbulb } from 'lucide-react';
+import { getApiClient, initApiClient } from '@bookdock/api-client';
+import {
+  BookOpen, Key, Smartphone, Monitor, EyeOff, Eye, ArrowLeft, Sparkles, Rocket, Link2,
+  Loader2, Check, Lightbulb, Server, Wifi, Globe, RefreshCw,
+} from 'lucide-react';
+import {
+  loadServerConfig,
+  saveServerConfig,
+  selectBestServer,
+  checkServerConnectivity,
+  setActiveServerAddress,
+} from '../utils/network';
 
 interface NASConfig {
   host: string;
@@ -13,6 +23,8 @@ interface NASConfig {
   password: string;
   protocol: 'http' | 'https';
   basePath: string;
+  internal?: string;
+  external?: string;
 }
 
 const RECENT_NAS_KEY = 'bookdock_recent_nas';
@@ -41,6 +53,12 @@ export default function Login() {
 
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [loginType, setLoginType] = useState<'account' | 'phone' | 'nas'>('account');
+
+  // Server config state (internal/external)
+  const [serverConfig, setServerConfig] = useState(() => loadServerConfig());
+  const [serverTesting, setServerTesting] = useState(false);
+  const [serverTestResult, setServerTestResult] = useState<{ success: boolean; address: string } | null>(null);
+  const [showServerConfig, setShowServerConfig] = useState(false);
 
   // Account login state
   const [username, setUsername] = useState('');
@@ -199,14 +217,31 @@ export default function Login() {
     e.preventDefault();
     setNasError(null);
 
-    if (!nasConfig.host.trim()) { setNasError('请输入 NAS 服务器地址'); return; }
+    // Use internal/external addresses if configured, fallback to host/port
+    let targetAddress = '';
+    const hasInternalExternal = (nasConfig.internal?.trim() || nasConfig.external?.trim());
+
+    if (hasInternalExternal) {
+      // Auto-select best server
+      const best = await selectBestServer(nasConfig.internal || '', nasConfig.external || '');
+      if (!best) {
+        setNasError('无法连接到服务器，请检查内网/外网地址');
+        return;
+      }
+      targetAddress = best;
+      setActiveServerAddress(best);
+    } else {
+      if (!nasConfig.host.trim()) { setNasError('请输入 NAS 服务器地址'); return; }
+      targetAddress = `${nasConfig.protocol}://${nasConfig.host}:${nasConfig.port}`;
+    }
+
     if (!nasConfig.username.trim()) { setNasError('请输入用户名'); return; }
     if (!nasConfig.password) { setNasError('请输入密码'); return; }
 
     setNasIsConnecting(true);
 
     try {
-      const baseURL = `${nasConfig.protocol}://${nasConfig.host}:${nasConfig.port}/api`;
+      const baseURL = `${targetAddress}/api`;
       const response = await fetch(`${baseURL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -216,20 +251,26 @@ export default function Login() {
       const data = await response.json();
 
       if (data.success && data.data) {
-        saveRecentNAS({
+        const saveConfig: Partial<NASConfig> = {
           host: nasConfig.host,
           port: nasConfig.port,
           username: nasConfig.username,
           protocol: nasConfig.protocol,
           basePath: nasConfig.basePath,
-        });
+          internal: nasConfig.internal,
+          external: nasConfig.external,
+        };
+        saveRecentNAS(saveConfig);
         localStorage.setItem('bookdock_nas_token', data.data.token);
         localStorage.setItem('bookdock_nas_config', JSON.stringify({
           host: nasConfig.host,
           port: nasConfig.port,
           protocol: nasConfig.protocol,
           basePath: nasConfig.basePath,
+          internal: nasConfig.internal,
+          external: nasConfig.external,
         }));
+        setActiveServerAddress(targetAddress);
 
         navigate(from, { replace: true });
       } else {
@@ -240,6 +281,33 @@ export default function Login() {
       setNasError(errorMessage.includes('fetch') ? '无法连接到 NAS 服务器，请检查地址是否正确' : errorMessage);
     } finally {
       setNasIsConnecting(false);
+    }
+  };
+
+  const handleTestServer = async () => {
+    setServerTesting(true);
+    setServerTestResult(null);
+    try {
+      const best = await selectBestServer(serverConfig.internal || '', serverConfig.external || '');
+      if (best) {
+        setServerTestResult({ success: true, address: best });
+        setActiveServerAddress(best);
+      } else {
+        setServerTestResult({ success: false, address: '' });
+      }
+    } finally {
+      setServerTesting(false);
+    }
+  };
+
+  const handleSaveServerConfig = () => {
+    saveServerConfig(serverConfig);
+    if (serverConfig.internal || serverConfig.external) {
+      setNasConfig(prev => ({
+        ...prev,
+        internal: serverConfig.internal,
+        external: serverConfig.external,
+      }));
     }
   };
 
@@ -506,54 +574,142 @@ export default function Login() {
             {loginType === 'nas' && (
               <form onSubmit={handleNASLogin} className="space-y-4">
                 <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-                  连接您的 NAS 设备，访问本地电子书库
+                  连接您的 NAS 设备，支持内网/外网自动切换
                 </p>
 
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">协议</label>
-                    <select
-                      value={nasConfig.protocol}
-                      onChange={(e) => setNasConfig({ ...nasConfig, protocol: e.target.value as 'http' | 'https' })}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="http">HTTP</option>
-                      <option value="https">HTTPS</option>
-                    </select>
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">NAS 地址</label>
-                    <input
-                      type="text"
-                      value={nasConfig.host}
-                      onChange={(e) => setNasConfig({ ...nasConfig, host: e.target.value })}
-                      placeholder="192.168.1.100"
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
+                {/* Server Config Toggle */}
+                <button
+                  type="button"
+                  onClick={() => setShowServerConfig(!showServerConfig)}
+                  className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <span className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <Server className="w-4 h-4" />
+                    服务器地址配置
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    {showServerConfig ? '收起' : '展开'}
+                  </span>
+                </button>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">端口</label>
-                    <input
-                      type="number"
-                      value={nasConfig.port}
-                      onChange={(e) => setNasConfig({ ...nasConfig, port: parseInt(e.target.value) || 8080 })}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                {showServerConfig && (
+                  <div className="space-y-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/30">
+                    <div>
+                      <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        <Wifi className="w-3 h-3" /> 内网地址
+                      </label>
+                      <input
+                        type="text"
+                        value={serverConfig.internal}
+                        onChange={(e) => setServerConfig({ ...serverConfig, internal: e.target.value })}
+                        placeholder="http://192.168.1.100:8080"
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        <Globe className="w-3 h-3" /> 外网地址
+                      </label>
+                      <input
+                        type="text"
+                        value={serverConfig.external}
+                        onChange={(e) => setServerConfig({ ...serverConfig, external: e.target.value })}
+                        placeholder="https://nas.example.com"
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleTestServer}
+                        disabled={serverTesting || (!serverConfig.internal && !serverConfig.external)}
+                        className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {serverTesting ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            检测中...
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className="w-3 h-3" />
+                            自动检测
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveServerConfig}
+                        className="flex-1 py-2 rounded-lg text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                      >
+                        保存配置
+                      </button>
+                    </div>
+
+                    {serverTestResult && (
+                      <div className={`p-2 rounded-lg text-xs ${serverTestResult.success ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>
+                        {serverTestResult.success ? (
+                          <span className="flex items-center gap-1"><Check className="w-3 h-3" /> 已连接到 {serverTestResult.address}</span>
+                        ) : (
+                          <span>无法连接到任何服务器</span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">基础路径</label>
-                    <input
-                      type="text"
-                      value={nasConfig.basePath}
-                      onChange={(e) => setNasConfig({ ...nasConfig, basePath: e.target.value })}
-                      placeholder="/books"
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
+                )}
+
+                {/* Fallback manual config when no internal/external */}
+                {(!serverConfig.internal && !serverConfig.external) && (
+                  <>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">协议</label>
+                        <select
+                          value={nasConfig.protocol}
+                          onChange={(e) => setNasConfig({ ...nasConfig, protocol: e.target.value as 'http' | 'https' })}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="http">HTTP</option>
+                          <option value="https">HTTPS</option>
+                        </select>
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">NAS 地址</label>
+                        <input
+                          type="text"
+                          value={nasConfig.host}
+                          onChange={(e) => setNasConfig({ ...nasConfig, host: e.target.value })}
+                          placeholder="192.168.1.100"
+                          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">端口</label>
+                        <input
+                          type="number"
+                          value={nasConfig.port}
+                          onChange={(e) => setNasConfig({ ...nasConfig, port: parseInt(e.target.value) || 8080 })}
+                          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">基础路径</label>
+                        <input
+                          type="text"
+                          value={nasConfig.basePath}
+                          onChange={(e) => setNasConfig({ ...nasConfig, basePath: e.target.value })}
+                          placeholder="/books"
+                          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div>
                   <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">用户名</label>

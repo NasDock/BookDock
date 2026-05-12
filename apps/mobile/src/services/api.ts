@@ -10,8 +10,16 @@ import type { ReaderPosition } from '@bookdock/ebook-reader';
 // Storage keys
 const READING_PROGRESS_KEY = 'bookdock-reading-progress';
 
-// Base API configuration
-const API_BASE_URL = 'http://10.79.233.188:3000/api';
+// Base API configuration - can be overridden dynamically
+let API_BASE_URL = 'http://10.79.233.188:3000/api';
+
+export function setApiBaseUrl(url: string) {
+  API_BASE_URL = url.replace(/\/+$/, '');
+}
+
+export function getApiBaseUrl(): string {
+  return API_BASE_URL;
+}
 
 // Simple cache interface
 interface CacheEntry<T> {

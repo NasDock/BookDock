@@ -6,11 +6,13 @@ import { RootNavigator } from './navigation';
 import { useAuthStore, useThemeStore } from './stores';
 import { notificationService } from './services';
 import { initApiClient } from '@bookdock/api-client';
+import { autoSelectServer, getActiveServerAddress } from './utils/network';
+import { setApiBaseUrl } from './services/api';
 
 // Keep splash screen visible while loading
 SplashScreen.preventAutoHideAsync();
 
-const API_BASE_URL = 'http://localhost:8080/api';
+const DEFAULT_API_BASE_URL = 'http://localhost:8080/api';
 
 export default function App() {
   const actualTheme = useThemeStore((state) => state.actualTheme);
@@ -20,18 +22,25 @@ export default function App() {
   const [appReady, setAppReady] = useState(false);
 
   useEffect(() => {
-    // Initialize API client globally
-    initApiClient({
-      baseURL: API_BASE_URL,
-      getAuthToken: () => useAuthStore.getState().token || null,
-      onAuthError: () => {
-        useAuthStore.getState().logout();
-      },
-    });
-
     const initApp = async () => {
       try {
         setLoading(true);
+
+        // Auto-select best server address
+        const bestAddress = await autoSelectServer();
+        const activeAddress = bestAddress || (await getActiveServerAddress()) || DEFAULT_API_BASE_URL;
+        setApiBaseUrl(activeAddress);
+
+        // Initialize API client globally
+        initApiClient({
+          baseURL: activeAddress,
+          getAuthToken: () => useAuthStore.getState().token || null,
+          onAuthError: () => {
+            useAuthStore.getState().logout();
+          },
+        });
+
+        console.log('[App] API base URL:', activeAddress);
 
         // Restore auth from storage
         await restoreAuth();
