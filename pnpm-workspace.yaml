@@ -1,5 +1,6 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+allowUnusedPatches: true
 patchedDependencies:
   expo-modules-core: patches/expo-modules-core.patch

@@ -65,9 +65,6 @@ RUN pnpm --filter @bookdock/server exec prisma generate
 # Build NestJS server
 RUN pnpm --filter @bookdock/server exec nest build
 
-# Remove patches unused by server to avoid ERR_PNPM_UNUSED_PATCH
-RUN rm -f patches/expo-modules-core.patch
-
 # Deploy server to a standalone directory (resolves workspace symlinks)
 RUN pnpm deploy --filter=@bookdock/server --prod --legacy /app/server-deploy
 
