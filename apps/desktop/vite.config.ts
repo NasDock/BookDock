@@ -9,7 +9,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'icons/*.png'],
+      includeAssets: ['logo.png', 'icons/*.png'],
       manifest: {
         name: 'BookDock - 书仓',
         short_name: '书仓',

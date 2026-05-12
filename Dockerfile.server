@@ -92,7 +92,7 @@ COPY --from=deps /app/package.json ./package.json
 COPY --from=deps /app/package-lock.json ./package-lock.json
 
 # Copy nginx config template (runtime substitution handled by entrypoint)
-COPY --chmod=644 nginx/nginx.conf nginx/conf.d 2>/dev/null || true
+COPY --chmod=644 nginx ./nginx
 
 # Create upload directory
 RUN mkdir -p /app/uploads /app/meta && chown -R bookdock:bookdock /app

@@ -39,6 +39,7 @@ function createWindow() {
     minWidth: 800,
     minHeight: 600,
     title: 'BookDock - 书仓',
+    icon: path.join(process.env.VITE_PUBLIC, 'logo.png'),
     webPreferences: {
       preload,
       nodeIntegration: false,
@@ -200,4 +201,3 @@ ipcMain.handle('update_reading_progress', async (_, { bookId, progress, currentP
   }
   return { success: true };
 });
-

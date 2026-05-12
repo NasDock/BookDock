@@ -37,3 +37,5 @@ apps/server/prisma/migrations/
 # Test
 coverage/
 .nyc_output/
+
+my-release-key.jks
