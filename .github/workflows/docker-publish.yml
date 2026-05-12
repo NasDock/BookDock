@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  DOCKERHUB_IMAGE_NAME: nasdock/bookdock
+  DOCKERHUB_IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/bookdock
 
 jobs:
   build-and-push:
