@@ -1,328 +1,338 @@
-// @ts-nocheck
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '@bookdock/auth';
-import { Button, Card, CardHeader, CardTitle, CardContent } from '@bookdock/ui';
-import { getApiClient, initApiClient } from '@bookdock/api-client';
+import { QRCodeSVG } from 'qrcode.react';
 import {
-  BookOpen, Key, Smartphone, Monitor, EyeOff, Eye, ArrowLeft, Sparkles, Rocket, Link2,
-  Loader2, Check, Lightbulb, Server, Wifi, Globe, RefreshCw,
+  BookOpen, Server, User, Lock, EyeOff, Eye, Loader2, RefreshCw,
+  ArrowLeft, Wifi, Globe,
 } from 'lucide-react';
+import { useAuth } from '@bookdock/auth';
+import { initApiClient } from '@bookdock/api-client';
 import {
   loadServerConfig,
   saveServerConfig,
   selectBestServer,
   checkServerConnectivity,
   setActiveServerAddress,
+  getActiveServerAddress,
 } from '../utils/network';
+import {
+  createScanLoginSession,
+  getScanLoginSession,
+  subscribeScanLoginSession,
+  consumeScanLoginSession,
+  reportScanLoginResult,
+  reportScanLoginResultViaSocket,
+  type ScanLoginSession,
+  type ScanLoginSessionStatus,
+} from '../services/plus';
+import { applyDesktopScanLoginResult } from '../utils/scanLogin';
 
-interface NASConfig {
-  host: string;
-  port: number;
-  username: string;
-  password: string;
-  protocol: 'http' | 'https';
-  basePath: string;
-  internal?: string;
-  external?: string;
+interface ServerHistoryItem {
+  value: string;
 }
 
-const RECENT_NAS_KEY = 'bookdock_recent_nas';
-
-function loadRecentNAS(): NASConfig | null {
-  try {
-    const stored = localStorage.getItem(RECENT_NAS_KEY);
-    if (stored) {
-      const config = JSON.parse(stored);
-      return { protocol: 'http', port: 8080, basePath: '/books', ...config };
-    }
-  } catch { /* ignore */ }
-  return null;
-}
-
-function saveRecentNAS(config: Partial<NASConfig>): void {
-  try {
-    localStorage.setItem(RECENT_NAS_KEY, JSON.stringify(config));
-  } catch { /* ignore */ }
+interface SavedSourceConfig {
+  id: string;
+  internal: string;
+  external: string;
+  name: string;
 }
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, register, isLoading, isAuthenticated, sendSmsCode, loginWithPhone, registerWithPhone } = useAuth();
+  const { login: authLogin } = useAuth();
 
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [loginType, setLoginType] = useState<'account' | 'phone' | 'nas'>('account');
+  // Form state
+  const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Server config state (internal/external)
-  const [serverConfig, setServerConfig] = useState(() => loadServerConfig());
-  const [serverTesting, setServerTesting] = useState(false);
-  const [serverTestResult, setServerTestResult] = useState<{ success: boolean; address: string } | null>(null);
-  const [showServerConfig, setShowServerConfig] = useState(false);
-
-  // Account login state
+  // Address inputs
+  const [internalAddress, setInternalAddress] = useState('');
+  const [externalAddress, setExternalAddress] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [email, setEmail] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Phone + SMS state
-  const [phone, setPhone] = useState('');
-  const [smsCode, setSmsCode] = useState('');
-  const [smsSending, setSmsSending] = useState(false);
-  const [smsCountdown, setSmsCountdown] = useState(0);
-  const [smsSent, setSmsSent] = useState(false);
-  const [smsError, setSmsError] = useState<string | null>(null);
+  // History
+  const [serverHistory, setServerHistory] = useState<ServerHistoryItem[]>([]);
 
-  // NAS login state
-  const [nasConfig, setNasConfig] = useState<NASConfig>(() => {
-    const recent = loadRecentNAS();
-    return recent || {
-      protocol: 'http',
-      host: '',
-      port: 8080,
-      username: '',
-      password: '',
-      basePath: '/books',
-    };
-  });
-  const [nasError, setNasError] = useState<string | null>(null);
-  const [nasIsConnecting, setNasIsConnecting] = useState(false);
-  const [showNasPassword, setShowNasPassword] = useState(false);
+  // Scan login state
+  const [scanSession, setScanSession] = useState<ScanLoginSession | null>(null);
+  const [scanStatus, setScanStatus] = useState<ScanLoginSessionStatus | null>(null);
+  const [scanBusy, setScanBusy] = useState(false);
 
-  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/';
-  const countdownRef = useRef<number | null>(null);
+  const sourceType = 'BookDock';
+  const historyKey = `serverHistory_${sourceType}`;
+  const configKey = `sourceConfig_${sourceType}`;
 
-  // Redirect if already authenticated
+  // Load saved config & history on mount
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate(from, { replace: true });
-    }
-  }, [isAuthenticated, navigate, from]);
+    const history = localStorage.getItem(historyKey);
+    setServerHistory(history ? JSON.parse(history) : []);
 
-  // Load remembered username
-  useEffect(() => {
-    const remembered = localStorage.getItem('bookdock_remembered_username');
-    if (remembered) {
-      setUsername(remembered);
-      setRememberMe(true);
+    const savedConfigStr = localStorage.getItem(configKey);
+    let configs: SavedSourceConfig[] = [];
+    try {
+      if (savedConfigStr) {
+        const parsed = JSON.parse(savedConfigStr);
+        configs = Array.isArray(parsed) ? parsed : [];
+      }
+    } catch { /* ignore */ }
+
+    if (configs.length > 0) {
+      const lastConfig = configs[configs.length - 1];
+      setInternalAddress(lastConfig.internal || '');
+      setExternalAddress(lastConfig.external || '');
+      restoreCredentials(lastConfig.internal || lastConfig.external || '');
+    } else {
+      // Fallback to network utils config
+      const netConfig = loadServerConfig();
+      setInternalAddress(netConfig.internal || '');
+      setExternalAddress(netConfig.external || '');
     }
   }, []);
 
-  // SMS countdown
-  useEffect(() => {
-    if (smsCountdown > 0) {
-      countdownRef.current = window.setTimeout(() => setSmsCountdown(c => c - 1), 1000);
-    }
-    return () => {
-      if (countdownRef.current) clearTimeout(countdownRef.current);
-    };
-  }, [smsCountdown]);
-
-  const validateAccountForm = useCallback((): string | null => {
-    if (!username.trim()) return '请输入用户名';
-    if (username.length < 2) return '用户名长度至少为2位';
-    if (!password) return '请输入密码';
-    if (mode === 'register') {
-      if (password.length < 6) return '密码长度至少为6位';
-      if (password !== confirmPassword) return '两次输入的密码不一致';
-    }
-    return null;
-  }, [username, password, confirmPassword, mode]);
-
-  const handleAccountSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-
-    const validationError = validateAccountForm();
-    if (validationError) {
-      setError(validationError);
-      return;
-    }
-
-    let response;
-    if (mode === 'register') {
-      response = await register(username, password, email || undefined);
-    } else {
-      response = await login(username, password);
-    }
-
-    if (response.success) {
-      if (rememberMe) {
-        localStorage.setItem('bookdock_remembered_username', username);
-      } else {
-        localStorage.removeItem('bookdock_remembered_username');
-      }
-      navigate(from, { replace: true });
-    } else {
-      setError(response.error || (mode === 'login' ? '登录失败' : '注册失败'));
+  const restoreCredentials = (address: string) => {
+    if (!address) return;
+    const credsKey = `creds_${sourceType}_${address}`;
+    const savedCreds = localStorage.getItem(credsKey);
+    if (savedCreds) {
+      const { username: u, password: p } = JSON.parse(savedCreds);
+      setUsername(u || '');
+      setPassword(p || '');
+      setRememberMe(true);
     }
   };
 
-  // Phone + SMS handlers
-  const handleSendSms = async () => {
-    if (!phone.trim()) {
-      setSmsError('请输入手机号');
-      return;
-    }
-    const phoneRegex = /^[\d\+]{7,20}$/;
-    if (!phoneRegex.test(phone)) {
-      setSmsError('请输入正确的手机号');
-      return;
-    }
-
-    setSmsSending(true);
-    setSmsError(null);
-
+  // --- Scan Login ---
+  const createTargetSession = useCallback(async () => {
     try {
-      const response = await sendSmsCode(phone);
-      if (response.success) {
-        setSmsSent(true);
-        setSmsCountdown(60);
-      } else {
-        setSmsError(response.error || '发送失败，请重试');
-      }
-    } catch (err: any) {
-      setSmsError(err?.message || '发送失败，请重试');
-    } finally {
-      setSmsSending(false);
-    }
-  };
-
-  const handlePhoneSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSmsError(null);
-
-    if (!phone.trim()) { setSmsError('请输入手机号'); return; }
-    if (!smsCode.trim() || smsCode.length < 4) { setSmsError('请输入收到的验证码'); return; }
-
-    let response;
-    if (mode === 'register') {
-      response = await registerWithPhone(phone, smsCode, username);
-    } else {
-      response = await loginWithPhone(phone, smsCode);
-    }
-
-    if (response.success) {
-      navigate(from, { replace: true });
-    } else {
-      setSmsError(response.error || (mode === 'login' ? '登录失败' : '注册失败'));
-    }
-  };
-
-  const handleNASLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setNasError(null);
-
-    // Use internal/external addresses if configured, fallback to host/port
-    let targetAddress = '';
-    const hasInternalExternal = (nasConfig.internal?.trim() || nasConfig.external?.trim());
-
-    if (hasInternalExternal) {
-      // Auto-select best server
-      const best = await selectBestServer(nasConfig.internal || '', nasConfig.external || '');
-      if (!best) {
-        setNasError('无法连接到服务器，请检查内网/外网地址');
-        return;
-      }
-      targetAddress = best;
-      setActiveServerAddress(best);
-    } else {
-      if (!nasConfig.host.trim()) { setNasError('请输入 NAS 服务器地址'); return; }
-      targetAddress = `${nasConfig.protocol}://${nasConfig.host}:${nasConfig.port}`;
-    }
-
-    if (!nasConfig.username.trim()) { setNasError('请输入用户名'); return; }
-    if (!nasConfig.password) { setNasError('请输入密码'); return; }
-
-    setNasIsConnecting(true);
-
-    try {
-      const baseURL = `${targetAddress}/api`;
-      const response = await fetch(`${baseURL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: nasConfig.username, password: nasConfig.password }),
-      });
-
-      const data = await response.json();
-
-      if (data.success && data.data) {
-        const saveConfig: Partial<NASConfig> = {
-          host: nasConfig.host,
-          port: nasConfig.port,
-          username: nasConfig.username,
-          protocol: nasConfig.protocol,
-          basePath: nasConfig.basePath,
-          internal: nasConfig.internal,
-          external: nasConfig.external,
-        };
-        saveRecentNAS(saveConfig);
-        localStorage.setItem('bookdock_nas_token', data.data.token);
-        localStorage.setItem('bookdock_nas_config', JSON.stringify({
-          host: nasConfig.host,
-          port: nasConfig.port,
-          protocol: nasConfig.protocol,
-          basePath: nasConfig.basePath,
-          internal: nasConfig.internal,
-          external: nasConfig.external,
-        }));
-        setActiveServerAddress(targetAddress);
-
-        navigate(from, { replace: true });
-      } else {
-        setNasError(data.error || 'NAS 登录失败，请检查用户名和密码');
+      const res = await createScanLoginSession({ role: 'target', deviceKind: 'desktop' });
+      if (res.data) {
+        setScanSession(res.data);
+        setScanStatus({
+          sessionId: res.data.sessionId,
+          role: res.data.role,
+          deviceKind: res.data.deviceKind,
+          expiresAt: res.data.expiresAt,
+          status: 'waiting_scan',
+          sourceBundles: [],
+          hasNativeAuth: false,
+          hasPlusAuth: false,
+        });
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '无法连接到 NAS 服务器';
-      setNasError(errorMessage.includes('fetch') ? '无法连接到 NAS 服务器，请检查地址是否正确' : errorMessage);
-    } finally {
-      setNasIsConnecting(false);
+      console.error('Failed to create scan session', err);
+      setError('创建扫码会话失败');
     }
-  };
+  }, []);
 
-  const handleTestServer = async () => {
-    setServerTesting(true);
-    setServerTestResult(null);
-    try {
-      const best = await selectBestServer(serverConfig.internal || '', serverConfig.external || '');
-      if (best) {
-        setServerTestResult({ success: true, address: best });
-        setActiveServerAddress(best);
-      } else {
-        setServerTestResult({ success: false, address: '' });
+  useEffect(() => {
+    createTargetSession();
+  }, [createTargetSession]);
+
+  useEffect(() => {
+    if (!scanSession) return;
+    getScanLoginSession(scanSession.sessionId, scanSession.secret).catch(console.error);
+    const unsubscribe = subscribeScanLoginSession(
+      scanSession.sessionId,
+      scanSession.secret,
+      (status) => setScanStatus(status),
+    );
+    return () => unsubscribe();
+  }, [scanSession]);
+
+  useEffect(() => {
+    if (!scanSession || scanStatus?.status !== 'confirmed') return;
+
+    const consumeConfirmedScan = async () => {
+      try {
+        setScanBusy(true);
+        const res = await consumeScanLoginSession(scanSession.sessionId, { secret: scanSession.secret });
+
+        try {
+          if (!res.data) throw new Error('No data returned');
+          await applyDesktopScanLoginResult(res.data);
+        } catch (applyErr: any) {
+          await reportScanLoginResult(scanSession.sessionId, {
+            secret: scanSession.secret,
+            success: false,
+            error: applyErr.message,
+          }).catch(console.error);
+          reportScanLoginResultViaSocket(scanSession.sessionId, scanSession.secret, false, applyErr.message);
+          throw applyErr;
+        }
+
+        await reportScanLoginResult(scanSession.sessionId, {
+          secret: scanSession.secret,
+          success: true,
+        }).catch(console.error);
+        reportScanLoginResultViaSocket(scanSession.sessionId, scanSession.secret, true);
+        navigate('/', { replace: true });
+      } catch (err: any) {
+        console.error(err);
+        setError(err.message || '扫码登录失败');
+        createTargetSession();
+      } finally {
+        setScanBusy(false);
       }
-    } finally {
-      setServerTesting(false);
+    };
+
+    consumeConfirmedScan();
+  }, [scanSession?.sessionId, scanStatus?.status, navigate, createTargetSession]);
+
+  const qrValue = scanSession
+    ? JSON.stringify({
+        kind: 'bookdock-scan-login',
+        version: 1,
+        sessionId: scanSession.sessionId,
+        secret: scanSession.secret,
+        role: 'target',
+        deviceKind: 'desktop',
+      })
+    : '';
+
+  // --- Form handlers ---
+  const saveConfig = (internal: string, external: string) => {
+    const existingStr = localStorage.getItem(configKey);
+    let existingConfigs: SavedSourceConfig[] = [];
+    try {
+      if (existingStr) {
+        const parsed = JSON.parse(existingStr);
+        if (Array.isArray(parsed)) existingConfigs = parsed;
+      }
+    } catch { /* ignore */ }
+
+    const existingIndex = existingConfigs.findIndex(
+      (c) => (internal && c.internal === internal) || (external && c.external === external),
+    );
+
+    if (existingIndex !== -1) {
+      existingConfigs[existingIndex] = {
+        ...existingConfigs[existingIndex],
+        internal: internal || existingConfigs[existingIndex].internal,
+        external: external || existingConfigs[existingIndex].external,
+      };
+    } else {
+      existingConfigs.push({
+        id: Date.now().toString(),
+        internal: internal || '',
+        external: external || '',
+        name: `服务器 ${existingConfigs.length + 1}`,
+      });
+    }
+    localStorage.setItem(configKey, JSON.stringify(existingConfigs));
+
+    const history = localStorage.getItem(historyKey);
+    const list: ServerHistoryItem[] = history ? JSON.parse(history) : [];
+    [internal, external].forEach((addr) => {
+      if (addr && !list.find((i) => i.value === addr)) {
+        list.push({ value: addr });
+      }
+    });
+    localStorage.setItem(historyKey, JSON.stringify(list));
+    setServerHistory(list);
+
+    // Also save to network utils
+    saveServerConfig({ internal, external, name: `服务器` });
+  };
+
+  const handleRemoveHistory = (value: string) => {
+    const history = localStorage.getItem(historyKey);
+    if (history) {
+      const list = (JSON.parse(history) as ServerHistoryItem[]).filter((item) => item.value !== value);
+      localStorage.setItem(historyKey, JSON.stringify(list));
+      setServerHistory(list);
     }
   };
 
-  const handleSaveServerConfig = () => {
-    saveServerConfig(serverConfig);
-    if (serverConfig.internal || serverConfig.external) {
-      setNasConfig(prev => ({
-        ...prev,
-        internal: serverConfig.internal,
-        external: serverConfig.external,
-      }));
-    }
-  };
-
-  const handleDemoLogin = async () => {
-    setUsername('demo');
-    setPassword('demo123');
+  const handleFinish = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
     setError(null);
 
-    const response = await login('demo', 'demo123');
-    if (response.success) {
-      navigate(from, { replace: true });
-    } else {
-      setError('演示模式登录失败，请使用任意账户登录');
+    if (!internalAddress && !externalAddress) {
+      setError('请至少输入一个服务器地址（内网或外网）');
+      setLoading(false);
+      return;
+    }
+    if (!username || !password) {
+      setError('请填写用户名和密码');
+      setLoading(false);
+      return;
+    }
+    if (!isLogin && password !== confirmPassword) {
+      setError('两次输入的密码不一致');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const bestAddress = await selectBestServer(internalAddress, externalAddress);
+
+      if (!bestAddress) {
+        setError('无法连接到任一服务器地址，请检查网络或地址输入');
+        setLoading(false);
+        return;
+      }
+
+      // Init API client with selected address
+      initApiClient({
+        baseURL: bestAddress,
+        getAuthToken: () => {
+          try {
+            const auth = localStorage.getItem('bookdock-auth');
+            return auth ? JSON.parse(auth).state?.token || null : null;
+          } catch { return null; }
+        },
+        onAuthError: () => {
+          localStorage.removeItem('bookdock-auth');
+        },
+      });
+
+      saveConfig(internalAddress, externalAddress);
+      setActiveServerAddress(bestAddress);
+
+      // Save credentials if remember me
+      if (rememberMe) {
+        localStorage.setItem(
+          `creds_${sourceType}_${bestAddress}`,
+          JSON.stringify({ username, password }),
+        );
+      }
+
+      // Call API
+      const { getApiClient } = await import('@bookdock/api-client');
+      const apiClient = getApiClient();
+
+      if (isLogin) {
+        const res = await authLogin(username, password);
+        if (res.success && res.data) {
+          navigate('/', { replace: true });
+        } else {
+          setError(res.error || '登录失败');
+        }
+      } else {
+        const res = await apiClient.register(username, password);
+        if (res.success && res.data) {
+          navigate('/', { replace: true });
+        } else {
+          setError(res.error || '注册失败');
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      setError(err?.message || (isLogin ? '登录失败' : '注册失败'));
+    } finally {
+      setLoading(false);
     }
   };
+
+  const from = (location.state as { from?: { pathname: string } })?.from?.pathname || '/';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center p-4">
@@ -332,473 +342,268 @@ export default function Login() {
         <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-200 dark:bg-purple-900/20 rounded-full blur-3xl opacity-50"></div>
       </div>
 
-      <div className="w-full max-w-md relative">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl shadow-xl mb-4 transform hover:scale-105 transition-transform">
-            <BookOpen className="w-10 h-10 text-white" />
+      <div className="w-full max-w-5xl relative">
+        {/* Logo header */}
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl shadow-xl mb-3">
+            <BookOpen className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">书仓</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">您的私人电子书库</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">书仓</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">连接您的数据服务器</p>
         </div>
 
-        {/* Login type tabs */}
-        <div className="flex mb-6 bg-gray-100 dark:bg-gray-800 rounded-xl p-1">
-          {[
-            { id: 'account', label: '账户登录' },
-            { id: 'phone', label: '手机登录' },
-            { id: 'nas', label: 'NAS 本地' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setLoginType(tab.id as any);
-                setError(null);
-                setSmsError(null);
-                setNasError(null);
-              }}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                loginType === tab.id
-                  ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow'
-                  : 'text-gray-500 dark:text-gray-400'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-center">
-              {loginType === 'account'
-                ? mode === 'login' ? <><Key className="w-5 h-5 inline mr-1" /> 登录账户</> : <><Sparkles className="w-5 h-5 inline mr-1" /> 注册账户</>
-                : loginType === 'phone'
-                ? mode === 'login' ? <><Smartphone className="w-5 h-5 inline mr-1" /> 手机登录</> : <><Smartphone className="w-5 h-5 inline mr-1" /> 手机注册</>
-                : <><Monitor className="w-5 h-5 inline mr-1" /> NAS 连接设置</>
-              }
-            </CardTitle>
-          </CardHeader>
-
-          <CardContent>
-            {/* Phone + SMS Login */}
-            {loginType === 'phone' && (
-              <form onSubmit={handlePhoneSubmit} className="space-y-4">
-                <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-                  {mode === 'login' ? '使用手机号和验证码登录' : '注册新账户'}
-                </p>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">手机号</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => { setPhone(e.target.value); setSmsSent(false); }}
-                      placeholder="+86 13912345678"
-                      className="flex-1 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSendSms}
-                      disabled={smsSending || smsCountdown > 0}
-                      className={`px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap ${
-                        smsCountdown > 0
-                          ? 'bg-gray-100 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
-                          : 'bg-blue-500 text-white hover:bg-blue-600'
-                      }`}
-                    >
-                      {smsSending ? '发送中...' : smsCountdown > 0 ? `${smsCountdown}s` : '获取验证码'}
-                    </button>
+        {/* Main Card - Two columns like AudioDock */}
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden">
+          <div className="grid md:grid-cols-2">
+            {/* Left: Scan Login */}
+            <div className="p-8 bg-gray-50 dark:bg-gray-700/30 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700">
+              {scanStatus?.status === 'waiting_confirm' ? (
+                <div className="text-center py-8">
+                  <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <BookOpen className="w-8 h-8 text-blue-500" />
                   </div>
-                </div>
-
-                {smsSent && (
-                  <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                    <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1"><Check className="w-4 h-4" /> 验证码已发送，请查收短信</p>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">验证码</label>
-                  <input
-                    type="text"
-                    value={smsCode}
-                    onChange={(e) => setSmsCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    placeholder="请输入6位验证码"
-                    maxLength={6}
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 tracking-widest text-center text-lg"
-                  />
-                </div>
-
-                {mode === 'register' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      用户名 <span className="text-gray-400">(可选)</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={username}
-                      onChange={(e) => setUsername(e.target.value)}
-                      placeholder="设置一个用户名"
-                      className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                )}
-
-                {smsError && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                    <p className="text-sm text-red-600 dark:text-red-400">{smsError}</p>
-                  </div>
-                )}
-
-                <Button type="submit" disabled={isLoading} className="w-full">
-                  {isLoading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      {mode === 'login' ? '登录中...' : '注册中...'}
-                    </span>
-                  ) : mode === 'login' ? <><Smartphone className="w-4 h-4 mr-1" /> 登录</> : <><Sparkles className="w-4 h-4 mr-1" /> 注册</>
-                  }
-                </Button>
-
-                <p className="text-center text-sm text-gray-500 dark:text-gray-400">
-                  {mode === 'login' ? '还没有账户？' : '已有账户？'}
-                  <button
-                    type="button"
-                    onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setSmsError(null); }}
-                    className="ml-1 text-blue-500 hover:text-blue-600 font-medium"
-                  >
-                    {mode === 'login' ? '立即注册' : '去登录'}
-                  </button>
-                </p>
-
-                <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                  <p className="text-xs text-blue-600 dark:text-blue-400 text-center">
-                    <Lightbulb className="w-4 h-4 inline mr-1" /> 演示：验证码任意6位数字，服务器会验证<br />
-                    <span className="text-blue-400">（实际发送的验证码会打印在服务器日志）</span>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                    等待确认
+                  </h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    手机已扫码，请在手机上确认登录
                   </p>
                 </div>
-              </form>
-            )}
+              ) : (
+                <>
+                  <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm mb-4">
+                    {qrValue ? (
+                      <QRCodeSVG value={qrValue} size={180} level="M" />
+                    ) : (
+                      <div className="w-[180px] h-[180px] bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center">
+                        <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-3">
+                    打开 BookDock App 扫一扫
+                  </p>
+                  <button
+                    type="button"
+                    onClick={createTargetSession}
+                    disabled={scanBusy}
+                    className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${scanBusy ? 'animate-spin' : ''}`} />
+                    刷新二维码
+                  </button>
+                </>
+              )}
+            </div>
 
-            {/* Account Login */}
-            {loginType === 'account' && (
-              <form onSubmit={handleAccountSubmit} className="space-y-4">
+            {/* Right: Data Source Login Form */}
+            <div className="p-8">
+              <div className="flex items-center gap-2 mb-6">
+                <Server className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  {sourceType} {isLogin ? '登录' : '注册'}
+                </h2>
+              </div>
+
+              <form onSubmit={handleFinish} className="space-y-4">
+                {/* Internal Address */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">用户名</label>
+                  <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <Wifi className="w-3 h-3" /> 内网地址
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      list="internal-history"
+                      value={internalAddress}
+                      onChange={(e) => {
+                        setInternalAddress(e.target.value);
+                        restoreCredentials(e.target.value);
+                      }}
+                      placeholder="http://192.168.x.x:8080/api"
+                      className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                    <datalist id="internal-history">
+                      {serverHistory.map((item) => (
+                        <option key={item.value} value={item.value} />
+                      ))}
+                    </datalist>
+                  </div>
+                </div>
+
+                {/* External Address */}
+                <div>
+                  <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <Globe className="w-3 h-3" /> 外网地址
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      list="external-history"
+                      value={externalAddress}
+                      onChange={(e) => {
+                        setExternalAddress(e.target.value);
+                        restoreCredentials(e.target.value);
+                      }}
+                      placeholder="https://nas.example.com/api"
+                      className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                    <datalist id="external-history">
+                      {serverHistory.map((item) => (
+                        <option key={item.value} value={item.value} />
+                      ))}
+                    </datalist>
+                  </div>
+                </div>
+
+                {/* Server History Management */}
+                {serverHistory.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {serverHistory.map((item) => (
+                      <span
+                        key={item.value}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-xs text-gray-600 dark:text-gray-400"
+                      >
+                        {item.value}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveHistory(item.value)}
+                          className="text-gray-400 hover:text-red-500"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Username */}
+                <div>
+                  <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <User className="w-3 h-3" /> 用户名
+                  </label>
                   <input
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    placeholder="输入用户名"
+                    placeholder="请输入用户名"
                     autoComplete="username"
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                   />
                 </div>
 
+                {/* Password */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">密码</label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder={mode === 'login' ? '输入密码' : '输入密码（至少6位）'}
-                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    <Lock className="w-3 h-3" /> 密码
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder={isLogin ? '请输入密码' : '请输入密码（至少6位）'}
+                      autoComplete={isLogin ? 'current-password' : 'new-password'}
+                      className="w-full px-4 py-2.5 pr-10 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                 </div>
 
-                {mode === 'register' && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">确认密码</label>
-                      <input
-                        type="password"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="再次输入密码"
-                        autoComplete="new-password"
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        邮箱 <span className="text-gray-400">(可选)</span>
-                      </label>
-                      <input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="输入邮箱"
-                        autoComplete="email"
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </>
+                {/* Confirm Password (register only) */}
+                {!isLogin && (
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
+                      确认密码
+                    </label>
+                    <input
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="请再次输入密码"
+                      autoComplete="new-password"
+                      className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                  </div>
                 )}
 
-                {mode === 'login' && (
-                  <div className="flex items-center justify-between text-sm">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={rememberMe}
-                        onChange={(e) => setRememberMe(e.target.checked)}
-                        className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
-                      />
-                      <span className="text-gray-600 dark:text-gray-400">记住我</span>
+                {/* Remember me (login only) */}
+                {isLogin && (
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="rememberMe"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="rounded border-gray-300 text-blue-500 focus:ring-blue-500"
+                    />
+                    <label htmlFor="rememberMe" className="ml-2 text-sm text-gray-600 dark:text-gray-400">
+                      记住密码
                     </label>
                   </div>
                 )}
 
+                {/* Error */}
                 {error && (
                   <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                     <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
                   </div>
                 )}
 
-                <Button type="submit" disabled={isLoading} className="w-full">
-                  {isLoading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      {mode === 'login' ? '登录中...' : '注册中...'}
-                    </span>
-                  ) : mode === 'login' ? <><Rocket className="w-4 h-4 mr-1" /> 登录</> : <><Sparkles className="w-4 h-4 mr-1" /> 注册</>
-                  }
-                </Button>
-              </form>
-            )}
-
-            {/* NAS Login */}
-            {loginType === 'nas' && (
-              <form onSubmit={handleNASLogin} className="space-y-4">
-                <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-                  连接您的 NAS 设备，支持内网/外网自动切换
-                </p>
-
-                {/* Server Config Toggle */}
+                {/* Submit */}
                 <button
-                  type="button"
-                  onClick={() => setShowServerConfig(!showServerConfig)}
-                  className="w-full flex items-center justify-between p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  type="submit"
+                  disabled={loading}
+                  className="w-full py-3 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  <span className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                    <Server className="w-4 h-4" />
-                    服务器地址配置
-                  </span>
-                  <span className="text-xs text-gray-500">
-                    {showServerConfig ? '收起' : '展开'}
-                  </span>
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      {isLogin ? '登录中...' : '注册中...'}
+                    </>
+                  ) : (
+                    isLogin ? '登录' : '注册'
+                  )}
                 </button>
 
-                {showServerConfig && (
-                  <div className="space-y-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/30">
-                    <div>
-                      <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        <Wifi className="w-3 h-3" /> 内网地址
-                      </label>
-                      <input
-                        type="text"
-                        value={serverConfig.internal}
-                        onChange={(e) => setServerConfig({ ...serverConfig, internal: e.target.value })}
-                        placeholder="http://192.168.1.100:8080"
-                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                        <Globe className="w-3 h-3" /> 外网地址
-                      </label>
-                      <input
-                        type="text"
-                        value={serverConfig.external}
-                        onChange={(e) => setServerConfig({ ...serverConfig, external: e.target.value })}
-                        placeholder="https://nas.example.com"
-                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={handleTestServer}
-                        disabled={serverTesting || (!serverConfig.internal && !serverConfig.external)}
-                        className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-sm font-medium bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {serverTesting ? (
-                          <>
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            检测中...
-                          </>
-                        ) : (
-                          <>
-                            <RefreshCw className="w-3 h-3" />
-                            自动检测
-                          </>
-                        )}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSaveServerConfig}
-                        className="flex-1 py-2 rounded-lg text-sm font-medium bg-blue-500 text-white hover:bg-blue-600 transition-colors"
-                      >
-                        保存配置
-                      </button>
-                    </div>
-
-                    {serverTestResult && (
-                      <div className={`p-2 rounded-lg text-xs ${serverTestResult.success ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>
-                        {serverTestResult.success ? (
-                          <span className="flex items-center gap-1"><Check className="w-3 h-3" /> 已连接到 {serverTestResult.address}</span>
-                        ) : (
-                          <span>无法连接到任何服务器</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Fallback manual config when no internal/external */}
-                {(!serverConfig.internal && !serverConfig.external) && (
-                  <>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">协议</label>
-                        <select
-                          value={nasConfig.protocol}
-                          onChange={(e) => setNasConfig({ ...nasConfig, protocol: e.target.value as 'http' | 'https' })}
-                          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="http">HTTP</option>
-                          <option value="https">HTTPS</option>
-                        </select>
-                      </div>
-                      <div className="col-span-2">
-                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">NAS 地址</label>
-                        <input
-                          type="text"
-                          value={nasConfig.host}
-                          onChange={(e) => setNasConfig({ ...nasConfig, host: e.target.value })}
-                          placeholder="192.168.1.100"
-                          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">端口</label>
-                        <input
-                          type="number"
-                          value={nasConfig.port}
-                          onChange={(e) => setNasConfig({ ...nasConfig, port: parseInt(e.target.value) || 8080 })}
-                          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">基础路径</label>
-                        <input
-                          type="text"
-                          value={nasConfig.basePath}
-                          onChange={(e) => setNasConfig({ ...nasConfig, basePath: e.target.value })}
-                          placeholder="/books"
-                          className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">用户名</label>
-                  <input
-                    type="text"
-                    value={nasConfig.username}
-                    onChange={(e) => setNasConfig({ ...nasConfig, username: e.target.value })}
-                    placeholder="NAS 用户名"
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">密码</label>
-                  <div className="relative">
-                    <input
-                      type={showNasPassword ? 'text' : 'password'}
-                      value={nasConfig.password}
-                      onChange={(e) => setNasConfig({ ...nasConfig, password: e.target.value })}
-                      placeholder="NAS 密码"
-                      className="w-full px-4 py-2 pr-10 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowNasPassword(!showNasPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      {showNasPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {nasError && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                    <p className="text-sm text-red-600 dark:text-red-400">{nasError}</p>
-                  </div>
-                )}
-
-                <Button type="submit" disabled={nasIsConnecting} className="w-full" variant="secondary">
-                  {nasIsConnecting ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      连接中...
-                    </span>
-                  ) : <><Link2 className="w-4 h-4 mr-1" /> 连接 NAS</>
-                  }
-                </Button>
+                {/* Switch mode */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLogin(!isLogin);
+                    setError(null);
+                  }}
+                  className="w-full text-center text-sm text-blue-500 hover:text-blue-600 font-medium py-2"
+                >
+                  {isLogin ? '没有账号？去注册' : '已有账号？去登录'}
+                </button>
               </form>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Mode toggle for account/phone login */}
-        {loginType !== 'nas' && (
-          <p className="text-center mt-4 text-sm text-gray-500 dark:text-gray-400">
-            {mode === 'login' ? '还没有账户？' : '已有账户？'}
-            <button
-              type="button"
-              onClick={() => {
-                setMode(mode === 'login' ? 'register' : 'login');
-                setError(null);
-                setSmsError(null);
-              }}
-              className="ml-1 text-blue-500 hover:text-blue-600 font-medium"
-            >
-              {mode === 'login' ? '立即注册' : '去登录'}
-            </button>
-          </p>
-        )}
-
-        {/* Demo hint */}
-        {loginType === 'account' && (
-          <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
-            <p className="text-sm text-blue-600 dark:text-blue-400 text-center mb-3">
-              <Lightbulb className="w-4 h-4 inline mr-1" /> 演示模式：快速体验书仓功能
-            </p>
-            <Button type="button" variant="secondary" onClick={handleDemoLogin} disabled={isLoading} className="w-full">
-              使用演示账户登录
-            </Button>
+            </div>
           </div>
-        )}
+        </div>
 
-        <div className="text-center mt-6">
+        {/* Footer */}
+        <div className="mt-6 flex items-center justify-center gap-6 text-sm">
           <button
             type="button"
-            onClick={() => navigate('/')}
-            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center justify-center gap-1 mx-auto"
+            onClick={() => navigate('/member-login')}
+            className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1 transition-colors"
           >
-            <ArrowLeft className="w-4 h-4" /> 返回首页
+            会员登录
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate(from)}
+            className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            返回
           </button>
         </div>
       </div>

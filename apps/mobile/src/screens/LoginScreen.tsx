@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -10,13 +11,14 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
+  useWindowDimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { useThemeStore } from '../stores';
-import { getApiClient, initApiClient } from '@bookdock/api-client';
+import { initApiClient } from '@bookdock/api-client';
 import {
   loadServerConfig,
   saveServerConfig,
@@ -25,363 +27,473 @@ import {
   getActiveServerAddress,
 } from '../utils/network';
 import { setApiBaseUrl } from '../services/api';
-
-type Mode = 'login' | 'register';
+import {
+  createScanLoginSession,
+  getScanLoginSession,
+  subscribeScanLoginSession,
+  consumeScanLoginSession,
+  reportScanLoginResult,
+  reportScanLoginResultViaSocket,
+  type ScanLoginSession,
+  type ScanLoginSessionStatus,
+} from '../services/plus';
 
 export function LoginScreen() {
   const navigation = useNavigation();
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
-
   const authStore = useAuthStore();
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
 
-  const [mode, setMode] = useState<Mode>('login');
+  const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Address inputs
+  const [internalAddress, setInternalAddress] = useState('');
+  const [externalAddress, setExternalAddress] = useState('');
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Server config
-  const [serverConfig, setServerConfig] = useState({ internal: '', external: '' });
-  const [showServerConfig, setShowServerConfig] = useState(false);
-  const [serverTesting, setServerTesting] = useState(false);
-  const [serverTestResult, setServerTestResult] = useState<{ success: boolean; address: string } | null>(null);
+  // Scan login state
+  const [scanSession, setScanSession] = useState<ScanLoginSession | null>(null);
+  const [scanStatus, setScanStatus] = useState<ScanLoginSessionStatus | null>(null);
+  const [scanBusy, setScanBusy] = useState(false);
 
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const sourceType = 'BookDock';
 
-  // Load server config and initialize API client
+  // Load saved config on mount
   useEffect(() => {
-    loadServerConfig().then((config) => {
-      setServerConfig({ internal: config.internal, external: config.external });
-    });
-    getActiveServerAddress().then((addr) => {
-      const baseUrl = addr || 'http://localhost:8080/api';
-      setApiBaseUrl(baseUrl);
+    const loadConfig = async () => {
+      const config = await loadServerConfig();
+      setInternalAddress(config.internal || '');
+      setExternalAddress(config.external || '');
+
+      // Restore credentials from last used address
+      const active = await getActiveServerAddress();
+      if (active) {
+        await restoreCredentials(active);
+      } else if (config.external) {
+        await restoreCredentials(config.external);
+      } else if (config.internal) {
+        await restoreCredentials(config.internal);
+      }
+    };
+    loadConfig();
+  }, []);
+
+  const restoreCredentials = async (address: string) => {
+    if (!address) return;
+    try {
+      const credsKey = `creds_${sourceType}_${address}`;
+      const savedCreds = await AsyncStorage.getItem(credsKey);
+      if (savedCreds) {
+        const { username: u, password: p } = JSON.parse(savedCreds);
+        if (u) setUsername(u);
+        if (p) setPassword(p);
+      }
+    } catch (e) {
+      console.error('Failed to restore credentials', e);
+    }
+  };
+
+  // --- Scan Login ---
+  const createTargetSession = useCallback(async () => {
+    try {
+      const res = await createScanLoginSession({ role: 'target', deviceKind: 'mobile' });
+      if (res.data) {
+        setScanSession(res.data);
+        setScanStatus({
+          sessionId: res.data.sessionId,
+          role: res.data.role,
+          deviceKind: res.data.deviceKind,
+          expiresAt: res.data.expiresAt,
+          status: 'waiting_scan',
+          sourceBundles: [],
+          hasNativeAuth: false,
+          hasPlusAuth: false,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to create scan session', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isLandscape) {
+      setScanSession(null);
+      setScanStatus(null);
+      return;
+    }
+    createTargetSession();
+  }, [isLandscape, createTargetSession]);
+
+  useEffect(() => {
+    if (!scanSession || !isLandscape) return;
+    getScanLoginSession(scanSession.sessionId, scanSession.secret).catch(console.error);
+    const unsubscribe = subscribeScanLoginSession(
+      scanSession.sessionId,
+      scanSession.secret,
+      (status) => setScanStatus(status),
+    );
+    return () => unsubscribe();
+  }, [scanSession, isLandscape]);
+
+  useEffect(() => {
+    if (!scanSession || scanStatus?.status !== 'confirmed') return;
+
+    const consumeConfirmedScan = async () => {
+      try {
+        setScanBusy(true);
+        const res = await consumeScanLoginSession(scanSession.sessionId, { secret: scanSession.secret });
+
+        try {
+          if (!res.data) throw new Error('No data returned');
+          // Apply result: save plus token if present
+          if (res.data.plusAuth) {
+            await AsyncStorage.setItem('bookdock_plus_token', res.data.plusAuth.token);
+            await AsyncStorage.setItem('bookdock_plus_user_id', JSON.stringify(res.data.plusAuth.userId));
+          }
+        } catch (applyErr: any) {
+          await reportScanLoginResult(scanSession.sessionId, {
+            secret: scanSession.secret,
+            success: false,
+            error: applyErr.message,
+          }).catch(console.error);
+          reportScanLoginResultViaSocket(scanSession.sessionId, scanSession.secret, false, applyErr.message);
+          throw applyErr;
+        }
+
+        await reportScanLoginResult(scanSession.sessionId, {
+          secret: scanSession.secret,
+          success: true,
+        }).catch(console.error);
+        reportScanLoginResultViaSocket(scanSession.sessionId, scanSession.secret, true);
+        // @ts-ignore
+        navigation.replace('Main');
+      } catch (err: any) {
+        console.error(err);
+        Alert.alert('错误', err.message || '确认扫码登录失败');
+      } finally {
+        setScanBusy(false);
+      }
+    };
+
+    consumeConfirmedScan();
+  }, [scanSession?.sessionId, scanStatus?.status, navigation]);
+
+  // --- Form handlers ---
+  const saveConfig = async (internal: string, external: string) => {
+    const existingStr = await AsyncStorage.getItem(`sourceConfig_${sourceType}`);
+    let existingConfigs: Array<{ id: string; internal: string; external: string; name: string }> = [];
+
+    try {
+      if (existingStr) {
+        const parsed = JSON.parse(existingStr);
+        if (Array.isArray(parsed)) existingConfigs = parsed;
+        else {
+          existingConfigs = [{
+            id: Date.now().toString(),
+            internal: parsed.internal || '',
+            external: parsed.external || '',
+            name: '默认服务器',
+          }];
+        }
+      }
+    } catch {
+      existingConfigs = [];
+    }
+
+    const existingIndex = existingConfigs.findIndex(
+      (c) => c.internal === internal && c.external === external,
+    );
+
+    if (existingIndex === -1) {
+      existingConfigs.push({
+        id: Date.now().toString(),
+        internal,
+        external,
+        name: `服务器 ${existingConfigs.length + 1}`,
+      });
+    }
+
+    await AsyncStorage.setItem(`sourceConfig_${sourceType}`, JSON.stringify(existingConfigs));
+    await saveServerConfig({ internal, external, name: '服务器' });
+  };
+
+  const handleSubmit = async () => {
+    if (!externalAddress && !internalAddress) {
+      setError('请至少输入一个服务器地址（内网或外网）');
+      return;
+    }
+    if (!username || !password) {
+      setError('请填写用户名和密码');
+      return;
+    }
+    if (!isLogin && password !== confirmPassword) {
+      setError('两次输入的密码不一致');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const bestAddress = await selectBestServer(internalAddress, externalAddress);
+
+      if (!bestAddress) {
+        setError('无法连接到任一服务器地址，请检查网络或地址输入');
+        setLoading(false);
+        return;
+      }
+
+      setApiBaseUrl(bestAddress);
+      setActiveServerAddress(bestAddress);
+
       initApiClient({
-        baseURL: baseUrl,
+        baseURL: bestAddress,
         getAuthToken: () => useAuthStore.getState().token || null,
         onAuthError: () => {
           authStore.logout();
         },
       });
-    });
-  }, []);
 
-  const handleTestServer = async () => {
-    setServerTesting(true);
-    setServerTestResult(null);
-    try {
-      const best = await selectBestServer(serverConfig.internal || '', serverConfig.external || '');
-      if (best) {
-        setServerTestResult({ success: true, address: best });
-        setActiveServerAddress(best);
-        setApiBaseUrl(best);
-      } else {
-        setServerTestResult({ success: false, address: '' });
+      await saveConfig(internalAddress, externalAddress);
+
+      if (isLogin) {
+        await AsyncStorage.setItem(
+          `creds_${sourceType}_${bestAddress}`,
+          JSON.stringify({ username, password }),
+        );
       }
-    } finally {
-      setServerTesting(false);
-    }
-  };
 
-  const handleSaveServerConfig = async () => {
-    await saveServerConfig(serverConfig);
-    Alert.alert('配置已保存', '服务器地址配置已保存');
-  };
-
-  const handleSubmit = useCallback(async () => {
-    if (!username.trim()) {
-      Alert.alert('Error', 'Please enter a username');
-      return;
-    }
-    if (!password.trim()) {
-      Alert.alert('Error', 'Please enter a password');
-      return;
-    }
-
-    if (mode === 'register') {
-      if (!email.trim()) {
-        Alert.alert('Error', 'Please enter an email');
-        return;
-      }
-      if (password.length < 6) {
-        Alert.alert('Error', 'Password must be at least 6 characters');
-        return;
-      }
-      if (password !== confirmPassword) {
-        Alert.alert('Error', 'Passwords do not match');
-        return;
-      }
-    }
-
-    setIsLoading(true);
-    try {
+      const { getApiClient } = await import('@bookdock/api-client');
       const apiClient = getApiClient();
 
-      if (mode === 'login') {
+      if (isLogin) {
         const response = await apiClient.login(username.trim(), password);
         if (response.success && response.data) {
-          const { token, user } = response.data;
-          authStore.login(user, token);
+          authStore.login(response.data.user, response.data.token);
           // @ts-ignore
           navigation.replace('Main');
         } else {
-          Alert.alert('Login Failed', response.error || 'Invalid credentials');
+          setError(response.error || '登录失败');
         }
       } else {
-        const response = await apiClient.register(
-          username.trim(),
-          password,
-          email.trim()
-        );
+        const response = await apiClient.register(username.trim(), password);
         if (response.success && response.data) {
-          const { token, user } = response.data;
-          authStore.login(user, token);
+          authStore.login(response.data.user, response.data.token);
           // @ts-ignore
           navigation.replace('Main');
         } else {
-          Alert.alert('Registration Failed', response.error || 'Please try again');
+          setError(response.error || '注册失败');
         }
       }
-    } catch (error) {
-      Alert.alert(
-        'Error',
-        (error as Error).message || 'Network error. Please try again.'
-      );
+    } catch (err: any) {
+      console.error(err);
+      setError(err?.message || (isLogin ? '登录失败' : '注册失败'));
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  }, [mode, username, email, password, confirmPassword, authStore, navigation]);
+  };
+
+  const renderScanPanel = () => {
+    if (isLandscape) {
+      if (scanStatus?.status === 'waiting_confirm') {
+        return (
+          <View style={[styles.scanCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+            <Text style={[styles.scanTitle, { color: theme.colors.text }]}>等待确认</Text>
+            <Text style={[styles.scanDesc, { color: theme.colors.textSecondary }]}>
+              手机已扫码。请在手机屏幕上确认登录...
+            </Text>
+            <ActivityIndicator style={{ marginTop: 24, alignSelf: 'center' }} size="large" color={theme.colors.primary} />
+          </View>
+        );
+      }
+
+      return (
+        <View style={[styles.scanCard, styles.scanCardQr, { backgroundColor: 'transparent', borderColor: 'transparent' }]}>
+          <Text style={[styles.qrLabel, { color: theme.colors.textSecondary }]}>扫码登录</Text>
+          <View style={styles.qrBox}>
+            {/* QR code placeholder - would use react-native-qrcode-svg */}
+            <View style={[styles.qrPlaceholder, { backgroundColor: theme.colors.surface }]}>
+              <Ionicons name="qr-code" size={80} color={theme.colors.primary} />
+            </View>
+          </View>
+          <TouchableOpacity
+            style={[styles.secondaryButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}
+            onPress={createTargetSession}
+          >
+            <Text style={[styles.secondaryButtonText, { color: theme.colors.text }]}>刷新二维码</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <View style={[styles.scanCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
+        <Text style={[styles.scanTitle, { color: theme.colors.text }]}>主动扫码登录</Text>
+        <Text style={[styles.scanDesc, { color: theme.colors.textSecondary }]}>
+          通过扫一扫，可以将本设备的登录状态同步到其他设备。
+        </Text>
+        <TouchableOpacity
+          style={[styles.button, { backgroundColor: theme.colors.primary }]}
+          onPress={() => {
+            // @ts-ignore
+            navigation.navigate('ScanLogin');
+          }}
+        >
+          <Text style={[styles.buttonText, { color: theme.colors.background }]}>去扫描二维码</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderForm = () => (
+    <View style={styles.form}>
+      <Text style={[styles.label, { color: theme.colors.text }]}>外网地址 (External)</Text>
+      <View style={[styles.inputContainer, { marginBottom: spacing.sm }]}>
+        <Ionicons name="globe-outline" size={20} color={theme.colors.textSecondary} />
+        <TextInput
+          style={[styles.input, { color: theme.colors.text }]}
+          placeholder="https://nas.example.com/api"
+          placeholderTextColor={theme.colors.textSecondary}
+          value={externalAddress}
+          onChangeText={(text) => {
+            setExternalAddress(text);
+            restoreCredentials(text);
+          }}
+          autoCapitalize="none"
+        />
+      </View>
+
+      <Text style={[styles.label, { color: theme.colors.text }]}>内网地址 (Internal)</Text>
+      <View style={[styles.inputContainer, { marginBottom: spacing.sm }]}>
+        <Ionicons name="wifi-outline" size={20} color={theme.colors.textSecondary} />
+        <TextInput
+          style={[styles.input, { color: theme.colors.text }]}
+          placeholder="http://192.168.x.x:8080/api"
+          placeholderTextColor={theme.colors.textSecondary}
+          value={internalAddress}
+          onChangeText={(text) => {
+            setInternalAddress(text);
+            restoreCredentials(text);
+          }}
+          autoCapitalize="none"
+        />
+      </View>
+
+      <Text style={[styles.label, { color: theme.colors.text }]}>用户名</Text>
+      <View style={[styles.inputContainer, { marginBottom: spacing.sm }]}>
+        <Ionicons name="person-outline" size={20} color={theme.colors.textSecondary} />
+        <TextInput
+          style={[styles.input, { color: theme.colors.text }]}
+          placeholder="请输入用户名"
+          placeholderTextColor={theme.colors.textSecondary}
+          value={username}
+          onChangeText={setUsername}
+          autoCapitalize="none"
+        />
+      </View>
+
+      <Text style={[styles.label, { color: theme.colors.text }]}>密码</Text>
+      <View style={[styles.inputContainer, { marginBottom: spacing.sm }]}>
+        <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textSecondary} />
+        <TextInput
+          style={[styles.input, { color: theme.colors.text, flex: 1 }]}
+          placeholder="请输入密码"
+          placeholderTextColor={theme.colors.textSecondary}
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry={!showPassword}
+        />
+        <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+          <Ionicons
+            name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+            size={20}
+            color={theme.colors.textSecondary}
+          />
+        </TouchableOpacity>
+      </View>
+
+      {!isLogin && (
+        <>
+          <Text style={[styles.label, { color: theme.colors.text }]}>确认密码</Text>
+          <View style={[styles.inputContainer, { marginBottom: spacing.sm }]}>
+            <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textSecondary} />
+            <TextInput
+              style={[styles.input, { color: theme.colors.text, flex: 1 }]}
+              placeholder="请再次输入密码"
+              placeholderTextColor={theme.colors.textSecondary}
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry={!showPassword}
+            />
+          </View>
+        </>
+      )}
+
+      {error && (
+        <Text style={[styles.errorText, { color: theme.colors.error || '#ef4444' }]}>
+          {error}
+        </Text>
+      )}
+
+      <TouchableOpacity
+        style={[styles.button, { backgroundColor: theme.colors.primary }]}
+        onPress={handleSubmit}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color={theme.colors.background} />
+        ) : (
+          <Text style={[styles.buttonText, { color: theme.colors.background }]}>
+            {isLogin ? '登录' : '注册'}
+          </Text>
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={() => { setIsLogin(!isLogin); setError(null); }}>
+        <Text style={[styles.switchText, { color: theme.colors.primary }]}>
+          {isLogin ? '没有账号？去注册' : '已有账号？去登录'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Logo */}
-        <View style={styles.logoContainer}>
-          <View style={[styles.logo, { backgroundColor: theme.colors.primary }]}>
-            <Ionicons name="book" size={48} color="#fff" />
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.logoContainer}>
+            <View style={[styles.logo, { backgroundColor: theme.colors.primary }]}>
+              <Ionicons name="book" size={36} color="#fff" />
+            </View>
+            <Text style={[styles.title, { color: theme.colors.text }]}>
+              BookDock
+            </Text>
+            <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
+              {sourceType} {isLogin ? '登录' : '注册'}
+            </Text>
           </View>
-          <Text style={[styles.title, { color: theme.colors.text }]}>
-            BookDock
-          </Text>
-          <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
-            Your Personal Library
-          </Text>
         </View>
 
-        {/* Form */}
-        <View style={[styles.formContainer, { backgroundColor: theme.colors.surface }]}>
-          {/* Server Config Toggle */}
-          <TouchableOpacity
-            style={styles.serverConfigToggle}
-            onPress={() => setShowServerConfig(!showServerConfig)}
-          >
-            <Ionicons name="server-outline" size={18} color={theme.colors.textSecondary} />
-            <Text style={[styles.serverConfigToggleText, { color: theme.colors.textSecondary }]}>
-              服务器地址配置
-            </Text>
-            <Ionicons
-              name={showServerConfig ? 'chevron-up' : 'chevron-down'}
-              size={18}
-              color={theme.colors.textSecondary}
-            />
-          </TouchableOpacity>
+        {/* Content */}
+        <View style={[styles.content, isLandscape && styles.contentLandscape]}>
+          {isLandscape ? renderScanPanel() : null}
 
-          {showServerConfig && (
-            <View style={styles.serverConfigPanel}>
-              <View style={[styles.inputContainer, { marginBottom: spacing.sm }]}>
-                <Ionicons name="wifi-outline" size={20} color={theme.colors.textSecondary} />
-                <TextInput
-                  style={[styles.input, { color: theme.colors.text }]}
-                  placeholder="内网地址 (如 http://192.168.1.100:8080/api)"
-                  placeholderTextColor={theme.colors.textSecondary}
-                  value={serverConfig.internal}
-                  onChangeText={(text) => setServerConfig({ ...serverConfig, internal: text })}
-                  autoCapitalize="none"
-                />
-              </View>
-
-              <View style={[styles.inputContainer, { marginBottom: spacing.sm }]}>
-                <Ionicons name="globe-outline" size={20} color={theme.colors.textSecondary} />
-                <TextInput
-                  style={[styles.input, { color: theme.colors.text }]}
-                  placeholder="外网地址 (如 https://nas.example.com/api)"
-                  placeholderTextColor={theme.colors.textSecondary}
-                  value={serverConfig.external}
-                  onChangeText={(text) => setServerConfig({ ...serverConfig, external: text })}
-                  autoCapitalize="none"
-                />
-              </View>
-
-              <View style={styles.serverConfigActions}>
-                <TouchableOpacity
-                  style={[styles.serverConfigButton, { backgroundColor: theme.colors.border }]}
-                  onPress={handleTestServer}
-                  disabled={serverTesting || (!serverConfig.internal && !serverConfig.external)}
-                >
-                  {serverTesting ? (
-                    <ActivityIndicator size="small" color={theme.colors.primary} />
-                  ) : (
-                    <>
-                      <Ionicons name="refresh" size={16} color={theme.colors.textSecondary} />
-                      <Text style={[styles.serverConfigButtonText, { color: theme.colors.textSecondary }]}>
-                        自动检测
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.serverConfigButton, { backgroundColor: theme.colors.primary }]}
-                  onPress={handleSaveServerConfig}
-                >
-                  <Text style={[styles.serverConfigButtonText, { color: '#fff' }]}>
-                    保存配置
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              {serverTestResult && (
-                <Text
-                  style={[
-                    styles.serverTestResult,
-                    {
-                      color: serverTestResult.success
-                        ? theme.colors.success || '#22c55e'
-                        : theme.colors.error || '#ef4444',
-                    },
-                  ]}
-                >
-                  {serverTestResult.success
-                    ? `已连接到 ${serverTestResult.address}`
-                    : '无法连接到任何服务器'}
-                </Text>
-              )}
-            </View>
-          )}
-
-          {/* Mode Toggle */}
-          <View style={styles.modeToggle}>
-            <TouchableOpacity
-              style={[
-                styles.modeButton,
-                mode === 'login' && { backgroundColor: theme.colors.primary + '20' },
-              ]}
-              onPress={() => setMode('login')}
-            >
-              <Text
-                style={[
-                  styles.modeButtonText,
-                  { color: mode === 'login' ? theme.colors.primary : theme.colors.textSecondary },
-                ]}
-              >
-                Sign In
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.modeButton,
-                mode === 'register' && { backgroundColor: theme.colors.primary + '20' },
-              ]}
-              onPress={() => setMode('register')}
-            >
-              <Text
-                style={[
-                  styles.modeButtonText,
-                  { color: mode === 'register' ? theme.colors.primary : theme.colors.textSecondary },
-                ]}
-              >
-                Sign Up
-              </Text>
-            </TouchableOpacity>
+          <View style={[styles.formCard, isLandscape && styles.formCardLandscape, { backgroundColor: theme.colors.background }]}>
+            {!isLandscape && renderScanPanel()}
+            {renderForm()}
           </View>
-
-          {/* Username */}
-          <View style={styles.inputContainer}>
-            <Ionicons name="person-outline" size={20} color={theme.colors.textSecondary} />
-            <TextInput
-              style={[styles.input, { color: theme.colors.text }]}
-              placeholder="Username"
-              placeholderTextColor={theme.colors.textSecondary}
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
-
-          {/* Email (register only) */}
-          {mode === 'register' && (
-            <View style={styles.inputContainer}>
-              <Ionicons name="mail-outline" size={20} color={theme.colors.textSecondary} />
-              <TextInput
-                style={[styles.input, { color: theme.colors.text }]}
-                placeholder="Email"
-                placeholderTextColor={theme.colors.textSecondary}
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-            </View>
-          )}
-
-          {/* Password */}
-          <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textSecondary} />
-            <TextInput
-              style={[styles.input, { color: theme.colors.text, flex: 1 }]}
-              placeholder="Password"
-              placeholderTextColor={theme.colors.textSecondary}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-            />
-            <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-              <Ionicons
-                name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                size={20}
-                color={theme.colors.textSecondary}
-              />
-            </TouchableOpacity>
-          </View>
-
-          {/* Confirm Password (register only) */}
-          {mode === 'register' && (
-            <View style={styles.inputContainer}>
-              <Ionicons name="lock-closed-outline" size={20} color={theme.colors.textSecondary} />
-              <TextInput
-                style={[styles.input, { color: theme.colors.text, flex: 1 }]}
-                placeholder="Confirm Password"
-                placeholderTextColor={theme.colors.textSecondary}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry={!showPassword}
-              />
-            </View>
-          )}
-
-          {/* Submit Button */}
-          <TouchableOpacity
-            style={[styles.submitButton, { backgroundColor: theme.colors.primary }]}
-            onPress={handleSubmit}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.submitButtonText}>
-                {mode === 'login' ? 'Sign In' : 'Create Account'}
-              </Text>
-            )}
-          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -395,47 +507,108 @@ const createStyles = (theme: ReturnType<typeof getTheme>) =>
     },
     scrollContent: {
       flexGrow: 1,
-      justifyContent: 'center',
       padding: spacing.lg,
+    },
+    header: {
+      alignItems: 'center',
+      marginBottom: spacing.lg,
     },
     logoContainer: {
       alignItems: 'center',
-      marginBottom: spacing.xl,
     },
     logo: {
-      width: 80,
-      height: 80,
+      width: 72,
+      height: 72,
       borderRadius: borderRadius.xl,
       alignItems: 'center',
       justifyContent: 'center',
       marginBottom: spacing.md,
     },
     title: {
-      fontSize: fontSizes.xxxl,
+      fontSize: fontSizes.xxl,
       fontWeight: '700',
     },
     subtitle: {
-      fontSize: fontSizes.md,
+      fontSize: fontSizes.sm,
       marginTop: spacing.xs,
+      color: theme.colors.textSecondary,
     },
-    formContainer: {
+    content: {
+      flex: 1,
+      gap: spacing.lg,
+      justifyContent: 'center',
+      width: '100%',
+      maxWidth: 600,
+      alignSelf: 'center',
+    },
+    contentLandscape: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 40,
+    },
+    formCard: {
+      flex: 1,
+      minWidth: 0,
+      width: '100%',
+    },
+    formCardLandscape: {
+      justifyContent: 'center',
+    },
+    scanCard: {
+      borderWidth: 1,
       borderRadius: borderRadius.lg,
       padding: spacing.lg,
+      gap: spacing.md,
+      width: '100%',
     },
-    modeToggle: {
-      flexDirection: 'row',
-      marginBottom: spacing.lg,
+    scanCardQr: {
+      width: 200,
+      maxWidth: 200,
+      padding: 0,
+    },
+    scanTitle: {
+      fontSize: fontSizes.lg,
+      fontWeight: '700',
+    },
+    scanDesc: {
+      fontSize: fontSizes.sm,
+      lineHeight: 20,
+    },
+    qrLabel: {
+      fontSize: fontSizes.sm,
+      fontWeight: '500',
+      textAlign: 'center',
+    },
+    qrBox: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: spacing.md,
+    },
+    qrPlaceholder: {
+      width: 160,
+      height: 160,
+      borderRadius: borderRadius.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    secondaryButton: {
+      borderWidth: 1,
       borderRadius: borderRadius.md,
-      overflow: 'hidden',
-    },
-    modeButton: {
-      flex: 1,
       paddingVertical: spacing.sm,
       alignItems: 'center',
     },
-    modeButtonText: {
-      fontSize: fontSizes.md,
+    secondaryButtonText: {
+      fontSize: fontSizes.sm,
       fontWeight: '600',
+    },
+    form: {
+      width: '100%',
+      gap: spacing.sm,
+    },
+    label: {
+      fontSize: fontSizes.sm,
+      fontWeight: '500',
+      marginBottom: spacing.xs,
     },
     inputContainer: {
       flexDirection: 'row',
@@ -444,7 +617,6 @@ const createStyles = (theme: ReturnType<typeof getTheme>) =>
       borderColor: theme.colors.border,
       borderRadius: borderRadius.md,
       paddingHorizontal: spacing.md,
-      marginBottom: spacing.md,
       height: 48,
     },
     input: {
@@ -452,59 +624,26 @@ const createStyles = (theme: ReturnType<typeof getTheme>) =>
       marginLeft: spacing.sm,
       fontSize: fontSizes.md,
     },
-    submitButton: {
+    button: {
       height: 48,
       borderRadius: borderRadius.md,
-      alignItems: 'center',
       justifyContent: 'center',
+      alignItems: 'center',
       marginTop: spacing.sm,
     },
-    submitButtonText: {
-      color: '#fff',
+    buttonText: {
       fontSize: fontSizes.md,
       fontWeight: '600',
     },
-    serverConfigToggle: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.xs,
-      paddingVertical: spacing.sm,
-      marginBottom: spacing.md,
-      borderRadius: borderRadius.md,
-      backgroundColor: theme.colors.background,
-    },
-    serverConfigToggleText: {
+    switchText: {
+      textAlign: 'center',
       fontSize: fontSizes.sm,
-      fontWeight: '500',
-    },
-    serverConfigPanel: {
-      marginBottom: spacing.md,
-      padding: spacing.md,
-      borderRadius: borderRadius.md,
-      backgroundColor: theme.colors.background,
-    },
-    serverConfigActions: {
-      flexDirection: 'row',
-      gap: spacing.sm,
+      fontWeight: '600',
       marginTop: spacing.sm,
     },
-    serverConfigButton: {
-      flex: 1,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.xs,
-      height: 40,
-      borderRadius: borderRadius.md,
-    },
-    serverConfigButtonText: {
-      fontSize: fontSizes.sm,
-      fontWeight: '500',
-    },
-    serverTestResult: {
-      marginTop: spacing.sm,
+    errorText: {
       fontSize: fontSizes.sm,
       textAlign: 'center',
+      marginTop: spacing.xs,
     },
   });
