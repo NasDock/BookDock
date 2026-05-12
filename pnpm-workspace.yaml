@@ -1,3 +1,5 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+patchedDependencies:
+  expo-modules-core: patches/expo-modules-core.patch
