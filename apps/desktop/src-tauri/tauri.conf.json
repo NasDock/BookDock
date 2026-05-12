@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "BookDock",
-  "version": "0.1.0",
+  "version": "0.0.2",
   "identifier": "com.bookdock.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -39,7 +39,12 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["msi", "nsis", "dmg", "app"],
+    "targets": [
+      "msi",
+      "nsis",
+      "dmg",
+      "app"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -61,7 +66,10 @@
         "headerImage": null,
         "sidebarImage": null,
         "installMode": "currentUser",
-        "languages": ["SimpChinese", "English"]
+        "languages": [
+          "SimpChinese",
+          "English"
+        ]
       }
     },
     "macOS": {
@@ -79,14 +87,18 @@
     },
     "fileAssociations": [
       {
-        "ext": ["epub"],
+        "ext": [
+          "epub"
+        ],
         "name": "EPUB Document",
         "description": "Electronic Publication",
         "mimeType": "application/epub+zip",
         "role": "Viewer"
       },
       {
-        "ext": ["pdf"],
+        "ext": [
+          "pdf"
+        ],
         "name": "PDF Document",
         "description": "Portable Document Format",
         "mimeType": "application/pdf",
@@ -100,7 +112,9 @@
     },
     "deep-link": {
       "desktop": {
-        "schemes": ["bookdock"]
+        "schemes": [
+          "bookdock"
+        ]
       }
     },
     "autostart": {
