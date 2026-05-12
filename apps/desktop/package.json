@@ -36,9 +36,11 @@
     "@tauri-apps/plugin-notification": "^2.0.0",
     "@tauri-apps/plugin-shell": "^2.0.0",
     "lucide-react": "^1.14.0",
+    "qrcode.react": "^4.2.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.22.0",
+    "socket.io-client": "^4.8.3",
     "zustand": "^4.5.0"
   },
   "devDependencies": {

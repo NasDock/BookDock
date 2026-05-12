@@ -45,13 +45,9 @@ export function ProfileScreen() {
   }, []);
 
   const handleManageSubscription = useCallback(() => {
-    Alert.alert(
-      'Subscription',
-      user?.membership === 'premium'
-        ? 'You are a Premium member! Enjoy unlimited books and TTS features.'
-        : 'Upgrade to Premium to unlock unlimited books, offline downloads, and high-quality TTS.'
-    );
-  }, [user]);
+    // @ts-ignore
+    navigation.navigate('MemberLogin');
+  }, [navigation]);
 
   const handleLogout = useCallback(() => {
     Alert.alert('Confirm', 'Are you sure you want to sign out?', [

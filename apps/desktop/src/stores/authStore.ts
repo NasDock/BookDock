@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { setPlusToken, removePlusToken } from '../services/plus';
 
 interface ThemeState {
   theme: 'light' | 'dark' | 'system';
@@ -68,12 +69,17 @@ if (typeof window !== 'undefined' && window.matchMedia) {
 
 import type { User } from '@bookdock/api-client';
 
-// Auth store placeholder (expand with real auth logic)
+// Auth store with Plus support
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
+  plusToken: string | null;
+  plusUserId: string | number | null;
+  isVip: boolean;
   login: (user: User) => void;
   logout: () => void;
+  setPlusAuth: (token: string, userId: string | number) => void;
+  clearPlusAuth: () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -81,8 +87,24 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       user: null,
       isAuthenticated: false,
+      plusToken: null,
+      plusUserId: null,
+      isVip: false,
       login: (user) => set({ user, isAuthenticated: true }),
-      logout: () => set({ user: null, isAuthenticated: false }),
+      logout: () => {
+        removePlusToken();
+        set({ user: null, isAuthenticated: false, plusToken: null, plusUserId: null, isVip: false });
+      },
+      setPlusAuth: (token, userId) => {
+        setPlusToken(token);
+        localStorage.setItem('bookdock_plus_user_id', JSON.stringify(userId));
+        set({ plusToken: token, plusUserId: userId });
+      },
+      clearPlusAuth: () => {
+        removePlusToken();
+        localStorage.removeItem('bookdock_plus_user_id');
+        set({ plusToken: null, plusUserId: null, isVip: false });
+      },
     }),
     { name: 'bookdock-auth' }
   )

@@ -26,11 +26,19 @@ import Login from './pages/Login';
 import Admin from './pages/Admin';
 import AdminUsers from './pages/AdminUsers';
 import Membership from './pages/Membership';
+import MemberLogin from './pages/MemberLogin';
+import MemberBenefits from './pages/MemberBenefits';
+import MemberDetail from './pages/MemberDetail';
+import MemberPaymentSuccess from './pages/MemberPaymentSuccess';
 
 // Desktop Screens
 import { LibraryScreen } from './screens/Library';
 import { ReaderScreen } from './screens/Reader';
 import { SettingsScreen } from './screens/Settings';
+import { MemberLoginScreen } from './screens/MemberLoginScreen';
+import { MemberBenefitsScreen } from './screens/MemberBenefitsScreen';
+import { MemberDetailScreen } from './screens/MemberDetailScreen';
+import { MemberPaymentSuccessScreen } from './screens/MemberPaymentSuccessScreen';
 
 // Stores
 import { useDesktopStore } from './stores/desktopStore';
@@ -207,6 +215,10 @@ function WebAppRoutes() {
     <WebLayout>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/member-login" element={<MemberLogin />} />
+        <Route path="/member-benefits" element={<MemberBenefits />} />
+        <Route path="/member-detail" element={<MemberDetail />} />
+        <Route path="/member-payment-success" element={<MemberPaymentSuccess />} />
         <Route path="/membership" element={<Membership />} />
         <Route
           path="/"
@@ -335,6 +347,10 @@ function DesktopAppRoutes() {
         <Route path="/" element={<LibraryScreen />} />
         <Route path="/reader/:id" element={<ReaderScreen />} />
         <Route path="/settings" element={<SettingsScreen />} />
+        <Route path="/member-login" element={<MemberLoginScreen />} />
+        <Route path="/member-benefits" element={<MemberBenefitsScreen />} />
+        <Route path="/member-detail" element={<MemberDetailScreen />} />
+        <Route path="/member-payment-success" element={<MemberPaymentSuccessScreen />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 

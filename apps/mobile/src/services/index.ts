@@ -234,3 +234,29 @@ export { apiClient } from './api';
 export type { BooksQuery, UserSettings } from './api';
 export type { TTSBookMeta, TTSChapter, TTSChapterContent } from './api';
 export type { Collection, Highlight } from './api';
+
+// Export Plus API
+export {
+  plusSendCode,
+  plusLogin,
+  plusGetMe,
+  plusGetVipStatus,
+  createScanLoginSession,
+  getScanLoginSession,
+  claimScanLoginSession,
+  confirmScanLoginSession,
+  consumeScanLoginSession,
+  reportScanLoginResult,
+  subscribeScanLoginSession,
+  reportScanLoginResultViaSocket,
+  setPlusToken,
+  getPlusToken,
+  removePlusToken,
+} from './plus';
+export type {
+  ISuccessResponse,
+  ScanLoginSession,
+  ScanLoginSessionStatus,
+  ScanLoginClaimPayload,
+  ScanLoginConfirmResult,
+} from './plus';

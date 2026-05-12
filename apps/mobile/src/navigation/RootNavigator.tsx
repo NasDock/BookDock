@@ -5,6 +5,7 @@ import { MainTabNavigator } from './MainTabNavigator';
 import { ReaderScreen } from '../screens/ReaderScreen';
 import { TTSScreen } from '../screens/TTSScreen';
 import { LoginScreen } from '../screens/LoginScreen';
+import { MemberLoginScreen } from '../screens/MemberLoginScreen';
 import { useAuthStore, useThemeStore } from '../stores';
 import { getTheme } from '../utils/theme';
 import type { RootStackParamList } from './types';
@@ -74,8 +75,18 @@ export function RootNavigator() {
                 headerBackTitle: 'Back',
               }}
             />
+            <Stack.Screen
+              name="MemberLogin"
+              component={MemberLoginScreen}
+              options={{ headerShown: false }}
+            />
           </>
         )}
+        <Stack.Screen
+          name="MemberLogin"
+          component={MemberLoginScreen}
+          options={{ headerShown: false }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
