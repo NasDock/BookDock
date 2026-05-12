@@ -12,6 +12,7 @@ import {
   Alert,
   ScrollView,
   useWindowDimensions,
+  Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -376,7 +377,7 @@ export function LoginScreen() {
         <Ionicons name="wifi-outline" size={20} color={theme.colors.textSecondary} />
         <TextInput
           style={[styles.input, { color: theme.colors.text }]}
-          placeholder="http://192.168.x.x:8080/api"
+          placeholder="http://192.168.x.x:8088/api"
           placeholderTextColor={theme.colors.textSecondary}
           value={internalAddress}
           onChangeText={(text) => {
@@ -474,9 +475,7 @@ export function LoginScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.logoContainer}>
-            <View style={[styles.logo, { backgroundColor: theme.colors.primary }]}>
-              <Ionicons name="book" size={36} color="#fff" />
-            </View>
+            <Image source={require('../../assets/logo.png')} style={{ width: 64, height: 64 }} resizeMode="contain" />
             <Text style={[styles.title, { color: theme.colors.text }]}>
               BookDock
             </Text>

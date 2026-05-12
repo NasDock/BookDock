@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@bookdock/ui';
 import { Crown, Sparkles, BookOpen, Headphones, Star, Ban, MessageCircle, ClipboardList, ArrowLeft, Check, Volume2, ShieldCheck, BookMarked } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8088/api';
 
 interface VipProduct {
   id: string;

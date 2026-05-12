@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import { AppConfig } from './config/app.config';
 import { DatabaseModule } from './config/database.module';
 import { AdminModule } from './modules/admin/admin.module';
@@ -11,7 +13,6 @@ import { VipModule } from './modules/vip/vip.module';
 import { ReadingProgressModule } from './modules/reading-progress/reading-progress.module';
 import { TtsModule } from './modules/tts/tts.module';
 import { SourceModule } from './modules/source/source.module';
-import { BullMQModule } from './queues/bullmq.module';
 
 import { HealthController } from './health.controller';
 
@@ -22,8 +23,11 @@ import { HealthController } from './health.controller';
       envFilePath: ['.env.local', '.env'],
       load: [AppConfig],
     }),
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'web'),
+      exclude: ['/api/(.*)', '/health'],
+    }),
     DatabaseModule,
-    BullMQModule,
     AuthModule,
     BooksModule,
     ReadingProgressModule,

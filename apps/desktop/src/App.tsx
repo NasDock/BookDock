@@ -48,7 +48,7 @@ import { useDesktopEvents } from './hooks/useDesktopCommands';
 import type { Book } from '@bookdock/api-client';
 import './styles.css';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8088/api';
 
 const isTauri = !!(window as any).__TAURI_IPC__;
 

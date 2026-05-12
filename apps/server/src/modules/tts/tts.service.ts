@@ -5,8 +5,6 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import { PrismaClient } from '@prisma/client';
 import { TtsJobStatus } from '../../common/types/prisma-compat';
 import { ConfigService } from '@nestjs/config';
@@ -21,7 +19,6 @@ export class TtsService {
 
   constructor(
     @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
-    @InjectQueue('tts-synthesize') private readonly ttsQueue: Queue,
     private readonly configService: ConfigService,
   ) {
     this.ttsApiUrl = this.configService.get<string>('app.ttsApiUrl') || 'http://localhost:5000';
@@ -41,18 +38,22 @@ export class TtsService {
       },
     });
 
-    // Enqueue BullMQ job
-    await this.ttsQueue.add('synthesize', {
-      jobId: job.id,
-      userId,
-      bookId: dto.bookId,
-      voice: dto.voice || 'en_US-lessac-medium',
-      startCfi: dto.startCfi,
-      endCfi: dto.endCfi,
-      sampleRate: dto.sampleRate || 22050,
-    });
+    // Process TTS inline (no queue since Redis is removed)
+    try {
+      await this.synthesizeText(dto.text || '', dto.voice);
+      await this.prisma.ttsJob.update({
+        where: { id: job.id },
+        data: { status: TtsJobStatus.completed, completedAt: new Date() },
+      });
+    } catch (error) {
+      this.logger.error(`TTS job ${job.id} failed: ${error}`);
+      await this.prisma.ttsJob.update({
+        where: { id: job.id },
+        data: { status: TtsJobStatus.failed, errorMessage: String(error) },
+      });
+    }
 
-    return this.toJobResponse(job);
+    return this.toJobResponse(await this.prisma.ttsJob.findUnique({ where: { id: job.id } }));
   }
 
   async findJobs(userId: string, query: TtsJobQueryDto): Promise<{ data: TtsJobResponseDto[]; total: number }> {

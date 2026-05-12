@@ -11,6 +11,7 @@ import {
   Platform,
   ScrollView,
   Dimensions,
+  Image,
 } from 'react-native';
 import { BarCodeScanner } from 'expo-barcode-scanner';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -273,9 +274,7 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
 
         {/* Logo */}
         <View style={styles.logoSection}>
-          <View style={[styles.logoCircle, { backgroundColor: theme.colors.primary }]}>
-            <Ionicons name="book" size={36} color="#fff" />
-          </View>
+          <Image source={require('../../assets/logo.png')} style={{ width: 64, height: 64 }} resizeMode="contain" />
           <Text style={[styles.title, { color: theme.colors.text }]}>BookDock</Text>
           <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
             书仓会员登录

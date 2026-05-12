@@ -6,7 +6,7 @@ import { getApiClient } from '@bookdock/api-client';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@bookdock/ui';
 import { Crown, Volume2, BookOpen, Bookmark, Zap, Check, PartyPopper, X, Loader2, CreditCard, MessageCircle, Wallet } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8088/api';
 const VIP_TOKEN_KEY = 'bookdock_vip_token';
 const VIP_USER_KEY = 'bookdock_vip_user';
 

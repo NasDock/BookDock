@@ -4,8 +4,6 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
 import { PrismaClient } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
@@ -29,8 +27,6 @@ export class AdminService {
 
   constructor(
     @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
-    @InjectQueue('book-index') private readonly indexQueue: Queue,
-    @InjectQueue('data-sync') private readonly syncQueue: Queue,
     private readonly configService: ConfigService,
   ) {
     this.dataSourcesPath = join(process.cwd(), 'data', 'datasources.json');
@@ -181,14 +177,8 @@ export class AdminService {
   // ── Sync Jobs ──────────────────────────────────────────────────────────────
 
   async triggerSync(dto: TriggerSyncDto): Promise<SyncJobResponseDto> {
-    const job = await this.syncQueue.add('sync', {
-      dataSourceId: dto.dataSourceId,
-      forceReindex: dto.forceReindex || false,
-      triggeredAt: new Date().toISOString(),
-    });
-
     return {
-      id: job.id || String(Date.now()),
+      id: String(Date.now()),
       dataSourceId: dto.dataSourceId,
       status: 'pending',
       createdAt: new Date(),
@@ -222,7 +212,6 @@ export class AdminService {
       totalTtsJobs,
       storageBooks,
       storageAudio,
-      queueStats,
     ] = await Promise.all([
       this.prisma.user.count(),
       this.prisma.user.count({ where: { isActive: true } }),
@@ -233,7 +222,6 @@ export class AdminService {
       this.prisma.book.aggregate({ _sum: { fileSize: true } }),
       // Approximate - would need actual audio table scan in production
       this.prisma.ttsAudioFile.aggregate({ _sum: { fileSize: true } }),
-      this.indexQueue.getJobCounts(),
     ]);
 
     return {
@@ -248,10 +236,10 @@ export class AdminService {
         audio: storageAudio._sum.fileSize || BigInt(0),
       },
       queueStats: {
-        pending: queueStats.waiting + queueStats.delayed,
-        active: queueStats.active,
-        completed: queueStats.completed,
-        failed: queueStats.failed,
+        pending: 0,
+        active: 0,
+        completed: 0,
+        failed: 0,
       },
     };
   }

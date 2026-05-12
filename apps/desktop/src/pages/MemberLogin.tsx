@@ -210,9 +210,7 @@ export default function MemberLogin() {
       <div className="w-full max-w-4xl relative">
         {/* Logo */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl shadow-xl mb-3">
-            <Crown className="w-8 h-8 text-white" />
-          </div>
+          <img src="/logo.png" alt="BookDock" className="w-16 h-16 object-contain mb-3 mx-auto" />
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">用户登录</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">BookDock 书仓会员</p>
         </div>

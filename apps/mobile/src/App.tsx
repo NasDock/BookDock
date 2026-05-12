@@ -12,7 +12,7 @@ import { setApiBaseUrl } from './services/api';
 // Keep splash screen visible while loading
 SplashScreen.preventAutoHideAsync();
 
-const DEFAULT_API_BASE_URL = 'http://localhost:8080/api';
+const DEFAULT_API_BASE_URL = 'http://localhost:8088/api';
 
 export default function App() {
   const actualTheme = useThemeStore((state) => state.actualTheme);

@@ -13,6 +13,11 @@ import { Type } from 'class-transformer';
 import { TtsVoiceGender } from '../../../common/types/prisma-compat';
 
 export class CreateTtsJobDto {
+  @ApiPropertyOptional({ description: 'Text content to synthesize' })
+  @IsString()
+  @IsOptional()
+  text?: string;
+
   @ApiPropertyOptional()
   @IsUUID()
   @IsOptional()

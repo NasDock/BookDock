@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Crown, Sparkles, BookOpen, Headphones, Star, Ban, MessageCircle, Gift, Check } from 'lucide-react';
 
-const API_BASE = 'http://localhost:8080/api';
+const API_BASE = 'http://localhost:8088/api';
 
 interface VipProduct {
   id: string; name: string; description: string; price: number; badge: string; features: string[];
