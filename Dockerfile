@@ -19,6 +19,7 @@ RUN corepack enable && corepack prepare pnpm@10.33.4 --activate
 
 # Copy workspace manifests
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY patches ./patches
 COPY apps/desktop/package.json ./apps/desktop/
 COPY apps/server/package.json ./apps/server/
 COPY packages/api-client/package.json ./packages/api-client/

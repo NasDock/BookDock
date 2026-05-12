@@ -40,10 +40,15 @@ jobs:
       - name: Build Web
         run: pnpm --filter @bookdock/desktop run build
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
+          name: github-pages
           path: apps/desktop/dist
+          include-hidden-files: true
 
   deploy:
     environment:

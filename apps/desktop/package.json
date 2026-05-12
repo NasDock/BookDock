@@ -115,7 +115,8 @@
         "deb"
       ],
       "category": "Utility",
-      "icon": "public/logo.png"
+      "icon": "public/logo.png",
+      "artifactName": "${productName}_${version}_${arch}.${ext}"
     },
     "dmg": {
       "contents": [
