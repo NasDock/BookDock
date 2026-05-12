@@ -335,23 +335,7 @@ export function LoginScreen() {
       );
     }
 
-    return (
-      <View style={[styles.scanCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
-        <Text style={[styles.scanTitle, { color: theme.colors.text }]}>主动扫码登录</Text>
-        <Text style={[styles.scanDesc, { color: theme.colors.textSecondary }]}>
-          通过扫一扫，可以将本设备的登录状态同步到其他设备。
-        </Text>
-        <TouchableOpacity
-          style={[styles.button, { backgroundColor: theme.colors.primary }]}
-          onPress={() => {
-            // @ts-ignore
-            navigation.navigate('ScanLogin');
-          }}
-        >
-          <Text style={[styles.buttonText, { color: theme.colors.background }]}>去扫描二维码</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    return <></>;
   };
 
   const renderForm = () => (
