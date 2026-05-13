@@ -121,7 +121,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     uvicorn \
     pydantic \
     aiofiles \
-    && npm install -g prisma
+    && npm install -g prisma@5.22.0
 
 # Copy voice model
 COPY --from=tts-model-builder /models /models
@@ -179,14 +179,17 @@ stdout_logfile=/dev/stdout
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
-environment=NODE_ENV="production",PORT="8088",DATABASE_URL="file:/data/db/bookdock.db",NAS_EBOOK_PATH="/data/ebooks",NAS_AUDIO_PATH="/data/audio",SOURCE_LOCAL_PATH="/data/sources"
 EOF
 
 # Create startup script that ensures DB tables exist before starting services
 RUN cat > /app/start.sh << 'EOF'
 #!/bin/sh
+set -eu
+
 # Ensure SQLite database tables are initialized
+echo "Initializing database schema..."
 prisma db push --schema=/app/prisma/schema.prisma --accept-data-loss
+echo "Database schema is ready."
 
 # Start supervisord to manage API + TTS
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/bookdock.conf
@@ -195,7 +198,7 @@ RUN chmod +x /app/start.sh
 
 # Health check for API
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD wget -q --spider http://localhost:8088/api/health || exit 1
+    CMD wget -q --spider http://localhost:8088/health || exit 1
 
 EXPOSE 8088
 
