@@ -131,7 +131,12 @@ export const useLibraryStore = create<LibraryState>()(
       saveReadingProgress: async (bookId, position) => {
         try {
           const apiClient = getApiClient();
-          await apiClient.updateReadingProgress(bookId, position.percentage, position.currentPage);
+          await apiClient.updateReadingProgress(
+            bookId,
+            position.percentage,
+            position.currentPage,
+            position.scrollOffset
+          );
 
           const key = `${READING_PROGRESS_KEY}_${bookId}`;
           const progressData: ReadingState = {
@@ -154,8 +159,9 @@ export const useLibraryStore = create<LibraryState>()(
             const progressData: ReadingState = {
               bookId,
               position: {
-                percentage: response.data.progress,
-                currentPage: response.data.currentPage,
+                percentage: response.data.progressPct,
+                currentPage: response.data.currentChapter,
+                scrollOffset: response.data.scrollOffset,
               },
               lastReadAt: new Date().toISOString(),
             };

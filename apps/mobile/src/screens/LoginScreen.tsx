@@ -26,6 +26,7 @@ import {
   selectBestServer,
   setActiveServerAddress,
   getActiveServerAddress,
+  toApiBaseUrl,
 } from '../utils/network';
 import { setApiBaseUrl } from '../services/api';
 import {
@@ -252,11 +253,13 @@ export function LoginScreen() {
         return;
       }
 
-      setApiBaseUrl(bestAddress);
-      setActiveServerAddress(bestAddress);
+      const apiBaseUrl = toApiBaseUrl(bestAddress);
+
+      setApiBaseUrl(apiBaseUrl);
+      await setActiveServerAddress(apiBaseUrl);
 
       initApiClient({
-        baseURL: bestAddress,
+        baseURL: apiBaseUrl,
         getAuthToken: () => useAuthStore.getState().token || null,
         onAuthError: () => {
           authStore.logout();
@@ -267,7 +270,7 @@ export function LoginScreen() {
 
       if (isLogin) {
         await AsyncStorage.setItem(
-          `creds_${sourceType}_${bestAddress}`,
+          `creds_${sourceType}_${apiBaseUrl}`,
           JSON.stringify({ username, password }),
         );
       }

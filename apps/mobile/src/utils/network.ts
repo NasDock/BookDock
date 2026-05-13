@@ -14,6 +14,17 @@ export interface ServerConfig {
 
 const STORAGE_KEY = 'bookdock_server_config';
 const ACTIVE_ADDRESS_KEY = 'bookdock_server_address';
+const DEFAULT_API_BASE_URL = 'http://localhost:8088/api';
+
+export function toApiBaseUrl(address: string): string {
+  const trimmed = address.trim().replace(/\/+$/, '');
+  if (!trimmed) return '';
+  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+}
+
+function toServerBaseUrl(address: string): string {
+  return address.trim().replace(/\/+$/, '').replace(/\/api$/, '');
+}
 
 /**
  * Load saved server config from AsyncStorage
@@ -39,7 +50,11 @@ export async function loadServerConfig(): Promise<ServerConfig> {
  * Save server config to AsyncStorage
  */
 export async function saveServerConfig(config: ServerConfig): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({
+    ...config,
+    internal: config.internal ? toApiBaseUrl(config.internal) : '',
+    external: config.external ? toApiBaseUrl(config.external) : '',
+  }));
 }
 
 /**
@@ -55,7 +70,7 @@ export async function checkServerConnectivity(address: string): Promise<boolean>
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 3000);
 
-    const response = await fetch(`${address.replace(/\/+$/, '')}/hello`, {
+    const response = await fetch(`${toServerBaseUrl(address)}/hello`, {
       method: 'GET',
       signal: controller.signal,
     });
@@ -129,7 +144,7 @@ export async function autoSelectServer(): Promise<string | null> {
 
   const best = await selectBestServer(config.internal, config.external);
   if (best) {
-    await AsyncStorage.setItem(ACTIVE_ADDRESS_KEY, best);
+    await AsyncStorage.setItem(ACTIVE_ADDRESS_KEY, toApiBaseUrl(best));
   }
   return best;
 }
@@ -145,5 +160,16 @@ export async function getActiveServerAddress(): Promise<string | null> {
  * Set the active server address
  */
 export async function setActiveServerAddress(address: string): Promise<void> {
-  await AsyncStorage.setItem(ACTIVE_ADDRESS_KEY, address);
+  await AsyncStorage.setItem(ACTIVE_ADDRESS_KEY, toApiBaseUrl(address));
+}
+
+export async function getSavedApiBaseUrl(fallback = DEFAULT_API_BASE_URL): Promise<string> {
+  const activeAddress = await getActiveServerAddress();
+  if (activeAddress) return toApiBaseUrl(activeAddress);
+
+  const config = await loadServerConfig();
+  const configuredAddress = config.internal || config.external;
+  if (configuredAddress) return toApiBaseUrl(configuredAddress);
+
+  return fallback;
 }

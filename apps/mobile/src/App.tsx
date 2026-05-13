@@ -6,7 +6,7 @@ import { RootNavigator } from './navigation';
 import { useAuthStore, useThemeStore } from './stores';
 import { notificationService } from './services';
 import { initApiClient } from '@bookdock/api-client';
-import { autoSelectServer, getActiveServerAddress } from './utils/network';
+import { autoSelectServer, getSavedApiBaseUrl, toApiBaseUrl } from './utils/network';
 import { setApiBaseUrl } from './services/api';
 
 // Keep splash screen visible while loading
@@ -28,7 +28,7 @@ export default function App() {
 
         // Auto-select best server address
         const bestAddress = await autoSelectServer();
-        const activeAddress = bestAddress || (await getActiveServerAddress()) || DEFAULT_API_BASE_URL;
+        const activeAddress = bestAddress ? toApiBaseUrl(bestAddress) : await getSavedApiBaseUrl(DEFAULT_API_BASE_URL);
         setApiBaseUrl(activeAddress);
 
         // Initialize API client globally

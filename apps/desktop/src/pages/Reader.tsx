@@ -566,7 +566,34 @@ export default function Reader() {
   const contentRef = useRef<HTMLDivElement>(null);
   const scrollPositionRef = useRef(0);
   const prevChapterRef = useRef(0);
+  const shouldResetScrollRef = useRef(false);
   const [pendingScrollTop, setPendingScrollTop] = useState<number | null>(null);
+
+  const getCurrentScrollTop = useCallback(() => {
+    const elementScrollTop = contentRef.current?.scrollTop ?? 0;
+    if (elementScrollTop > 0) return elementScrollTop;
+    return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+  }, []);
+
+  const applyScrollTop = useCallback((top: number, behavior: ScrollBehavior = 'auto') => {
+    if (contentRef.current) {
+      contentRef.current.scrollTo({ top, behavior });
+    }
+    window.scrollTo({ top, behavior });
+    scrollPositionRef.current = top;
+  }, []);
+
+  const saveReadingPosition = useCallback((scrollTop = getCurrentScrollTop(), reason = 'progress') => {
+    if (!id || chapters.length === 0) return;
+
+    const progressPct = Math.round(((currentChapter + 1) / chapters.length) * 100);
+    scrollPositionRef.current = scrollTop;
+
+    getApiClient()
+      .updateReadingProgress(id, progressPct, currentChapter, scrollTop)
+      .then(() => console.log(`${reason} saved:`, { chapter: currentChapter, scrollTop }))
+      .catch((err) => console.warn(`Failed to save ${reason}:`, err));
+  }, [chapters.length, currentChapter, getCurrentScrollTop, id]);
 
   // Fetch chapters + load cloud progress (parallel to avoid race)
   useEffect(() => {
@@ -645,6 +672,8 @@ export default function Reader() {
 
   const resetScroll = useCallback(() => {
     scrollPositionRef.current = 0;
+    shouldResetScrollRef.current = true;
+    setPendingScrollTop(null);
   }, []);
 
   const handleAddBookmark = useCallback(() => {
@@ -741,12 +770,12 @@ export default function Reader() {
   const handleGoToChapter = useCallback((index: number) => {
     setCurrentChapter(index);
     scrollPositionRef.current = 0;
-    if (contentRef.current) {
-      contentRef.current.scrollTop = 0;
-    }
-  }, []);
+    shouldResetScrollRef.current = true;
+    setPendingScrollTop(null);
+    applyScrollTop(0);
+  }, [applyScrollTop]);
 
-  // Track scroll position + debounced save on scroll stop
+  // Track the first visible line position + debounced save on scroll stop
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
@@ -754,27 +783,27 @@ export default function Reader() {
     let scrollSaveTimer: NodeJS.Timeout | null = null;
 
     const handler = () => {
-      const top = el.scrollTop;
+      const top = getCurrentScrollTop();
       scrollPositionRef.current = top;
 
       // Debounced save: only scroll changes trigger save
       if (scrollSaveTimer) clearTimeout(scrollSaveTimer);
       scrollSaveTimer = setTimeout(() => {
-        if (!id || chapters.length === 0) return;
-        const progressPct = Math.round(((currentChapter + 1) / chapters.length) * 100);
-        getApiClient()
-          .updateReadingProgress(id, progressPct, currentChapter, top)
-          .then(() => console.log('Scroll progress saved:', { chapter: currentChapter, scrollTop: top }))
-          .catch((err) => console.warn('Failed to save scroll progress:', err));
+        saveReadingPosition(top, 'scroll progress');
       }, 1500);
     };
 
     el.addEventListener('scroll', handler, { passive: true });
+    window.addEventListener('scroll', handler, { passive: true });
     return () => {
       el.removeEventListener('scroll', handler);
-      if (scrollSaveTimer) clearTimeout(scrollSaveTimer);
+      window.removeEventListener('scroll', handler);
+      if (scrollSaveTimer) {
+        clearTimeout(scrollSaveTimer);
+        saveReadingPosition(getCurrentScrollTop(), 'scroll progress');
+      }
     };
-  }, [id, currentChapter, chapters.length]);
+  }, [getCurrentScrollTop, saveReadingPosition]);
 
   // Save immediately when chapter changes (skip during restore — restore effect saves itself)
   useEffect(() => {
@@ -782,45 +811,50 @@ export default function Reader() {
     if (prevChapterRef.current === currentChapter) return; // avoid duplicate save when pendingScrollTop flips to null
     prevChapterRef.current = currentChapter;
 
-    const progressPct = Math.round(((currentChapter + 1) / chapters.length) * 100);
     const scrollTop = scrollPositionRef.current;
-    getApiClient()
-      .updateReadingProgress(id, progressPct, currentChapter, scrollTop)
-      .then(() => console.log('Chapter progress saved:', { chapter: currentChapter, pct: progressPct, scrollTop }))
-      .catch((err) => console.warn('Failed to save chapter progress:', err));
-  }, [id, currentChapter, chapters.length, pendingScrollTop]);
+    saveReadingPosition(scrollTop, 'chapter progress');
+  }, [id, currentChapter, chapters.length, pendingScrollTop, saveReadingPosition]);
 
   // Restore or reset scroll position after new chapter content renders
   useEffect(() => {
     if (!chapterContent || !contentRef.current) return;
 
-    const el = contentRef.current;
-
     if (pendingScrollTop !== null) {
       // Restoring saved position
       const target = pendingScrollTop;
       const timer = setTimeout(() => {
-        el.scrollTop = target;
-        scrollPositionRef.current = target;
+        applyScrollTop(target);
         setPendingScrollTop(null);
 
-        // Save restored progress immediately so DB has correct scrollTop
-        if (id && chapters.length > 0) {
-          const progressPct = Math.round(((currentChapter + 1) / chapters.length) * 100);
-          getApiClient()
-            .updateReadingProgress(id, progressPct, currentChapter, target)
-            .catch(() => {});
-        }
+        // Save restored progress immediately so DB has the first visible line.
+        saveReadingPosition(target, 'restored progress');
       }, 300);
       return () => clearTimeout(timer);
-    } else {
-      // Switching to new chapter — smooth scroll to top after content renders
+    }
+
+    if (shouldResetScrollRef.current) {
+      // Explicit chapter navigation starts at the chapter top.
       const timer = setTimeout(() => {
-        el.scrollTo({ top: 0, behavior: 'smooth' });
+        applyScrollTop(0, 'smooth');
+        shouldResetScrollRef.current = false;
       }, 50);
       return () => clearTimeout(timer);
     }
-  }, [chapterContent, pendingScrollTop, id, currentChapter, chapters.length]);
+  }, [applyScrollTop, chapterContent, pendingScrollTop, saveReadingPosition]);
+
+  // Save the current first visible line when leaving the reader.
+  useEffect(() => {
+    const saveOnExit = () => saveReadingPosition(getCurrentScrollTop(), 'exit progress');
+
+    window.addEventListener('pagehide', saveOnExit);
+    window.addEventListener('beforeunload', saveOnExit);
+
+    return () => {
+      saveOnExit();
+      window.removeEventListener('pagehide', saveOnExit);
+      window.removeEventListener('beforeunload', saveOnExit);
+    };
+  }, [getCurrentScrollTop, saveReadingPosition]);
 
   const prevPage = useCallback(() => {
     setCurrentChapter((prev) => Math.max(0, prev - 1));
@@ -1024,7 +1058,8 @@ export default function Reader() {
           paddingBottom: `${margin + 80}px`,
           maxWidth: '800px',
           margin: '0 auto',
-          minHeight: '100vh',
+          height: '100vh',
+          boxSizing: 'border-box',
           fontFamily,
           fontSize: `${fontSize}px`,
           lineHeight,

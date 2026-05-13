@@ -30,6 +30,7 @@ import {
   saveServerConfig,
   selectBestServer,
   setActiveServerAddress,
+  toApiBaseUrl,
 } from "../utils/network";
 import { applyDesktopScanLoginResult } from "../utils/scanLogin";
 
@@ -320,24 +321,20 @@ export default function Login() {
         return;
       }
 
+      const apiBaseUrl = toApiBaseUrl(bestAddress);
+
       // Init API client with selected address
       initApiClient({
-        baseURL: bestAddress,
-        getAuthToken: () => {
-          try {
-            const auth = localStorage.getItem("bookdock-auth");
-            return auth ? JSON.parse(auth).state?.token || null : null;
-          } catch {
-            return null;
-          }
-        },
+        baseURL: apiBaseUrl,
+        getAuthToken: () => localStorage.getItem("bookdock_auth_token"),
         onAuthError: () => {
-          localStorage.removeItem("bookdock-auth");
+          localStorage.removeItem("bookdock_auth_token");
+          localStorage.removeItem("bookdock_auth_user");
         },
       });
 
       saveConfig(internalAddress, externalAddress);
-      setActiveServerAddress(bestAddress);
+      setActiveServerAddress(apiBaseUrl);
 
       // Save credentials if remember me
       if (rememberMe) {

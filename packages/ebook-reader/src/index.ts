@@ -8,6 +8,7 @@ export interface ReaderPosition {
   cfi?: string;
   currentPage?: number;
   totalPages?: number;
+  scrollOffset?: number;
   percentage: number;
 }
 
@@ -313,5 +314,4 @@ export async function createBookReader(
     throw error;
   }
 }
-
 

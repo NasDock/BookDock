@@ -44,11 +44,12 @@ import { MemberPaymentSuccessScreen } from './screens/MemberPaymentSuccessScreen
 import { useDesktopStore } from './stores/desktopStore';
 import { useThemeStore } from './stores/authStore';
 import { useDesktopEvents } from './hooks/useDesktopCommands';
+import { getSavedApiBaseUrl } from './utils/network';
 
 import type { Book } from '@bookdock/api-client';
 import './styles.css';
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8088/api';
+const defaultApiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8088/api';
 
 const isTauri = !!(window as any).__TAURI_IPC__;
 
@@ -202,7 +203,7 @@ function WebAppRoutes() {
 
   useEffect(() => {
     initApiClient({
-      baseURL: apiBaseUrl,
+      baseURL: getSavedApiBaseUrl(defaultApiBaseUrl),
       getAuthToken: () => token || localStorage.getItem('bookdock_auth_token'),
       onAuthError: () => {
         localStorage.removeItem('bookdock_auth_token');
@@ -381,6 +382,8 @@ function DesktopAppRoutes() {
 // ============ Root App ============
 
 function App() {
+  const apiBaseUrl = getSavedApiBaseUrl(defaultApiBaseUrl);
+
   return (
     <BrowserRouter>
       {isTauri ? (

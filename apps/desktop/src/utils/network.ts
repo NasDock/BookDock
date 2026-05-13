@@ -10,6 +10,14 @@ export interface ServerConfig {
 }
 
 const STORAGE_KEY = 'bookdock_server_config';
+const ACTIVE_SERVER_KEY = 'bookdock_server_address';
+const DEFAULT_API_BASE_URL = 'http://localhost:8088/api';
+
+export function toApiBaseUrl(address: string): string {
+  const trimmed = address.trim().replace(/\/+$/, '');
+  if (!trimmed) return '';
+  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+}
 
 /**
  * Load saved server config from localStorage
@@ -35,7 +43,11 @@ export function loadServerConfig(): ServerConfig {
  * Save server config to localStorage
  */
 export function saveServerConfig(config: ServerConfig): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    ...config,
+    internal: config.internal ? toApiBaseUrl(config.internal) : '',
+    external: config.external ? toApiBaseUrl(config.external) : '',
+  }));
 }
 
 /**
@@ -134,7 +146,7 @@ export async function autoSelectServer(): Promise<string | null> {
 
   const best = await selectBestServer(config.internal, config.external);
   if (best) {
-    localStorage.setItem('bookdock_server_address', best);
+    localStorage.setItem(ACTIVE_SERVER_KEY, toApiBaseUrl(best));
   }
   return best;
 }
@@ -143,12 +155,23 @@ export async function autoSelectServer(): Promise<string | null> {
  * Get the current active server address
  */
 export function getActiveServerAddress(): string | null {
-  return localStorage.getItem('bookdock_server_address');
+  return localStorage.getItem(ACTIVE_SERVER_KEY);
 }
 
 /**
  * Set the active server address
  */
 export function setActiveServerAddress(address: string): void {
-  localStorage.setItem('bookdock_server_address', address);
+  localStorage.setItem(ACTIVE_SERVER_KEY, toApiBaseUrl(address));
+}
+
+export function getSavedApiBaseUrl(fallback = DEFAULT_API_BASE_URL): string {
+  const activeAddress = getActiveServerAddress();
+  if (activeAddress) return toApiBaseUrl(activeAddress);
+
+  const config = loadServerConfig();
+  const configuredAddress = config.internal || config.external;
+  if (configuredAddress) return toApiBaseUrl(configuredAddress);
+
+  return fallback;
 }

@@ -10,6 +10,7 @@ import {
   Modal,
   Pressable,
   Alert,
+  AppState,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +19,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useReaderStore, useThemeStore, useLibraryStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { getApiClient } from '@bookdock/api-client';
+import type { ReaderPosition } from '@bookdock/ebook-reader';
 import type { RootStackParamList } from '../navigation/types';
 import * as FileSystem from 'expo-file-system';
 
@@ -179,7 +181,9 @@ export function ReaderScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedScrollOffset, setSavedScrollOffset] = useState(0);
   const webViewRef = useRef<WebView>(null);
+  const latestPositionRef = useRef<ReaderPosition>({ percentage: book.readingProgress ?? 0, scrollOffset: 0 });
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
@@ -197,6 +201,22 @@ export function ReaderScreen() {
     setError(null);
 
     try {
+      let initialScrollOffset = 0;
+      try {
+        const progressResponse = await getApiClient().getReadingProgress(book.id);
+        if (progressResponse.success && progressResponse.data) {
+          initialScrollOffset = progressResponse.data.scrollOffset ?? 0;
+          latestPositionRef.current = {
+            percentage: progressResponse.data.progressPct,
+            currentPage: progressResponse.data.currentChapter,
+            scrollOffset: initialScrollOffset,
+          };
+        }
+      } catch {
+        // First read or offline mode: start from top.
+      }
+      setSavedScrollOffset(initialScrollOffset);
+
       // Check if we have a local file first
       const localPath = libraryStore.getLocalBookPath(book.id);
       if (localPath) {
@@ -257,8 +277,10 @@ export function ReaderScreen() {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'scroll') {
         const progress = data.progress || 0;
+        const scrollOffset = data.scrollOffset || 0;
+        latestPositionRef.current = { percentage: progress, currentPage: 0, scrollOffset };
         if (book.id && readerStore.autoSaveProgress) {
-          libraryStore.saveReadingProgress(book.id, { percentage: progress, currentPage: 0 });
+          libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
         }
       }
     } catch {
@@ -266,21 +288,86 @@ export function ReaderScreen() {
     }
   }, [book.id, readerStore.autoSaveProgress, libraryStore]);
 
+  const requestCurrentPositionSave = useCallback(() => {
+    webViewRef.current?.injectJavaScript(`
+      (function() {
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+        const scrollHeight = Math.max(
+          document.documentElement.scrollHeight,
+          document.body.scrollHeight
+        ) - window.innerHeight;
+        const progress = scrollHeight > 0 ? Math.round((scrollTop / scrollHeight) * 100) : 0;
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'scroll',
+          progress: Math.max(0, Math.min(100, progress)),
+          scrollOffset: Math.max(0, Math.round(scrollTop))
+        }));
+      })();
+      true;
+    `);
+  }, []);
+
+  useEffect(() => {
+    const appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') {
+        requestCurrentPositionSave();
+        if (book.id && readerStore.autoSaveProgress) {
+          libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
+        }
+      }
+    });
+
+    return () => {
+      appStateSubscription.remove();
+      requestCurrentPositionSave();
+      if (book.id && readerStore.autoSaveProgress) {
+        libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
+      }
+    };
+  }, [book.id, libraryStore, readerStore.autoSaveProgress, requestCurrentPositionSave]);
+
+  const handleGoBack = useCallback(() => {
+    requestCurrentPositionSave();
+    setTimeout(() => navigation.goBack(), 120);
+  }, [navigation, requestCurrentPositionSave]);
+
   const injectedJS = useMemo(() => `
     (function() {
-      let lastScroll = 0;
+      const initialScrollOffset = ${Math.max(0, Math.round(savedScrollOffset))};
+      let lastScrollTop = -1;
       const sendProgress = () => {
-        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const scrollHeight = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+        const scrollHeight = Math.max(
+          document.documentElement.scrollHeight,
+          document.body.scrollHeight
+        ) - window.innerHeight;
         const progress = scrollHeight > 0 ? Math.round((scrollTop / scrollHeight) * 100) : 0;
-        if (Math.abs(progress - lastScroll) > 5) {
-          lastScroll = progress;
-          window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scroll', progress }));
+        if (Math.abs(scrollTop - lastScrollTop) > 24) {
+          lastScrollTop = scrollTop;
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'scroll',
+            progress: Math.max(0, Math.min(100, progress)),
+            scrollOffset: Math.max(0, Math.round(scrollTop))
+          }));
         }
       };
+
+      const restorePosition = () => {
+        if (initialScrollOffset > 0) {
+          window.scrollTo(0, initialScrollOffset);
+          lastScrollTop = initialScrollOffset;
+        }
+        sendProgress();
+      };
+
       window.addEventListener('scroll', sendProgress, { passive: true });
+      requestAnimationFrame(() => {
+        restorePosition();
+        setTimeout(restorePosition, 250);
+      });
     })();
-  `, []);
+    true;
+  `, [savedScrollOffset]);
 
   const handleShare = useCallback(async () => {
     try {
@@ -319,7 +406,7 @@ export function ReaderScreen() {
 
       {/* Toolbar */}
       <View style={[styles.toolbar, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.toolbarButton}>
+        <TouchableOpacity onPress={handleGoBack} style={styles.toolbarButton}>
           <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
         <View style={styles.toolbarTitle}>
