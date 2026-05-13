@@ -23,12 +23,8 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResponseDto> {
-    // Check email uniqueness
-    const existingEmail = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
-    if (existingEmail) {
-      throw new ConflictException('Email already registered');
+    if (dto.password !== dto.confirmPassword) {
+      throw new BadRequestException('Passwords do not match');
     }
 
     // Check username uniqueness
@@ -40,14 +36,14 @@ export class AuthService {
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
+    const email = `${dto.username}@bookdock.local`;
 
     const user = await this.prisma.user.create({
       data: {
-        email: dto.email,
+        email,
         username: dto.username,
         passwordHash,
-        displayName: dto.displayName,
-        role: dto.role || 'user',
+        role: 'user',
       },
     });
 

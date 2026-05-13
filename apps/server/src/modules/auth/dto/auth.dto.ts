@@ -11,10 +11,6 @@ import {
 import { UserRole } from '../../../common/types/prisma-compat';
 
 export class RegisterDto {
-  @ApiProperty({ example: 'user@example.com' })
-  @IsEmail()
-  email: string;
-
   @ApiProperty({ example: 'johndoe', minLength: 3, maxLength: 100 })
   @IsString()
   @MinLength(3)
@@ -27,15 +23,11 @@ export class RegisterDto {
   @MaxLength(128)
   password: string;
 
-  @ApiPropertyOptional({ example: 'John Doe' })
+  @ApiProperty({ example: 'password123', minLength: 6 })
   @IsString()
-  @IsOptional()
-  displayName?: string;
-
-  @ApiPropertyOptional({ enum: UserRole, default: 'user' })
-  @IsEnum(UserRole)
-  @IsOptional()
-  role?: UserRole;
+  @MinLength(6)
+  @MaxLength(128)
+  confirmPassword: string;
 }
 
 export class LoginDto {

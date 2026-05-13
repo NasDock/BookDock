@@ -26,7 +26,7 @@ export interface AuthState {
 export interface AuthContextValue extends AuthState {
   login: (username: string, password: string) => Promise<ApiResponse<{ token: string; user: User }>>;
   logout: () => Promise<void>;
-  register: (username: string, password: string, email?: string) => Promise<ApiResponse<{ token: string; user: User }>>;
+  register: (username: string, password: string, confirmPassword?: string) => Promise<ApiResponse<{ token: string; user: User }>>;
   updateToken: (token: string) => void;
   refreshUser: () => Promise<void>;
 }
@@ -169,12 +169,12 @@ export function AuthProvider({ children, apiBaseUrl, onAuthError }: AuthProvider
     }
   }, [onAuthError]);
 
-  const register = useCallback(async (username: string, password: string, email?: string) => {
+  const register = useCallback(async (username: string, password: string, confirmPassword?: string) => {
     setState(prev => ({ ...prev, isLoading: true }));
 
     try {
       const apiClient = getApiClient();
-      const response = await apiClient.register(username, password, email);
+      const response = await apiClient.register(username, password, confirmPassword || '');
 
       if (response.success && response.data) {
         const { token, user } = response.data;

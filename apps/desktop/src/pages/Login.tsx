@@ -47,7 +47,7 @@ interface SavedSourceConfig {
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login: authLogin } = useAuth();
+  const { login: authLogin, register: authRegister } = useAuth();
 
   // Form state
   const [isLogin, setIsLogin] = useState(true);
@@ -347,10 +347,6 @@ export default function Login() {
         );
       }
 
-      // Call API
-      const { getApiClient } = await import("@bookdock/api-client");
-      const apiClient = getApiClient();
-
       if (isLogin) {
         const res = await authLogin(username, password);
         if (res.success && res.data) {
@@ -359,7 +355,7 @@ export default function Login() {
           setError(res.error || "登录失败");
         }
       } else {
-        const res = await apiClient.register(username, password);
+        const res = await authRegister(username, password, confirmPassword);
         if (res.success && res.data) {
           navigate("/", { replace: true });
         } else {

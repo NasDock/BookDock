@@ -145,7 +145,6 @@ RUN mkdir -p /data/ebooks /data/audio /data/sources /data/db /app/uploads && \
 ENV NODE_ENV=production
 ENV PORT=8088
 ENV DATABASE_URL=file:/data/db/bookdock.db
-ENV TTS_API_URL=http://localhost:5000
 ENV NAS_EBOOK_PATH=/data/ebooks
 ENV NAS_AUDIO_PATH=/data/audio
 ENV SOURCE_LOCAL_PATH=/data/sources
@@ -179,7 +178,7 @@ stdout_logfile=/dev/stdout
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
-environment=NODE_ENV="production",PORT="8088",DATABASE_URL="file:/data/db/bookdock.db",TTS_API_URL="http://localhost:5000",NAS_EBOOK_PATH="/data/ebooks",NAS_AUDIO_PATH="/data/audio",SOURCE_LOCAL_PATH="/data/sources"
+environment=NODE_ENV="production",PORT="8088",DATABASE_URL="file:/data/db/bookdock.db",NAS_EBOOK_PATH="/data/ebooks",NAS_AUDIO_PATH="/data/audio",SOURCE_LOCAL_PATH="/data/sources"
 EOF
 
 # Health check for API

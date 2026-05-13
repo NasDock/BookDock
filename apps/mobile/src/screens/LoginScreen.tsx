@@ -285,7 +285,7 @@ export function LoginScreen() {
           setError(response.error || '登录失败');
         }
       } else {
-        const response = await apiClient.register(username.trim(), password);
+        const response = await apiClient.register(username.trim(), password, confirmPassword);
         if (response.success && response.data) {
           authStore.login(response.data.user, response.data.token);
           // @ts-ignore

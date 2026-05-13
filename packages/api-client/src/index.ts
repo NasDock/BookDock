@@ -126,8 +126,8 @@ class ApiClient {
     return data;
   }
 
-  async register(username: string, password: string, email?: string): Promise<ApiResponse<{ token: string; user: User }>> {
-    const { data } = await this.client.post('/auth/register', { username, password, email });
+  async register(username: string, password: string, confirmPassword: string): Promise<ApiResponse<{ token: string; user: User }>> {
+    const { data } = await this.client.post('/auth/register', { username, password, confirmPassword });
     return data;
   }
 

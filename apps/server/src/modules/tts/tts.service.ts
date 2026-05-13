@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { TtsJobStatus } from '../../common/types/prisma-compat';
-import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { PRISMA_CLIENT } from '../../config/database.module';
 import { CreateTtsJobDto, TtsJobQueryDto, TtsJobResponseDto, TtsVoiceDto, TtsAudioFileResponseDto } from './dto/tts.dto';
@@ -15,14 +14,11 @@ import { CreateTtsJobDto, TtsJobQueryDto, TtsJobResponseDto, TtsVoiceDto, TtsAud
 @Injectable()
 export class TtsService {
   private readonly logger = new Logger(TtsService.name);
-  private readonly ttsApiUrl: string;
+  private readonly ttsApiUrl = 'http://localhost:5000';
 
   constructor(
     @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
-    private readonly configService: ConfigService,
-  ) {
-    this.ttsApiUrl = this.configService.get<string>('app.ttsApiUrl') || 'http://localhost:5000';
-  }
+  ) {}
 
   async createJob(userId: string, dto: CreateTtsJobDto): Promise<TtsJobResponseDto> {
     const job = await this.prisma.ttsJob.create({
