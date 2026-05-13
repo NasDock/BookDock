@@ -18,6 +18,7 @@ Environment Variables:
 
 import os
 import io
+import wave
 import hashlib
 import logging
 from typing import Optional
@@ -26,7 +27,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import Response, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-import piper_tts
+import piper
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("tts_service")
@@ -51,16 +52,16 @@ app.add_middleware(
 )
 
 # ── Load Piper model at startup ───────────────────────────────────────────────
-_model = None
+_voice = None
 
 
 def load_model():
-    global _model
-    if _model is None:
+    global _voice
+    if _voice is None:
         logger.info(f"Loading Piper model from {VOICE_PATH}")
-        _model = piper_tts.PiperModel.load(VOICE_PATH)
+        _voice = piper.PiperVoice.load(VOICE_PATH)
         logger.info("Model loaded successfully")
-    return _model
+    return _voice
 
 
 @app.on_event("startup")
@@ -87,14 +88,23 @@ class VoiceInfo(BaseModel):
     description: str
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+def synthesize_to_bytes(text: str) -> bytes:
+    """Synthesize text to WAV bytes."""
+    wav_buffer = io.BytesIO()
+    with wave.open(wav_buffer, "wb") as wav_file:
+        _voice.synthesize_wav(text, wav_file)
+    return wav_buffer.getvalue()
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 @app.get("/health")
 async def health():
     """Health check endpoint."""
-    status = "ready" if _model is not None else "loading"
+    status = "ready" if _voice is not None else "loading"
     return {
         "status": status,
-        "model_loaded": _model is not None,
+        "model_loaded": _voice is not None,
         "voice_path": VOICE_PATH,
         "sample_rate": SAMPLE_RATE,
     }
@@ -103,7 +113,6 @@ async def health():
 @app.get("/voices")
 async def list_voices():
     """List available TTS voices."""
-    # This would be dynamic based on installed models
     voices = [
         VoiceInfo(
             name="en_US-lessac-medium",
@@ -137,7 +146,7 @@ async def synthesize(
 
     Returns audio in WAV format (16-bit PCM, mono).
     """
-    if _model is None:
+    if _voice is None:
         raise HTTPException(
             status_code=503,
             detail="TTS model not yet loaded. Try again shortly.",
@@ -146,14 +155,7 @@ async def synthesize(
     try:
         logger.info(f"Synthesizing {len(request.text)} chars with voice {request.voice}")
 
-        # Run synthesis
-        with io.BytesIO() as wav_io:
-            _model.synthesize(
-                request.text,
-                wav_io,
-                sample_rate=request.sample_rate,
-            )
-            audio_bytes = wav_io.getvalue()
+        audio_bytes = synthesize_to_bytes(request.text)
 
         # Compute content hash for caching
         content_hash = hashlib.sha256(audio_bytes).hexdigest()[:16]
@@ -185,7 +187,7 @@ async def synthesize_stream(request: SynthesizeRequest):
 
     Returns a streaming response as audio is generated.
     """
-    if _model is None:
+    if _voice is None:
         raise HTTPException(
             status_code=503,
             detail="TTS model not yet loaded",
@@ -193,14 +195,7 @@ async def synthesize_stream(request: SynthesizeRequest):
 
     def generate():
         try:
-            # Piper doesn't natively stream, but we chunk output
-            with io.BytesIO() as wav_io:
-                _model.synthesize(
-                    request.text,
-                    wav_io,
-                    sample_rate=request.sample_rate,
-                )
-                audio_bytes = wav_io.getvalue()
+            audio_bytes = synthesize_to_bytes(request.text)
             yield audio_bytes
         except Exception as e:
             logger.error(f"Streaming synthesis failed: {e}")
@@ -230,8 +225,6 @@ async def enqueue_job(request: TtsJobRequest, background_tasks: BackgroundTasks)
     Enqueue a TTS job for background processing.
     Used for pre-generating audio for entire books.
     """
-    # Future: push to Redis queue
-    # For now, process inline
     background_tasks.add_task(process_job, request)
     return JSONResponse({"job_id": request.job_id, "status": "queued"})
 
@@ -239,9 +232,7 @@ async def enqueue_job(request: TtsJobRequest, background_tasks: BackgroundTasks)
 async def process_job(job: TtsJobRequest):
     """Background job processor."""
     try:
-        with io.BytesIO() as wav_io:
-            _model.synthesize(job.text, wav_io, sample_rate=job.sample_rate)
-            audio_bytes = wav_io.getvalue()
+        audio_bytes = synthesize_to_bytes(job.text)
 
         # Save to output path
         os.makedirs(os.path.dirname(job.output_path), exist_ok=True)
