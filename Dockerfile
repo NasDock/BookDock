@@ -120,7 +120,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fastapi \
     uvicorn \
     pydantic \
-    aiofiles
+    aiofiles \
+    && npm install -g prisma
 
 # Copy voice model
 COPY --from=tts-model-builder /models /models
@@ -181,12 +182,23 @@ stderr_logfile_maxbytes=0
 environment=NODE_ENV="production",PORT="8088",DATABASE_URL="file:/data/db/bookdock.db",NAS_EBOOK_PATH="/data/ebooks",NAS_AUDIO_PATH="/data/audio",SOURCE_LOCAL_PATH="/data/sources"
 EOF
 
+# Create startup script that ensures DB tables exist before starting services
+RUN cat > /app/start.sh << 'EOF'
+#!/bin/sh
+# Ensure SQLite database tables are initialized
+prisma db push --schema=/app/prisma/schema.prisma --accept-data-loss
+
+# Start supervisord to manage API + TTS
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/bookdock.conf
+EOF
+RUN chmod +x /app/start.sh
+
 # Health check for API
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD wget -q --spider http://localhost:8088/api/health || exit 1
 
 EXPOSE 8088
 
-# Use tini as init, then supervisord to manage both processes
+# Use tini as init, then our startup script
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/bookdock.conf"]
+CMD ["/app/start.sh"]
