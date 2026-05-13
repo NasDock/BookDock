@@ -46,7 +46,7 @@ services:
           "wget",
           "-q",
           "--spider",
-          "http://localhost:8088/health",
+          "http://localhost:8088/api/health",
           "-o",
           "/dev/null",
         ]

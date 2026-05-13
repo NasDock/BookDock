@@ -68,19 +68,25 @@ RUN pnpm --filter @bookdock/server exec nest build
 # Deploy server to a standalone directory (resolves workspace symlinks)
 RUN pnpm deploy --filter=@bookdock/server --prod --legacy /app/server-deploy
 
+# Fix: pnpm deploy doesn't copy hidden .prisma directory
+RUN SOURCE_PRISMA=$(find /app/node_modules/.pnpm -path '*/@prisma+client@*/node_modules/.prisma' -type d | head -1) && \
+    TARGET_PRISMA=$(find /app/server-deploy/node_modules/.pnpm -path '*/@prisma+client@*/node_modules' -type d | head -1) && \
+    if [ -n "$SOURCE_PRISMA" ] && [ -n "$TARGET_PRISMA" ]; then \
+      cp -r "$SOURCE_PRISMA" "$TARGET_PRISMA/"; \
+    fi
 
 # ── Stage 4: TTS Model Downloader ────────────────────────────────────────────
 FROM python:${PYTHON_VERSION}-slim AS tts-model-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 
-# Download default voice model
-ENV PIPER_MODEL_URL="https://github.com/rhasspy/piper/releases/download/2023.11.14/en_US-lessac-medium.onnx"
-ENV PIPER_MODEL_JSON_URL="https://github.com/rhasspy/piper/releases/download/2023.11.14/en_US-lessac-medium.onnx.json"
+# Download default voice model (HuggingFace - GitHub release 404)
+ENV PIPER_MODEL_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx"
+ENV PIPER_MODEL_JSON_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json"
 
 RUN mkdir -p /models && \
-    curl -L -o /models/voice.onnx "$PIPER_MODEL_URL" && \
-    curl -L -o /models/voice.onnx.json "$PIPER_MODEL_JSON_URL"
+    curl -L --fail -o /models/voice.onnx "$PIPER_MODEL_URL" && \
+    curl -L --fail -o /models/voice.onnx.json "$PIPER_MODEL_JSON_URL"
 
 
 # ── Stage 5: Production Runner ───────────────────────────────────────────────
@@ -175,7 +181,7 @@ EOF
 
 # Health check for API
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD wget -q --spider http://localhost:8088/health || exit 1
+    CMD wget -q --spider http://localhost:8088/api/health || exit 1
 
 EXPOSE 8088
 
