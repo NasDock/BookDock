@@ -62,6 +62,9 @@ COPY tsconfig.json ./
 # Generate Prisma client before building
 RUN pnpm --filter @bookdock/server exec prisma generate
 
+# Build workspace packages that require compilation
+RUN pnpm --filter @bookdock/ftp --filter @bookdock/smb --filter @bookdock/webdav build
+
 # Build NestJS server
 RUN pnpm --filter @bookdock/server exec nest build
 
