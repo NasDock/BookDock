@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@bookdock/ui';
-import { plusCreateVipPayment, plusGetVipStatus } from '../services/plus';
+import { plusCreateVipPayment, plusGetVipStatus, plusGetCurrentLowestPrice, plusGetMyCoupons, plusVerifyCoupon } from '../services/plus';
 import { Crown, Sparkles, BookOpen, Headphones, Star, Ban, MessageCircle, ClipboardList, ArrowLeft, Check, Volume2, ShieldCheck, BookMarked } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8088/api';
@@ -23,10 +23,25 @@ export default function MemberBenefits() {
   const [creatingOrder, setCreatingOrder] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [vipUser, setVipUser] = useState<any>(null);
+  const [lowestPrice, setLowestPrice] = useState<{ annual?: number; lifetime?: number }>({});
+  const [coupons, setCoupons] = useState<any[]>([]);
+  const [couponCode, setCouponCode] = useState('');
+  const [couponDiscount, setCouponDiscount] = useState<number>(0);
 
   // Check if already VIP
   useEffect(() => {
-    const stored = localStorage.getItem('bookdock_vip_user');
+    const loadPrice = async () => {
+      try {
+        const priceRes = await plusGetCurrentLowestPrice();
+        if (priceRes.code === 0 && priceRes.data) {
+          setLowestPrice({
+            annual: priceRes.data.annual ?? priceRes.data.annualPrice,
+            lifetime: priceRes.data.lifetime ?? priceRes.data.lifetimePrice,
+          });
+        }
+      } catch {}
+    };
+    const stored = localStorage.getItem('bookdock_plus_user');
     if (stored) {
       const user = JSON.parse(stored);
       setVipUser(user);
@@ -34,6 +49,11 @@ export default function MemberBenefits() {
         navigate('/member-detail');
       }
     }
+
+    loadPrice();
+    plusGetMyCoupons().then((res) => {
+      if (res.code === 0 && Array.isArray(res.data)) setCoupons(res.data);
+    }).catch(() => {});
 
     // Fetch products
     fetch(`${API_BASE}/vip/products`)
@@ -66,7 +86,7 @@ export default function MemberBenefits() {
 
   // Create order and simulate payment
   const handleBuy = useCallback(async (productId: string) => {
-    const token = localStorage.getItem('bookdock_vip_token');
+    const token = localStorage.getItem('bookdock_plus_token');
     if (!token) {
       navigate('/member-login');
       return;
@@ -83,9 +103,10 @@ export default function MemberBenefits() {
         return;
       }
       const method = productId === 'lifetime' ? 'ALIPAY' : 'WECHAT';
-      const amount = productId === 'lifetime' ? 60 : 20;
+      const rawAmount = productId === 'lifetime' ? (lowestPrice.lifetime ?? 60) : (lowestPrice.annual ?? 20);
+      const amount = Number((rawAmount * (100 - couponDiscount) / 100).toFixed(2));
       const vipTier = productId === 'lifetime' ? 'LIFETIME' : 'BASIC';
-      const data = await plusCreateVipPayment({ userId, amount, method, forVip: true, forPoints: false, vipTier, clientType: 'desktop' });
+      const data = await plusCreateVipPayment({ userId, amount, method, forVip: true, forPoints: false, vipTier, clientType: 'desktop', couponCode: couponCode || undefined });
       if (data.code !== 0) {
         setError(data.message || '创建订单失败');
         return;
@@ -93,7 +114,7 @@ export default function MemberBenefits() {
       const statusRes = await plusGetVipStatus(userId);
       const vipStatus = statusRes.data;
       const updatedUser = { ...vipUser, level: vipTier === 'LIFETIME' ? 'lifetime' : 'year', isVip: vipStatus?.isVip ?? true, expiredAt: vipStatus?.expiresAt ?? null };
-      localStorage.setItem('bookdock_vip_user', JSON.stringify(updatedUser));
+      localStorage.setItem('bookdock_plus_user', JSON.stringify(updatedUser));
       setVipUser(updatedUser);
       navigate('/member-payment-success');
     } catch {
@@ -138,8 +159,27 @@ export default function MemberBenefits() {
         </div>
 
         {/* Products */}
+        <Card className="mb-6">
+          <CardContent>
+            <h3 className="font-semibold mb-2">优惠券</h3>
+            <div className="flex gap-2 mb-3">
+              <input value={couponCode} onChange={(e) => setCouponCode(e.target.value.trim())} placeholder="输入优惠码" className="flex-1 px-3 py-2 rounded-lg border" />
+              <Button onClick={async () => {
+                if (!vipUser?.id || !couponCode) return;
+                const res = await plusVerifyCoupon(couponCode, vipUser.id);
+                if (res.code === 0 && res.data?.valid) setCouponDiscount(res.data.discountPercent || 0);
+                else setError(res.message || '优惠券不可用');
+              }}>使用</Button>
+            </div>
+            {couponDiscount > 0 && <p className="text-sm text-green-600">已应用优惠：{couponDiscount}% OFF</p>}
+            {coupons.length > 0 && <p className="text-xs text-gray-500 mt-2">可用优惠券：{coupons.map((c) => `${c.code}(${c.discountPercent}%)`).join('，')}</p>}
+          </CardContent>
+        </Card>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          {products.map((product) => (
+          {products.map((product) => {
+            const displayPrice = product.id === 'lifetime' ? (lowestPrice.lifetime ?? product.price) : (lowestPrice.annual ?? product.price);
+            return (
             <Card key={product.id} className="relative overflow-hidden">
               {product.id === 'lifetime' && (
                 <div className="absolute top-3 right-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white text-xs font-bold px-3 py-1 rounded-full">
@@ -149,7 +189,7 @@ export default function MemberBenefits() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-2xl">{product.name}</CardTitle>
-                  <span className="text-3xl font-bold text-amber-500">¥{product.price}</span>
+                  <span className="text-3xl font-bold text-amber-500">¥{displayPrice}</span>
                 </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{product.description}</p>
               </CardHeader>
@@ -191,7 +231,7 @@ export default function MemberBenefits() {
                 )}
               </CardContent>
             </Card>
-          ))}
+          )})}
         </div>
 
         {/* Purchase Notice */}

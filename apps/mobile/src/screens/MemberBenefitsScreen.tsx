@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
   ActivityIndicator, Alert, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { plusCreateVipPayment, plusGetVipStatus } from '../services/plus';
+import { plusCreateVipPayment, plusGetVipStatus, plusGetCurrentLowestPrice, plusGetMyCoupons, plusVerifyCoupon } from '../services/plus';
 
 const API_BASE = 'http://10.79.233.188:3000/api';
 
@@ -21,6 +21,10 @@ export function MemberBenefitsScreen({ navigation }: any) {
   const [products, setProducts] = useState<VipProduct[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [vipUser, setVipUser] = useState<any>(null);
+  const [lowestPrice, setLowestPrice] = useState<{ annual?: number; lifetime?: number }>({});
+  const [coupons, setCoupons] = useState<any[]>([]);
+  const [couponCode, setCouponCode] = useState('');
+  const [couponDiscount, setCouponDiscount] = useState(0);
 
   useEffect(() => {
     loadData();
@@ -28,12 +32,25 @@ export function MemberBenefitsScreen({ navigation }: any) {
 
   const loadData = async () => {
     try {
-      const stored = await AsyncStorage.getItem('bookdock_vip_user');
+      const stored = await AsyncStorage.getItem('bookdock_plus_user');
       if (stored) {
         const user = JSON.parse(stored);
         setVipUser(user);
         if (user.isVip) navigation.replace('MemberDetail');
       }
+    } catch {}
+    try {
+      const priceRes = await plusGetCurrentLowestPrice();
+      if (priceRes.code === 0 && priceRes.data) {
+        setLowestPrice({
+          annual: priceRes.data.annual ?? priceRes.data.annualPrice,
+          lifetime: priceRes.data.lifetime ?? priceRes.data.lifetimePrice,
+        });
+      }
+    } catch {}
+    try {
+      const couponRes = await plusGetMyCoupons();
+      if (couponRes.code === 0 && Array.isArray(couponRes.data)) setCoupons(couponRes.data);
     } catch {}
     try {
       const res = await fetch(`${API_BASE}/vip/products`);
@@ -48,7 +65,7 @@ export function MemberBenefitsScreen({ navigation }: any) {
   };
 
   const handleBuy = async (productId: string) => {
-    const token = await AsyncStorage.getItem('bookdock_vip_token');
+    const token = await AsyncStorage.getItem('bookdock_plus_token');
     if (!token) { navigation.replace('MemberLogin'); return; }
     setIsLoading(true);
     try {
@@ -59,9 +76,10 @@ export function MemberBenefitsScreen({ navigation }: any) {
         return;
       }
       const method = productId === 'lifetime' ? 'ALIPAY' : 'WECHAT';
-      const amount = productId === 'lifetime' ? 60 : 20;
+      const rawAmount = productId === 'lifetime' ? (lowestPrice.lifetime ?? 60) : (lowestPrice.annual ?? 20);
+      const amount = Number((rawAmount * (100 - couponDiscount) / 100).toFixed(2));
       const vipTier = productId === 'lifetime' ? 'LIFETIME' : 'BASIC';
-      const data = await plusCreateVipPayment({ userId, amount, method, forVip: true, forPoints: false, vipTier, clientType: 'app' });
+      const data = await plusCreateVipPayment({ userId, amount, method, forVip: true, forPoints: false, vipTier, clientType: 'app', couponCode: couponCode || undefined });
       if (data.code !== 0) {
         Alert.alert('错误', data.message || '创建订单失败');
         return;
@@ -69,7 +87,7 @@ export function MemberBenefitsScreen({ navigation }: any) {
       const statusRes = await plusGetVipStatus(userId);
       const vipStatus = statusRes.data;
       const updatedUser = { ...vipUser, level: vipTier === 'LIFETIME' ? 'lifetime' : 'year', isVip: vipStatus?.isVip ?? true, expiredAt: vipStatus?.expiresAt ?? null };
-      await AsyncStorage.setItem('bookdock_vip_user', JSON.stringify(updatedUser));
+      await AsyncStorage.setItem('bookdock_plus_user', JSON.stringify(updatedUser));
       setVipUser(updatedUser);
       navigation.replace('MemberPaymentSuccess');
     } catch {
@@ -102,8 +120,27 @@ export function MemberBenefitsScreen({ navigation }: any) {
           </View>
         </View>
 
+        <View style={[styles.noticeCard, { backgroundColor: theme.colors.surface }]}>
+          <Text style={[styles.noticeTitle, { color: theme.colors.text }]}>🎟 优惠券</Text>
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <TextInput value={couponCode} onChangeText={setCouponCode} placeholder="输入优惠码" style={[styles.couponInput, { borderColor: theme.colors.border, color: theme.colors.text }]} />
+            <TouchableOpacity style={[styles.wechatBtn, { backgroundColor: '#f59e0b', flex: 0 }]} onPress={async () => {
+              if (!vipUser?.id || !couponCode) return;
+              const res = await plusVerifyCoupon(couponCode, vipUser.id);
+              if (res.code === 0 && res.data?.valid) setCouponDiscount(res.data.discountPercent || 0);
+              else Alert.alert('提示', res.message || '优惠券不可用');
+            }}>
+              <Text style={styles.btnText}>使用</Text>
+            </TouchableOpacity>
+          </View>
+          {couponDiscount > 0 && <Text style={{ color: '#16a34a', marginTop: 8 }}>已优惠 {couponDiscount}%</Text>}
+          {coupons.length > 0 && <Text style={[styles.noticeItem, { color: theme.colors.textSecondary }]}>可用：{coupons.map((c) => `${c.code}(${c.discountPercent}%)`).join('，')}</Text>}
+        </View>
+
         {/* Products */}
-        {products.map((product) => (
+        {products.map((product) => {
+          const displayPrice = product.id === 'lifetime' ? (lowestPrice.lifetime ?? product.price) : (lowestPrice.annual ?? product.price);
+          return (
           <View key={product.id} style={[styles.productCard, { backgroundColor: theme.colors.surface }]}>
             {product.id === 'lifetime' && (
               <View style={styles.recommendedBadge}>
@@ -112,7 +149,7 @@ export function MemberBenefitsScreen({ navigation }: any) {
             )}
             <View style={styles.productHeader}>
               <Text style={[styles.productName, { color: theme.colors.text }]}>{product.name}</Text>
-              <Text style={styles.productPrice}>¥{product.price}</Text>
+              <Text style={styles.productPrice}>¥{displayPrice}</Text>
             </View>
             <Text style={[styles.productDesc, { color: theme.colors.textSecondary }]}>{product.description}</Text>
             <View style={styles.featureList}>
@@ -137,7 +174,7 @@ export function MemberBenefitsScreen({ navigation }: any) {
               </View>
             )}
           </View>
-        ))}
+        )})}
 
         {/* Notice */}
         <View style={[styles.noticeCard, { backgroundColor: theme.colors.surface }]}>
@@ -192,5 +229,6 @@ const styles = StyleSheet.create({
   noticeCard: { borderRadius: borderRadius.xl, padding: spacing.lg, marginBottom: spacing.lg },
   noticeTitle: { fontWeight: '600', fontSize: fontSizes.md, marginBottom: spacing.sm },
   noticeItem: { fontSize: fontSizes.sm, marginBottom: 4 },
+  couponInput: { flex: 1, borderWidth: 1, borderRadius: borderRadius.lg, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
   actionLink: { textAlign: 'center', fontWeight: '600', fontSize: fontSizes.md },
 });

@@ -24,7 +24,7 @@ export function MemberPaymentSuccessScreen({ navigation }: any) {
 
   const loadUser = async () => {
     try {
-      const stored = await AsyncStorage.getItem('bookdock_vip_user');
+      const stored = await AsyncStorage.getItem('bookdock_plus_user');
       if (stored) setVipUser(JSON.parse(stored));
     } catch {}
   };

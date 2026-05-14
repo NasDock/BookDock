@@ -9,7 +9,7 @@ export default function MemberPaymentSuccess() {
   const [vipUser, setVipUser] = useState<any>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem('bookdock_vip_user');
+    const stored = localStorage.getItem('bookdock_plus_user');
     if (stored) {
       const user = JSON.parse(stored);
       setVipUser(user);

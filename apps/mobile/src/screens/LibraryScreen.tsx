@@ -72,8 +72,8 @@ export function LibraryScreen() {
   }, [navigation]);
 
   const handleTTSPress = useCallback(async (book: Book) => {
-    const token = await AsyncStorage.getItem('bookdock_vip_token');
-    const stored = await AsyncStorage.getItem('bookdock_vip_user');
+    const token = await AsyncStorage.getItem('bookdock_plus_token');
+    const stored = await AsyncStorage.getItem('bookdock_plus_user');
     if (!token || !stored) {
       navigation.navigate('MemberLogin');
       return;
@@ -93,7 +93,7 @@ export function LibraryScreen() {
         return;
       }
 
-      await AsyncStorage.setItem('bookdock_vip_user', JSON.stringify({
+      await AsyncStorage.setItem('bookdock_plus_user', JSON.stringify({
         ...vipUser,
         isVip: statusRes.data.isVip,
         level: statusRes.data.tier === 'LIFETIME' ? 'lifetime' : 'year',

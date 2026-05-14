@@ -34,6 +34,7 @@ export interface CreatePaymentDto {
   forPoints: boolean;
   vipTier?: "BASIC" | "PREMIUM" | "LIFETIME";
   clientType?: "app" | "web" | "desktop";
+  couponCode?: string;
 }
 
 export interface CreatePaymentResult {
@@ -171,6 +172,28 @@ export const plusCreateVipPayment = async (data: CreatePaymentDto) => {
   return plusFetch<CreatePaymentResult>("/payment/create", {
     method: "POST",
     body: JSON.stringify(data),
+  });
+};
+
+export const plusGetCurrentLowestPrice = async () => {
+  return plusFetch<{ annual?: number; lifetime?: number; annualPrice?: number; lifetimePrice?: number }>("/vip/current-lowest-price");
+};
+
+export interface PlusCoupon {
+  id: string;
+  code: string;
+  discountPercent: number;
+  expiresAt?: string;
+}
+
+export const plusGetMyCoupons = async () => {
+  return plusFetch<PlusCoupon[]>("/coupons/mine");
+};
+
+export const plusVerifyCoupon = async (code: string, userId: string) => {
+  return plusFetch<{ valid: boolean; discountPercent?: number; message?: string }>("/coupons/verify", {
+    method: "POST",
+    body: JSON.stringify({ code, userId }),
   });
 };
 
