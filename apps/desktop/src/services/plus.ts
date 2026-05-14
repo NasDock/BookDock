@@ -35,6 +35,23 @@ export interface PlusUser {
   createdAt: string;
 }
 
+
+export interface CreatePaymentDto {
+  userId: string;
+  amount: number;
+  method: "WECHAT" | "ALIPAY" | "STRIPE" | "PAYPAL" | "OTHER";
+  forVip: boolean;
+  forPoints: boolean;
+  vipTier?: "BASIC" | "PREMIUM" | "LIFETIME";
+  clientType?: "app" | "web" | "desktop";
+}
+
+export interface CreatePaymentResult {
+  orderId?: string;
+  paymentUrl?: string;
+  method?: string;
+  status?: string;
+}
 export interface ScanLoginSourceConfig {
   id: string;
   internal: string;
@@ -156,6 +173,13 @@ export const plusGetMe = async (userId: string) => {
 
 export const plusGetVipStatus = async (userId: string) => {
   return plusFetch<{ isVip: boolean; tier: string; expiresAt: string | null }>(`/vip/status?userId=${encodeURIComponent(userId)}`);
+};
+
+export const plusCreateVipPayment = async (data: CreatePaymentDto) => {
+  return plusFetch<CreatePaymentResult>("/payment/create", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 };
 
 // --- Scan Login APIs ---

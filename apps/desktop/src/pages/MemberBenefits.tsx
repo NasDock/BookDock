@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@bookdock/ui';
+import { plusCreateVipPayment, plusGetVipStatus } from '../services/plus';
 import { Crown, Sparkles, BookOpen, Headphones, Star, Ban, MessageCircle, ClipboardList, ArrowLeft, Check, Volume2, ShieldCheck, BookMarked } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8088/api';
@@ -75,41 +76,26 @@ export default function MemberBenefits() {
     setError(null);
 
     try {
-      const res = await fetch(`${API_BASE}/vip/create-order`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ productId, method: 'simulated' }),
-      });
-      const data = await res.json();
-
-      if (data.orderId) {
-        // Simulate payment callback (direct success)
-        await fetch(`${API_BASE}/vip/callback`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId: data.orderId,
-            tradeNo: `SIM_${Date.now()}`,
-            method: 'simulated',
-          }),
-        });
-
-        // Update stored user
-        const updatedUser = {
-          ...vipUser,
-          level: productId,
-          isVip: true,
-          expiredAt: productId === 'year' ? new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString() : null,
-        };
-        localStorage.setItem('bookdock_vip_user', JSON.stringify(updatedUser));
-
-        navigate('/member-payment-success');
-      } else {
-        setError(data.message || '创建订单失败');
+      const userId = vipUser?.id;
+      if (!userId) {
+        setError('请先登录会员账户');
+        navigate('/member-login');
+        return;
       }
+      const method = productId === 'lifetime' ? 'ALIPAY' : 'WECHAT';
+      const amount = productId === 'lifetime' ? 60 : 20;
+      const vipTier = productId === 'lifetime' ? 'LIFETIME' : 'BASIC';
+      const data = await plusCreateVipPayment({ userId, amount, method, forVip: true, forPoints: false, vipTier, clientType: 'desktop' });
+      if (data.code !== 0) {
+        setError(data.message || '创建订单失败');
+        return;
+      }
+      const statusRes = await plusGetVipStatus(userId);
+      const vipStatus = statusRes.data;
+      const updatedUser = { ...vipUser, level: vipTier === 'LIFETIME' ? 'lifetime' : 'year', isVip: vipStatus?.isVip ?? true, expiredAt: vipStatus?.expiresAt ?? null };
+      localStorage.setItem('bookdock_vip_user', JSON.stringify(updatedUser));
+      setVipUser(updatedUser);
+      navigate('/member-payment-success');
     } catch {
       setError('网络错误，请重试');
     } finally {
