@@ -151,20 +151,18 @@ export class BooksService {
     let added = 0;
 
     try {
-      const entries = await readdir(this.nasEbookPath);
-      for (const entry of entries) {
-        const ext = entry.split('.').pop()?.toLowerCase() || '';
-        if (!ebookExts.includes(ext)) continue;
-
-        const filePath = entry;
+      const entries = await this.collectEbookFilesRecursively(this.nasEbookPath, ebookExts);
+      for (const filePath of entries) {
+        const ext = filePath.split('.').pop()?.toLowerCase() || '';
         const existing = await this.prisma.book.findFirst({
           where: { filePath, isDeleted: false },
         });
         if (existing) continue;
 
-        const fullPath = join(this.nasEbookPath, entry);
+        const fullPath = join(this.nasEbookPath, filePath);
         const fileStat = await stat(fullPath);
-        const title = entry.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+        const fileName = filePath.split(/[\\/]/).pop() || filePath;
+        const title = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
 
         await this.prisma.book.create({
           data: {
@@ -183,6 +181,30 @@ export class BooksService {
       // ignore scan errors
     }
     return added;
+  }
+
+  private async collectEbookFilesRecursively(basePath: string, ebookExts: string[], relativePath = ''): Promise<string[]> {
+    const currentPath = relativePath ? join(basePath, relativePath) : basePath;
+    const entries = await readdir(currentPath, { withFileTypes: true });
+    const files: string[] = [];
+
+    for (const entry of entries) {
+      const nextRelativePath = relativePath ? join(relativePath, entry.name) : entry.name;
+      if (entry.isDirectory()) {
+        const nestedFiles = await this.collectEbookFilesRecursively(basePath, ebookExts, nextRelativePath);
+        files.push(...nestedFiles);
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+
+      const ext = entry.name.split('.').pop()?.toLowerCase() || '';
+      if (ebookExts.includes(ext)) {
+        files.push(nextRelativePath);
+      }
+    }
+
+    return files;
   }
 
 
