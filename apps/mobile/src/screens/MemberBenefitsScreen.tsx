@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { plusCreateVipPayment, plusGetVipStatus } from '../services/plus';
 
 const API_BASE = 'http://10.79.233.188:3000/api';
 
@@ -51,24 +52,26 @@ export function MemberBenefitsScreen({ navigation }: any) {
     if (!token) { navigation.replace('MemberLogin'); return; }
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/vip/create-order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ productId, method: 'simulated' }),
-      });
-      const data = await res.json();
-      if (data.orderId) {
-        await fetch(`${API_BASE}/vip/callback`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId: data.orderId, tradeNo: `SIM_${Date.now()}`, method: 'simulated' }),
-        });
-        const updatedUser = { ...vipUser, level: productId, isVip: true, expiredAt: productId === 'year' ? new Date(Date.now() + 365 * 24 * 3600 * 1000).toISOString() : null };
-        await AsyncStorage.setItem('bookdock_vip_user', JSON.stringify(updatedUser));
-        navigation.replace('MemberPaymentSuccess');
-      } else {
-        Alert.alert('错误', data.message || '创建订单失败');
+      const userId = vipUser?.id;
+      if (!userId) {
+        Alert.alert('错误', '请先登录会员账户');
+        navigation.replace('MemberLogin');
+        return;
       }
+      const method = productId === 'lifetime' ? 'ALIPAY' : 'WECHAT';
+      const amount = productId === 'lifetime' ? 60 : 20;
+      const vipTier = productId === 'lifetime' ? 'LIFETIME' : 'BASIC';
+      const data = await plusCreateVipPayment({ userId, amount, method, forVip: true, forPoints: false, vipTier, clientType: 'app' });
+      if (data.code !== 0) {
+        Alert.alert('错误', data.message || '创建订单失败');
+        return;
+      }
+      const statusRes = await plusGetVipStatus(userId);
+      const vipStatus = statusRes.data;
+      const updatedUser = { ...vipUser, level: vipTier === 'LIFETIME' ? 'lifetime' : 'year', isVip: vipStatus?.isVip ?? true, expiredAt: vipStatus?.expiresAt ?? null };
+      await AsyncStorage.setItem('bookdock_vip_user', JSON.stringify(updatedUser));
+      setVipUser(updatedUser);
+      navigation.replace('MemberPaymentSuccess');
     } catch {
       Alert.alert('错误', '网络错误，请重试');
     } finally {
