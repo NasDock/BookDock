@@ -8,7 +8,7 @@ export default function MemberDetail() {
   const [vipUser, setVipUser] = useState<any>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem('bookdock_vip_user');
+    const stored = localStorage.getItem('bookdock_plus_user');
     if (!stored) {
       navigate('/member-login');
       return;
@@ -22,8 +22,8 @@ export default function MemberDetail() {
   }, [navigate]);
 
   const handleLogout = () => {
-    localStorage.removeItem('bookdock_vip_token');
-    localStorage.removeItem('bookdock_vip_user');
+    localStorage.removeItem('bookdock_plus_token');
+    localStorage.removeItem('bookdock_plus_user');
     navigate('/member-login');
   };
 

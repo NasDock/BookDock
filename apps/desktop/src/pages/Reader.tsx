@@ -949,8 +949,8 @@ export default function Reader() {
   };
 
   const handleNavigateTts = useCallback(async () => {
-    const token = localStorage.getItem('bookdock_vip_token');
-    const stored = localStorage.getItem('bookdock_vip_user');
+    const token = localStorage.getItem('bookdock_plus_token');
+    const stored = localStorage.getItem('bookdock_plus_user');
     if (!token || !stored) {
       navigate('/member-login');
       return;
@@ -970,7 +970,7 @@ export default function Reader() {
         return;
       }
 
-      localStorage.setItem('bookdock_vip_user', JSON.stringify({
+      localStorage.setItem('bookdock_plus_user', JSON.stringify({
         ...vipUser,
         isVip: statusRes.data.isVip,
         level: statusRes.data.tier === 'LIFETIME' ? 'lifetime' : 'year',

@@ -16,7 +16,7 @@ export function MemberDetailScreen({ navigation }: any) {
 
   const loadUser = async () => {
     try {
-      const stored = await AsyncStorage.getItem('bookdock_vip_user');
+      const stored = await AsyncStorage.getItem('bookdock_plus_user');
       if (!stored) { navigation.replace('MemberLogin'); return; }
       const user = JSON.parse(stored);
       if (!user.isVip) { navigation.replace('MemberBenefits'); return; }
@@ -27,8 +27,8 @@ export function MemberDetailScreen({ navigation }: any) {
   };
 
   const handleLogout = async () => {
-    await AsyncStorage.removeItem('bookdock_vip_token');
-    await AsyncStorage.removeItem('bookdock_vip_user');
+    await AsyncStorage.removeItem('bookdock_plus_token');
+    await AsyncStorage.removeItem('bookdock_plus_user');
     navigation.replace('MemberLogin');
   };
 
