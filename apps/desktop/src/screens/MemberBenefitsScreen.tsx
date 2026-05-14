@@ -1,61 +1,148 @@
-import React, { useState, useEffect } from 'react';
-import { plusCreateVipPayment, plusGetVipStatus } from '../services/plus';
-import { Crown, Sparkles, BookOpen, Headphones, Star, Ban, MessageCircle, Gift, Check } from 'lucide-react';
-
-const API_BASE = 'http://localhost:8088/api';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+import { plusCreateVipPayment, plusGetMe, plusGetCurrentLowestPrice, plusQueryPaymentStatus, plusCancelOrder } from '../services/plus';
+import { useAuthStore } from '../stores/authStore';
+import { Crown, Sparkles, BookOpen, Headphones, Star, Ban, MessageCircle, Gift, Check, Loader2, X } from 'lucide-react';
 
 interface VipProduct {
   id: string; name: string; description: string; price: number; badge: string; features: string[];
 }
 
+const STATIC_PRODUCTS: VipProduct[] = [
+  { id: 'year', name: '年卡', description: '1年会员特权', price: 20, badge: '1年', features: ['无限书籍阅读', '优先客服支持', '新功能抢先体验', '去除广告'] },
+  { id: 'lifetime', name: '永久卡', description: '一次购买，永久有效', price: 60, badge: '永久', features: ['永久会员特权', '无限书籍阅读', '优先客服支持', '新功能抢先体验', '去除广告'] },
+];
+
+interface PaymentOverlay {
+  productId: string;
+  method: 'WECHAT' | 'ALIPAY';
+  result: { orderId: string; qrCode: string; paymentUrl: string; finalAmount: number } | null;
+}
+
 export function MemberBenefitsScreen() {
-  const [products, setProducts] = useState<VipProduct[]>([]);
+  const [products, setProducts] = useState<VipProduct[]>(STATIC_PRODUCTS);
   const [isLoading, setIsLoading] = useState(false);
-  const [vipUser, setVipUser] = useState<any>(null);
+  const { plusUser: vipUser, setPlusUser, refreshVipStatus } = useAuthStore();
+
+  // Payment overlay state
+  const [paymentOverlay, setPaymentOverlay] = useState<PaymentOverlay | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem('bookdock_vip_user');
-    if (stored) {
-      const user = JSON.parse(stored);
-      setVipUser(user);
-      if (user.isVip) {
-        window.location.hash = '#/member-detail';
-      }
-    }
-    fetch(`${API_BASE}/vip/products`)
-      .then(r => r.json())
-      .then(data => Array.isArray(data) ? setProducts(data) : null)
-      .catch(() => {
-        setProducts([
-          { id: 'year', name: '年卡', description: '1年会员特权', price: 20, badge: '1年', features: ['无限书籍阅读', '优先客服支持', '新功能抢先体验', '去除广告'] },
-          { id: 'lifetime', name: '永久卡', description: '一次购买，永久有效', price: 60, badge: '永久', features: ['永久会员特权', '无限书籍阅读', '优先客服支持', '新功能抢先体验', '去除广告'] },
-        ]);
-      });
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, []);
 
-  const handleBuy = async (productId: string) => {
-    const token = localStorage.getItem('bookdock_vip_token');
+  useEffect(() => {
+    refreshVipStatus().then((vip) => {
+      if (vip) {
+        window.location.hash = '#/member-detail';
+      }
+    });
+    plusGetCurrentLowestPrice()
+      .then((res) => {
+        if (res.code === 0 && res.data) {
+          const annualRaw = res.data.annual ?? res.data.annualPrice;
+          const lifetimeRaw = res.data.lifetime ?? res.data.lifetimePrice;
+          const annual = typeof annualRaw === 'object' && annualRaw !== null ? annualRaw.currentPrice : annualRaw;
+          const lifetime = typeof lifetimeRaw === 'object' && lifetimeRaw !== null ? lifetimeRaw.currentPrice : lifetimeRaw;
+          setProducts((prev) =>
+            prev.map((p) =>
+              p.id === 'year' && annual !== undefined
+                ? { ...p, price: Number(annual) }
+                : p.id === 'lifetime' && lifetime !== undefined
+                  ? { ...p, price: Number(lifetime) }
+                  : p
+            )
+          );
+        }
+      })
+      .catch(() => {});
+  }, [refreshVipStatus]);
+
+  const startPolling = useCallback((orderId: string, userId: string, tier: string) => {
+    let attempts = 0;
+    const maxAttempts = 60;
+    const timer = setInterval(async () => {
+      attempts++;
+      if (attempts > maxAttempts) {
+        clearInterval(timer);
+        alert('支付超时，请刷新页面重试');
+        setIsPolling(false);
+        return;
+      }
+      try {
+        const res = await plusQueryPaymentStatus(orderId);
+        if (res.code === 0 && res.data) {
+          const status = res.data.status;
+          if (status === 'paid') {
+            clearInterval(timer);
+            setIsPolling(false);
+            const meRes = await plusGetMe(userId);
+            const me = meRes.data;
+            const currentTier = me?.vipTier;
+            const isVipNow = currentTier === 'BASIC' || currentTier === 'LIFETIME';
+            const updatedUser = { ...vipUser, level: currentTier === 'LIFETIME' ? 'lifetime' : currentTier === 'BASIC' ? 'year' : 'free', isVip: isVipNow, expiredAt: me?.vipExpiresAt ?? null };
+            localStorage.setItem('bookdock_plus_user', JSON.stringify(updatedUser));
+            setPlusUser(updatedUser);
+            setPaymentOverlay(null);
+            window.location.hash = '#/member-payment-success';
+            window.location.reload();
+          } else if (status === 'failed' || status === 'cancelled') {
+            clearInterval(timer);
+            setIsPolling(false);
+            alert('支付失败或已取消');
+          }
+        }
+      } catch {
+        // continue polling
+      }
+    }, 3000);
+    pollRef.current = timer;
+    setIsPolling(true);
+  }, [vipUser]);
+
+  const handleBuy = async (productId: string, method: 'WECHAT' | 'ALIPAY') => {
+    const token = localStorage.getItem('bookdock_plus_token');
     if (!token) { window.location.hash = '#/member-login'; return; }
     setIsLoading(true);
     try {
-      const userId = vipUser?.id;
-      if (!userId) { window.location.hash = '#/member-login'; return; }
-      const method = productId === 'lifetime' ? 'ALIPAY' : 'WECHAT';
+      const userId = vipUser?.id || (() => {
+        const idStr = localStorage.getItem('bookdock_plus_user_id');
+        return idStr ? JSON.parse(idStr) : null;
+      })();
+      if (!userId) { alert('请先登录会员账户'); window.location.hash = '#/member-login'; return; }
       const amount = productId === 'lifetime' ? 60 : 20;
       const vipTier = productId === 'lifetime' ? 'LIFETIME' : 'BASIC';
       const data = await plusCreateVipPayment({ userId, amount, method, forVip: true, forPoints: false, vipTier, clientType: 'desktop' });
-      if (data.code === 0) {
-        const statusRes = await plusGetVipStatus(userId);
-        const vipStatus = statusRes.data;
-        const updatedUser = { ...vipUser, level: vipTier === 'LIFETIME' ? 'lifetime' : 'year', isVip: vipStatus?.isVip ?? true, expiredAt: vipStatus?.expiresAt ?? null };
-        localStorage.setItem('bookdock_vip_user', JSON.stringify(updatedUser));
-        setVipUser(updatedUser);
-        window.location.hash = '#/member-payment-success';
-        window.location.reload();
+      if (data.code !== 0) { alert(data.message || '创建订单失败'); return; }
+      const result = data.data;
+      if (!result) { alert('创建订单失败，未返回数据'); return; }
+      if (method === 'ALIPAY' && result.paymentUrl) {
+        window.open(result.paymentUrl, '_blank');
       }
+      setPaymentOverlay({ productId, method, result });
+      startPolling(result.orderId, userId, vipTier);
+    } catch {
+      alert('网络错误，请重试');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const closeOverlay = async () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    if (paymentOverlay?.result?.orderId) {
+      try {
+        await plusCancelOrder(paymentOverlay.result.orderId);
+      } catch {
+        // ignore cancel error
+      }
+    }
+    setPaymentOverlay(null);
+    setIsPolling(false);
   };
 
   return (
@@ -107,13 +194,15 @@ export function MemberBenefitsScreen() {
                 <div className="text-center py-2 bg-green-50 dark:bg-green-900/20 rounded-lg text-green-600 text-sm font-medium flex items-center justify-center gap-1"><Check className="w-3.5 h-3.5" /> 当前方案</div>
               ) : (
                 <div className="flex gap-2">
-                  <button onClick={() => handleBuy(product.id)} disabled={isLoading}
+                  <button onClick={() => handleBuy(product.id, 'WECHAT')} disabled={isLoading}
                     className="flex-1 py-2 rounded-lg text-white text-sm font-medium disabled:opacity-50"
-                    style={{ background: product.id === 'lifetime' ? 'linear-gradient(135deg, #f59e0b, #ea580c)' : undefined }}>
+                    style={{ background: product.id === 'lifetime' ? 'linear-gradient(135deg, #f59e0b, #ea580c)' : undefined }}
+                  >
                     {isLoading ? '处理中...' : '微信支付'}
                   </button>
-                  <button onClick={() => handleBuy(product.id)} disabled={isLoading}
-                    className="flex-1 py-2 rounded-lg bg-gray-200 dark:bg-gray-600 text-sm font-medium disabled:opacity-50">
+                  <button onClick={() => handleBuy(product.id, 'ALIPAY')} disabled={isLoading}
+                    className="flex-1 py-2 rounded-lg bg-gray-200 dark:bg-gray-600 text-sm font-medium disabled:opacity-50"
+                  >
                     {isLoading ? '处理中...' : '支付宝'}
                   </button>
                 </div>
@@ -139,6 +228,42 @@ export function MemberBenefitsScreen() {
           )}
         </div>
       </div>
+
+      {/* Payment Overlay */}
+      {paymentOverlay && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 relative max-h-[90vh] overflow-y-auto">
+            <button onClick={closeOverlay} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 text-center">订单已创建</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-4">
+              订单号：{paymentOverlay.result?.orderId} · 金额：¥{paymentOverlay.result?.finalAmount}
+            </p>
+            {paymentOverlay.method === 'WECHAT' && paymentOverlay.result?.qrCode && (
+              <div className="flex flex-col items-center gap-4 mb-4">
+                <p className="text-sm text-gray-500 dark:text-gray-400">请使用微信扫一扫完成支付</p>
+                <div className="p-3 bg-white rounded-lg">
+                  <QRCodeSVG value={paymentOverlay.result.qrCode} size={200} />
+                </div>
+                <p className="text-xs text-gray-400">支付完成后将自动跳转</p>
+              </div>
+            )}
+            {paymentOverlay.method === 'ALIPAY' && (
+              <div className="flex flex-col items-center gap-4 mb-4">
+                <p className="text-sm text-gray-500 dark:text-gray-400">已在浏览器新标签页打开支付宝支付页面</p>
+                <p className="text-xs text-gray-400">支付完成后将自动跳转</p>
+              </div>
+            )}
+            {isPolling && (
+              <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                正在查询支付结果...
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

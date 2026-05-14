@@ -16,11 +16,10 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useLibraryStore, useThemeStore } from '../stores';
+import { useLibraryStore, useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import type { Book } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
-import { plusGetVipStatus } from '../services/plus';
 
 const { width } = Dimensions.get('window');
 const GRID_COLUMNS = 3;
@@ -73,37 +72,18 @@ export function LibraryScreen() {
 
   const handleTTSPress = useCallback(async (book: Book) => {
     const token = await AsyncStorage.getItem('bookdock_plus_token');
-    const stored = await AsyncStorage.getItem('bookdock_plus_user');
-    if (!token || !stored) {
+    if (!token) {
       navigation.navigate('MemberLogin');
       return;
     }
 
-    try {
-      const vipUser = JSON.parse(stored);
-      const userId = vipUser?.id;
-      if (!userId) {
-        navigation.navigate('MemberLogin');
-        return;
-      }
-
-      const statusRes = await plusGetVipStatus(userId);
-      if (statusRes.code !== 0 || !statusRes.data?.isVip) {
-        navigation.navigate('MemberBenefits');
-        return;
-      }
-
-      await AsyncStorage.setItem('bookdock_plus_user', JSON.stringify({
-        ...vipUser,
-        isVip: statusRes.data.isVip,
-        level: statusRes.data.tier === 'LIFETIME' ? 'lifetime' : 'year',
-        expiredAt: statusRes.data.expiresAt,
-      }));
-
-      navigation.navigate('TTSScreen', { book });
-    } catch {
-      navigation.navigate('MemberLogin');
+    const vip = await useAuthStore.getState().refreshVipStatus();
+    if (!vip) {
+      navigation.navigate('MemberBenefits');
+      return;
     }
+
+    navigation.navigate('TTSScreen', { book });
   }, [navigation]);
 
   const handleRefresh = useCallback(async () => {

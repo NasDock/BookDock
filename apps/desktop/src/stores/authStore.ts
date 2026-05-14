@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { setPlusToken, removePlusToken } from '../services/plus';
+import { setPlusToken, removePlusToken, plusGetMe } from '../services/plus';
 
 interface ThemeState {
   theme: 'light' | 'dark' | 'system';
@@ -75,11 +75,16 @@ interface AuthState {
   isAuthenticated: boolean;
   plusToken: string | null;
   plusUserId: string | number | null;
+  plusUser: any | null;
   isVip: boolean;
+  vipTier: string | null;
+  vipExpiresAt: string | null;
   login: (user: User) => void;
   logout: () => void;
   setPlusAuth: (token: string, userId: string | number) => void;
   clearPlusAuth: () => void;
+  refreshVipStatus: () => Promise<boolean>;
+  setPlusUser: (user: any | null) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -89,11 +94,13 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       plusToken: null,
       plusUserId: null,
+      plusUser: null,
       isVip: false,
+      vipTier: null,
+      vipExpiresAt: null,
       login: (user) => set({ user, isAuthenticated: true }),
       logout: () => {
-        removePlusToken();
-        set({ user: null, isAuthenticated: false, plusToken: null, plusUserId: null, isVip: false });
+        set({ user: null, isAuthenticated: false });
       },
       setPlusAuth: (token, userId) => {
         setPlusToken(token);
@@ -103,7 +110,86 @@ export const useAuthStore = create<AuthState>()(
       clearPlusAuth: () => {
         removePlusToken();
         localStorage.removeItem('bookdock_plus_user_id');
-        set({ plusToken: null, plusUserId: null, isVip: false });
+        localStorage.removeItem('bookdock_plus_user');
+        set({ plusToken: null, plusUserId: null, plusUser: null, isVip: false, vipTier: null, vipExpiresAt: null });
+      },
+      refreshVipStatus: async () => {
+        try {
+          let stored = localStorage.getItem('bookdock_plus_user');
+          let parsed: any = null;
+          if (stored) {
+            try {
+              parsed = JSON.parse(stored);
+            } catch {
+              parsed = null;
+            }
+          }
+          if (!parsed) {
+            const idStr = localStorage.getItem('bookdock_plus_user_id');
+            if (idStr) {
+              try {
+                parsed = { id: JSON.parse(idStr) };
+              } catch {
+                parsed = null;
+              }
+            }
+          }
+          if (!parsed || !parsed.id) {
+            set({ isVip: false, vipTier: null, vipExpiresAt: null, plusUser: null });
+            return false;
+          }
+          const res = await plusGetMe(parsed.id);
+          if (res.code === 0 && res.data) {
+            const me = res.data;
+            const currentTier = me?.vipTier;
+            const isVipNow = currentTier === 'BASIC' || currentTier === 'LIFETIME';
+            const updatedUser = {
+              ...parsed,
+              ...me,
+              isVip: isVipNow,
+              level: currentTier === 'LIFETIME' ? 'lifetime' : currentTier === 'BASIC' ? 'year' : 'free',
+              expiredAt: me?.vipExpiresAt ?? null,
+            };
+            localStorage.setItem('bookdock_plus_user', JSON.stringify(updatedUser));
+            set({
+              isVip: isVipNow,
+              vipTier: currentTier || null,
+              vipExpiresAt: me?.vipExpiresAt ?? null,
+              plusUser: updatedUser,
+            });
+            return isVipNow;
+          }
+          // Fallback to cached data on API failure
+          const tier = parsed.vipTier || (parsed.level === 'lifetime' ? 'LIFETIME' : parsed.level === 'year' ? 'BASIC' : null);
+          const isVipNow = tier === 'BASIC' || tier === 'LIFETIME' || parsed.isVip === true;
+          set({
+            isVip: isVipNow,
+            vipTier: tier || null,
+            vipExpiresAt: parsed.expiredAt ?? parsed.vipExpiresAt ?? null,
+            plusUser: parsed,
+          });
+          return isVipNow;
+        } catch {
+          set({ isVip: false, vipTier: null, vipExpiresAt: null, plusUser: null });
+          return false;
+        }
+      },
+      setPlusUser: (user) => {
+        if (user) {
+          const tier = user.vipTier || (user.level === 'lifetime' ? 'LIFETIME' : user.level === 'year' ? 'BASIC' : null);
+          const isVipNow = tier === 'BASIC' || tier === 'LIFETIME';
+          const updated = { ...user, isVip: isVipNow, vipTier: tier };
+          localStorage.setItem('bookdock_plus_user', JSON.stringify(updated));
+          set({
+            plusUser: updated,
+            isVip: isVipNow,
+            vipTier: tier || null,
+            vipExpiresAt: user.expiredAt ?? user.vipExpiresAt ?? null,
+          });
+        } else {
+          localStorage.removeItem('bookdock_plus_user');
+          set({ plusUser: null, isVip: false, vipTier: null, vipExpiresAt: null });
+        }
       },
     }),
     { name: 'bookdock-auth' }

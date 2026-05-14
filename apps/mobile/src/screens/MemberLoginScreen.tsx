@@ -104,6 +104,7 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
         const { token: plusToken, userId } = res.data!;
         await AsyncStorage.setItem('bookdock_plus_token', plusToken);
         await AsyncStorage.setItem('bookdock_plus_user_id', JSON.stringify(userId));
+        await AsyncStorage.setItem('bookdock_plus_user', JSON.stringify({ id: userId }));
         await setPlusToken(plusToken);
         Alert.alert('登录成功', '会员登录成功');
         navigation.goBack();

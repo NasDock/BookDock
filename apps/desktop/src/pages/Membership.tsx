@@ -1,14 +1,15 @@
 // @ts-nocheck
-import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth, PremiumBadge } from '@bookdock/auth';
-import { getApiClient } from '@bookdock/api-client';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@bookdock/ui';
-import { Crown, Volume2, BookOpen, Bookmark, Zap, Check, PartyPopper, X, Loader2, CreditCard, MessageCircle, Wallet } from 'lucide-react';
+import { Crown, Volume2, BookOpen, Bookmark, Zap, Check, PartyPopper, X, Loader2, MessageCircle, Wallet } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import { plusCreateVipPayment, plusGetMe, plusGetCurrentLowestPrice, plusQueryPaymentStatus, plusCancelOrder } from '../services/plus';
+import { useAuthStore } from '../stores/authStore';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8088/api';
-const VIP_TOKEN_KEY = 'bookdock_vip_token';
-const VIP_USER_KEY = 'bookdock_vip_user';
+const VIP_TOKEN_KEY = 'bookdock_plus_token';
+const VIP_USER_KEY = 'bookdock_plus_user';
 
 interface VipProduct {
   id: string;
@@ -20,7 +21,8 @@ interface VipProduct {
 }
 
 interface VipUser {
-  userId: string;
+  id: string;
+  userId?: string;
   phone: string;
   level: string;
   isVip: boolean;
@@ -39,11 +41,30 @@ interface VipOrder {
   createdAt: string;
 }
 
+interface PaymentResult {
+  orderId: string;
+  transactionId?: string | null;
+  paymentUrl: string;
+  qrCode: string;
+  wechatPay?: any | null;
+  alipayPay?: any | null;
+  originalAmount: number;
+  finalAmount: number;
+  couponDiscount?: any | null;
+  raw?: any;
+}
+
 const PLAN_LABELS: Record<string, string> = {
   free: '免费版',
   year: '年卡',
   lifetime: '永久卡',
 };
+
+const STATIC_PRODUCTS: VipProduct[] = [
+  { id: 'free', name: '免费版', description: '基础功能、数据同步', price: 0, badge: '', features: ['基础功能', '数据同步'] },
+  { id: 'year', name: '年卡', description: '1年会员特权', price: 20, badge: '1年', features: ['无限书籍阅读', '优先客服支持', '新功能抢先体验', '去除广告'] },
+  { id: 'lifetime', name: '永久卡', description: '一次购买，永久有效', price: 60, badge: '永久', features: ['永久会员特权', '无限书籍阅读', '优先客服支持', '新功能抢先体验', '去除广告'] },
+];
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '永久';
@@ -53,7 +74,13 @@ function formatDate(dateStr: string | null): string {
 function loadVipUser(): VipUser | null {
   try {
     const stored = localStorage.getItem(VIP_USER_KEY);
-    return stored ? JSON.parse(stored) : null;
+    if (stored) return JSON.parse(stored);
+    const idStr = localStorage.getItem('bookdock_plus_user_id');
+    if (idStr) {
+      const id = JSON.parse(idStr);
+      return { id, phone: '', level: 'free', isVip: false, expiredAt: null, createdAt: new Date().toISOString() };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -65,68 +92,64 @@ function saveVipUser(user: VipUser) {
 
 export default function Membership() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isAuthenticated, refreshUser } = useAuth();
-  const [vipUser, setVipUser] = useState<VipUser | null>(loadVipUser);
-  const [products, setProducts] = useState<VipProduct[]>([]);
+  const { plusUser: vipUser, setPlusUser, refreshVipStatus } = useAuthStore();
+  const [products, setProducts] = useState<VipProduct[]>(STATIC_PRODUCTS);
   const [selectedProduct, setSelectedProduct] = useState<VipProduct | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<'simulated' | 'wechat' | 'alipay'>('simulated');
+  const [paymentMethod, setPaymentMethod] = useState<'wechat' | 'alipay'>('wechat');
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
   const [order, setOrder] = useState<VipOrder | null>(null);
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/login', { state: { from: '/membership' } });
-      return;
-    }
-    loadProducts();
+    loadPrices();
     loadVipProfile();
   }, [isAuthenticated]);
 
-  const loadProducts = async () => {
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
+  const loadPrices = async () => {
     try {
-      const res = await fetch(`${API_BASE}/vip/products`);
-      const data = await res.json();
-      if (Array.isArray(data)) setProducts(data);
+      const res = await plusGetCurrentLowestPrice();
+      if (res.code === 0 && res.data) {
+        const annualRaw = res.data.annual ?? res.data.annualPrice;
+        const lifetimeRaw = res.data.lifetime ?? res.data.lifetimePrice;
+        const annualPrice = typeof annualRaw === 'object' && annualRaw !== null ? annualRaw.currentPrice : annualRaw;
+        const lifetimePrice = typeof lifetimeRaw === 'object' && lifetimeRaw !== null ? lifetimeRaw.currentPrice : lifetimeRaw;
+        setProducts((prev) =>
+          prev.map((p) =>
+            p.id === 'year' && annualPrice !== undefined
+              ? { ...p, price: Number(annualPrice) }
+              : p.id === 'lifetime' && lifetimePrice !== undefined
+                ? { ...p, price: Number(lifetimePrice) }
+                : p
+          )
+        );
+      }
     } catch {
-      // Fallback products
-      setProducts([
-        { id: 'year', name: '年卡', description: '1年会员特权', price: 20, badge: '1年', features: ['无限书籍阅读', '优先客服支持', '新功能抢先体验', '去除广告'] },
-        { id: 'lifetime', name: '永久卡', description: '一次购买，永久有效', price: 60, badge: '永久', features: ['永久会员特权', '无限书籍阅读', '优先客服支持', '新功能抢先体验', '去除广告'] },
-      ]);
+      // keep default prices from STATIC_PRODUCTS
     } finally {
       setLoading(false);
     }
   };
 
   const loadVipProfile = async () => {
-    const token = localStorage.getItem(VIP_TOKEN_KEY);
-    if (!token) {
+    const vip = await refreshVipStatus();
+    if (!vip) {
       setLoading(false);
       return;
     }
-    try {
-      const res = await fetch(`${API_BASE}/vip/profile`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (data.userId) {
-        const vipUser: VipUser = {
-          userId: data.userId,
-          phone: data.phone || '',
-          level: data.level || 'free',
-          isVip: data.isVip || false,
-          expiredAt: data.expiredAt || null,
-          createdAt: data.createdAt || new Date().toISOString(),
-        };
-        setVipUser(vipUser);
-        saveVipUser(vipUser);
-      }
-    } catch {
-      // Ignore
-    }
+    setLoading(false);
   };
 
   const handleSelectProduct = (product: VipProduct) => {
@@ -135,13 +158,67 @@ export default function Membership() {
     setOrder(null);
     setPaymentError(null);
     setPaymentSuccess(false);
+    setPaymentResult(null);
+    setIsPolling(false);
   };
+
+  const startPolling = useCallback((orderId: string, targetUserId: string, tier: string) => {
+    let attempts = 0;
+    const maxAttempts = 60;
+    const timer = setInterval(async () => {
+      attempts++;
+      if (attempts > maxAttempts) {
+        clearInterval(timer);
+        setPaymentError('支付超时，请刷新页面重试');
+        setIsPolling(false);
+        return;
+      }
+      try {
+        const res = await plusQueryPaymentStatus(orderId);
+        if (res.code === 0 && res.data) {
+          const status = res.data.status;
+          if (status === 'paid') {
+            clearInterval(timer);
+            setIsPolling(false);
+            const meRes = await plusGetMe(targetUserId);
+            const me = meRes.data;
+            const currentTier = me?.vipTier;
+            const isVipNow = currentTier === 'BASIC' || currentTier === 'LIFETIME';
+            const updatedUser = {
+              ...(vipUser || { id: targetUserId, phone: '', createdAt: new Date().toISOString() }),
+              id: targetUserId,
+              level: currentTier === 'LIFETIME' ? 'lifetime' : currentTier === 'BASIC' ? 'year' : 'free',
+              isVip: isVipNow,
+              expiredAt: me?.vipExpiresAt ?? null,
+            };
+            setPlusUser(updatedUser);
+            setPaymentSuccess(true);
+            await refreshUser();
+            setTimeout(() => {
+              setSelectedProduct(null);
+              setOrder(null);
+              setPaymentSuccess(false);
+              setPaymentResult(null);
+            }, 3000);
+          } else if (status === 'failed' || status === 'cancelled') {
+            clearInterval(timer);
+            setIsPolling(false);
+            setPaymentError('支付失败或已取消');
+          }
+        }
+      } catch {
+        // continue polling
+      }
+    }, 3000);
+    pollRef.current = timer;
+    setIsPolling(true);
+  }, [vipUser, refreshUser]);
 
   const handlePay = async () => {
     if (!selectedProduct) return;
     const token = localStorage.getItem(VIP_TOKEN_KEY);
     if (!token) {
-      navigate('/login', { state: { from: '/membership' } });
+      navigate('/member-login', { state: { from: location.pathname } });
       return;
     }
 
@@ -149,63 +226,56 @@ export default function Membership() {
     setPaymentError(null);
 
     try {
-      // Create order
-      const createRes = await fetch(`${API_BASE}/vip/create-order`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ productId: selectedProduct.id }),
-      });
-      const orderData = await createRes.json();
-
-      if (!orderData.id) {
-        throw new Error(orderData.message || '创建订单失败');
+      const userId = vipUser?.id || vipUser?.userId || (() => {
+        const idStr = localStorage.getItem('bookdock_plus_user_id');
+        return idStr ? JSON.parse(idStr) : null;
+      })();
+      if (!userId) {
+        setPaymentError('请先登录会员账户');
+        navigate('/member-login', { state: { from: location.pathname } });
+        return;
       }
 
+      const methodMap: Record<string, any> = {
+        wechat: 'WECHAT',
+        alipay: 'ALIPAY',
+      };
+      const method = methodMap[paymentMethod] || 'WECHAT';
+      const amount = selectedProduct.price;
+      const vipTier = selectedProduct.id === 'lifetime' ? 'LIFETIME' : 'BASIC';
+
+      const data = await plusCreateVipPayment({
+        userId,
+        amount,
+        method,
+        forVip: true,
+        forPoints: false,
+        vipTier,
+        clientType: 'desktop',
+      });
+
+      if (data.code !== 0) {
+        throw new Error(data.message || '创建订单失败');
+      }
+
+      const result = data.data;
+      if (!result) throw new Error('创建订单失败，未返回数据');
+      setPaymentResult(result);
       const newOrder: VipOrder = {
-        id: orderData.id,
-        orderId: orderData.orderId,
-        userId: orderData.userId,
-        productId: orderData.productId,
-        amount: orderData.amount,
-        status: orderData.status,
-        paidAt: orderData.paidAt,
-        createdAt: orderData.createdAt,
+        id: result.orderId,
+        orderId: result.orderId,
+        userId,
+        productId: selectedProduct.id,
+        amount: result.finalAmount || amount,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
       };
       setOrder(newOrder);
 
-      if (paymentMethod === 'simulated') {
-        // Simulate payment
-        const payRes = await fetch(`${API_BASE}/vip/pay-callback`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            orderId: newOrder.orderId,
-            status: 'SUCCESS',
-          }),
-        });
-        const payData = await payRes.json();
-
-        if (payData.success) {
-          setPaymentSuccess(true);
-          await loadVipProfile();
-          await refreshUser();
-          setTimeout(() => {
-            setSelectedProduct(null);
-            setOrder(null);
-          }, 2000);
-        } else {
-          setPaymentError('支付失败');
-        }
-      } else {
-        // For wechat/alipay, show QR code placeholder
-        setOrder({ ...newOrder, status: 'pending' });
+      if (paymentMethod === 'alipay' && result.paymentUrl) {
+        window.open(result.paymentUrl, '_blank');
       }
+      startPolling(result.orderId, userId, vipTier);
     } catch (err: any) {
       setPaymentError(err?.message || '支付失败，请重试');
     } finally {
@@ -213,15 +283,25 @@ export default function Membership() {
     }
   };
 
-  const closeModal = () => {
+  const closeModal = async () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    if (order?.orderId) {
+      try {
+        await plusCancelOrder(order.orderId);
+      } catch {
+        // ignore cancel error
+      }
+    }
     setSelectedProduct(null);
     setOrder(null);
     setPaymentError(null);
     setPaymentSuccess(false);
+    setPaymentResult(null);
+    setIsPolling(false);
   };
 
   const isCurrentPlan = (productId: string): boolean => {
-    if (productId === 'free') return vipUser?.level === 'free';
+    if (productId === 'free') return !vipUser?.isVip;
     if (vipUser?.level === 'lifetime') return true;
     if (vipUser?.level === 'year' && productId === 'year') return true;
     return false;
@@ -284,12 +364,8 @@ export default function Membership() {
                 )}
               </div>
               <div className="text-right">
-                {vipUser.phone ? (
+                {vipUser.phone && (
                   <p className="text-sm text-gray-500 dark:text-gray-400">{vipUser.phone}</p>
-                ) : (
-                  <Button size="sm" variant="secondary" onClick={() => navigate('/login', { state: { from: '/membership' } })}>
-                    绑定手机号
-                  </Button>
                 )}
               </div>
             </div>
@@ -298,7 +374,7 @@ export default function Membership() {
       )}
 
       {/* Plan Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12 max-w-3xl mx-auto">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12 max-w-5xl mx-auto">
         {products.map((product) => {
           const isCurrent = isCurrentPlan(product.id);
           const isUpgrade = !isCurrent;
@@ -306,8 +382,8 @@ export default function Membership() {
           return (
             <Card
               key={product.id}
-              className={`relative transition-all ${isUpgrade && !vipUser?.isVip ? 'hover:shadow-xl hover:-translate-y-1 cursor-pointer' : ''} ${isCurrent ? 'ring-2 ring-amber-400' : ''}`}
-              onClick={() => isUpgrade && handleSelectProduct(product)}
+              className={`relative transition-all flex flex-col ${product.id !== 'free' && isUpgrade && !vipUser?.isVip ? 'hover:shadow-xl hover:-translate-y-1 cursor-pointer' : ''} ${isCurrent ? 'ring-2 ring-amber-400' : ''}`}
+              onClick={() => product.id !== 'free' && isUpgrade && handleSelectProduct(product)}
             >
               {product.badge && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
@@ -322,13 +398,19 @@ export default function Membership() {
                   <p className="text-lg font-bold text-gray-900 dark:text-white">{product.name}</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{product.description}</p>
                   <div className="mt-4">
-                    <span className="text-3xl font-bold text-gray-900 dark:text-white">¥{product.price}</span>
-                    {product.id === 'year' && <span className="text-gray-500 dark:text-gray-400 ml-1">/年</span>}
+                    {product.id === 'free' ? (
+                      <span className="text-3xl font-bold text-gray-900 dark:text-white">免费</span>
+                    ) : (
+                      <>
+                        <span className="text-3xl font-bold text-gray-900 dark:text-white">¥{product.price}</span>
+                        {product.id === 'year' && <span className="text-gray-500 dark:text-gray-400 ml-1">/年</span>}
+                      </>
+                    )}
                   </div>
                 </div>
               </CardHeader>
 
-              <CardContent>
+              <CardContent className="flex flex-col flex-1">
                 <ul className="space-y-2 mb-6">
                   {product.features.map((feature, i) => (
                     <li key={i} className="flex items-start gap-2 text-sm">
@@ -338,7 +420,18 @@ export default function Membership() {
                   ))}
                 </ul>
 
-                {isCurrent ? (
+                <div className="mt-auto">
+                {product.id === 'free' ? (
+                  isCurrent ? (
+                    <Button variant="secondary" disabled className="w-full">
+                      当前方案
+                    </Button>
+                  ) : (
+                    <Button variant="secondary" disabled className="w-full">
+                      暂不可用
+                    </Button>
+                  )
+                ) : isCurrent ? (
                   <Button variant="secondary" disabled className="w-full">
                     当前方案
                   </Button>
@@ -355,6 +448,7 @@ export default function Membership() {
                     暂不可用
                   </Button>
                 )}
+                </div>
               </CardContent>
             </Card>
           );
@@ -403,7 +497,7 @@ export default function Membership() {
       {/* Payment Modal */}
       {selectedProduct && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto">
             {paymentSuccess ? (
               <div className="text-center py-8">
                 <div className="text-6xl mb-4"><PartyPopper className="w-16 h-16 mx-auto text-amber-500" /></div>
@@ -419,23 +513,29 @@ export default function Membership() {
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
                   订单号：{order.orderId} · 金额：¥{order.amount}
                 </p>
-                {paymentMethod !== 'simulated' ? (
-                  <>
-                    <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-xl mb-4">
-                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                        {paymentMethod === 'wechat' ? '微信支付' : '支付宝'} 扫码支付
-                      </p>
-                      <p className="text-xs text-gray-400">（模拟环境，不支持真实支付）</p>
+                {paymentMethod === 'wechat' && paymentResult?.qrCode && (
+                  <div className="flex flex-col items-center gap-4 mb-4">
+                    <p className="text-sm text-gray-500 dark:text-gray-400">请使用微信扫一扫完成支付</p>
+                    <div className="p-3 bg-white rounded-lg">
+                      <QRCodeSVG value={paymentResult.qrCode} size={200} />
                     </div>
-                    <Button variant="secondary" onClick={closeModal}>关闭</Button>
-                  </>
-                ) : (
-                  <>
-                    <div className="animate-pulse mb-4">
-                      <div className="h-2 bg-blue-500 rounded-full w-3/4 mx-auto"></div>
-                    </div>
-                    <p className="text-sm text-gray-500 mb-4">正在确认支付...</p>
-                  </>
+                    <p className="text-xs text-gray-400">支付完成后将自动跳转</p>
+                  </div>
+                )}
+                {paymentMethod === 'alipay' && (
+                  <div className="flex flex-col items-center gap-4 mb-4">
+                    <p className="text-sm text-gray-500 dark:text-gray-400">已在浏览器新标签页打开支付宝支付页面</p>
+                    <p className="text-xs text-gray-400">支付完成后请点击下方按钮或等待自动跳转</p>
+                  </div>
+                )}
+                {isPolling && (
+                  <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-4">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    正在查询支付结果...
+                  </div>
+                )}
+                {!isPolling && !paymentSuccess && (
+                  <Button variant="secondary" onClick={closeModal}>关闭</Button>
                 )}
               </div>
             ) : (
@@ -458,9 +558,8 @@ export default function Membership() {
 
                 <div className="mb-6">
                   <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">选择支付方式</p>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {[
-                      { id: 'simulated', label: '模拟支付', icon: <CreditCard className="w-5 h-5 mx-auto mb-1" />, desc: '测试用' },
                       { id: 'wechat', label: '微信支付', icon: <MessageCircle className="w-5 h-5 mx-auto mb-1" />, desc: '推荐' },
                       { id: 'alipay', label: '支付宝', icon: <Wallet className="w-5 h-5 mx-auto mb-1" />, desc: '推荐' },
                     ].map((method) => (

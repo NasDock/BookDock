@@ -48,10 +48,23 @@ export interface CreatePaymentDto {
 }
 
 export interface CreatePaymentResult {
-  orderId?: string;
-  paymentUrl?: string;
-  method?: string;
-  status?: string;
+  orderId: string;
+  transactionId?: string | null;
+  paymentUrl: string;
+  qrCode: string;
+  wechatPay?: any | null;
+  alipayPay?: any | null;
+  originalAmount: number;
+  finalAmount: number;
+  couponDiscount?: any | null;
+  raw?: any;
+}
+
+export interface PaymentStatusResult {
+  orderId: string;
+  status: 'pending' | 'paid' | 'failed' | 'cancelled';
+  paidAt?: string | null;
+  amount?: number;
 }
 export interface ScanLoginSourceConfig {
   id: string;
@@ -151,6 +164,10 @@ async function plusFetch<T>(endpoint: string, options: RequestInit = {}): Promis
   });
 
   const data = await response.json();
+  // Normalize success code: some APIs return 200 instead of 0
+  if (data && data.code === 200) {
+    data.code = 0;
+  }
   return data;
 }
 
@@ -180,6 +197,17 @@ export const plusCreateVipPayment = async (data: CreatePaymentDto) => {
   return plusFetch<CreatePaymentResult>("/payment/create", {
     method: "POST",
     body: JSON.stringify(data),
+  });
+};
+
+export const plusQueryPaymentStatus = async (orderId: string) => {
+  return plusFetch<PaymentStatusResult>(`/payment/status?orderId=${encodeURIComponent(orderId)}`);
+};
+
+export const plusCancelOrder = async (orderId: string) => {
+  return plusFetch(`/payment/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ orderId }),
   });
 };
 

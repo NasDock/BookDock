@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getApiClient, Book } from '@bookdock/api-client';
 import { useReaderStore } from '../stores/themeStore';
-import { plusGetVipStatus } from '../services/plus';
 import { Button } from '@bookdock/ui';
 import type { ReaderMode } from '@bookdock/ebook-reader';
 import { ArrowLeft, Settings, BookOpen, Bookmark, ChevronLeft, ChevronRight, Volume2, Timer, X, Keyboard, Sun, Moon, ScrollText, Plus } from 'lucide-react';
@@ -948,39 +947,8 @@ export default function Reader() {
     setIsAutoScroll(!isAutoScroll);
   };
 
-  const handleNavigateTts = useCallback(async () => {
-    const token = localStorage.getItem('bookdock_plus_token');
-    const stored = localStorage.getItem('bookdock_plus_user');
-    if (!token || !stored) {
-      navigate('/member-login');
-      return;
-    }
-
-    try {
-      const vipUser = JSON.parse(stored);
-      const userId = vipUser?.id;
-      if (!userId) {
-        navigate('/member-login');
-        return;
-      }
-
-      const statusRes = await plusGetVipStatus(userId);
-      if (statusRes.code !== 0 || !statusRes.data?.isVip) {
-        navigate('/member-benefits');
-        return;
-      }
-
-      localStorage.setItem('bookdock_plus_user', JSON.stringify({
-        ...vipUser,
-        isVip: statusRes.data.isVip,
-        level: statusRes.data.tier === 'LIFETIME' ? 'lifetime' : 'year',
-        expiredAt: statusRes.data.expiresAt,
-      }));
-
-      if (id) navigate(`/book/${id}/tts`);
-    } catch {
-      navigate('/member-login');
-    }
+  const handleNavigateTts = useCallback(() => {
+    if (id) navigate(`/book/${id}/tts`);
   }, [id, navigate]);
 
   if (isLoading) {

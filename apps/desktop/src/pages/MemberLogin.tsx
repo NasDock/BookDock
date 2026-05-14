@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import {
   Crown,
@@ -28,6 +28,7 @@ import { useAuthStore } from '../stores/authStore';
 
 export default function MemberLogin() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { setPlusAuth } = useAuthStore();
 
   // Form state
@@ -175,8 +176,11 @@ export default function MemberLogin() {
           const { token, userId } = res.data!;
           localStorage.setItem('bookdock_plus_token', token);
           localStorage.setItem('bookdock_plus_user_id', JSON.stringify(userId));
+          localStorage.setItem('bookdock_plus_user', JSON.stringify({ id: userId }));
           setPlusAuth(token, userId);
-          navigate('/', { replace: true });
+          const from = (location.state as any)?.from;
+          const returnTo = typeof from === 'string' ? from : (from?.pathname || '/membership');
+          navigate(returnTo, { replace: true });
         } else {
           setError(res.message || '登录失败');
         }

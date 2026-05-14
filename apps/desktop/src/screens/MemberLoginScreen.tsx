@@ -162,6 +162,7 @@ export function MemberLoginScreen() {
           const { token, userId } = res.data!;
           localStorage.setItem('bookdock_plus_token', token);
           localStorage.setItem('bookdock_plus_user_id', JSON.stringify(userId));
+          localStorage.setItem('bookdock_plus_user', JSON.stringify({ id: userId }));
           window.location.hash = '#/member-benefits';
           window.location.reload();
         } else {

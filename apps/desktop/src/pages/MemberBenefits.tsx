@@ -1,11 +1,19 @@
 // @ts-nocheck
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@bookdock/ui';
-import { plusCreateVipPayment, plusGetVipStatus, plusGetCurrentLowestPrice, plusGetMyCoupons, plusVerifyCoupon } from '../services/plus';
-import { Crown, Sparkles, BookOpen, Headphones, Star, Ban, MessageCircle, ClipboardList, ArrowLeft, Check, Volume2, ShieldCheck, BookMarked } from 'lucide-react';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8088/api';
+import { QRCodeSVG } from 'qrcode.react';
+import {
+  plusCreateVipPayment,
+  plusGetMe,
+  plusGetCurrentLowestPrice,
+  plusGetMyCoupons,
+  plusVerifyCoupon,
+  plusQueryPaymentStatus,
+  plusCancelOrder,
+} from '../services/plus';
+import { Crown, Sparkles, BookOpen, Headphones, Star, Ban, MessageCircle, ClipboardList, ArrowLeft, Check, BookMarked, Loader2, X } from 'lucide-react';
+import { useAuthStore } from '../stores/authStore';
 
 interface VipProduct {
   id: string;
@@ -16,17 +24,45 @@ interface VipProduct {
   features: string[];
 }
 
+const STATIC_PRODUCTS: VipProduct[] = [
+  { id: 'year', name: '年卡', description: '1年会员特权', price: 20, badge: '1年', features: ['无限书籍阅读', '优先客服支持', '新功能抢先体验', '去除广告'] },
+  { id: 'lifetime', name: '永久卡', description: '一次购买，永久有效', price: 60, badge: '永久', features: ['永久会员特权', '无限书籍阅读', '优先客服支持', '新功能抢先体验', '去除广告'] },
+];
+
+interface PaymentResult {
+  orderId: string;
+  transactionId?: string | null;
+  paymentUrl: string;
+  qrCode: string;
+  finalAmount: number;
+}
+
 export default function MemberBenefits() {
   const navigate = useNavigate();
-  const [products, setProducts] = useState<VipProduct[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const location = useLocation();
+  const [products] = useState<VipProduct[]>(STATIC_PRODUCTS);
   const [creatingOrder, setCreatingOrder] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [vipUser, setVipUser] = useState<any>(null);
+  const { plusUser: vipUser, isVip, setPlusUser, refreshVipStatus } = useAuthStore();
   const [lowestPrice, setLowestPrice] = useState<{ annual?: number; lifetime?: number }>({});
   const [coupons, setCoupons] = useState<any[]>([]);
   const [couponCode, setCouponCode] = useState('');
   const [couponDiscount, setCouponDiscount] = useState<number>(0);
+
+  // Payment overlay state
+  const [paymentOverlay, setPaymentOverlay] = useState<{
+    productId: string;
+    method: 'WECHAT' | 'ALIPAY';
+    result: PaymentResult | null;
+  } | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   // Check if already VIP
   useEffect(() => {
@@ -34,75 +70,85 @@ export default function MemberBenefits() {
       try {
         const priceRes = await plusGetCurrentLowestPrice();
         if (priceRes.code === 0 && priceRes.data) {
+          const annualRaw = priceRes.data.annual ?? priceRes.data.annualPrice;
+          const lifetimeRaw = priceRes.data.lifetime ?? priceRes.data.lifetimePrice;
+          const annual = typeof annualRaw === 'object' && annualRaw !== null ? annualRaw.currentPrice : annualRaw;
+          const lifetime = typeof lifetimeRaw === 'object' && lifetimeRaw !== null ? lifetimeRaw.currentPrice : lifetimeRaw;
           setLowestPrice({
-            annual: priceRes.data.annual ?? priceRes.data.annualPrice,
-            lifetime: priceRes.data.lifetime ?? priceRes.data.lifetimePrice,
+            annual: annual !== undefined ? Number(annual) : undefined,
+            lifetime: lifetime !== undefined ? Number(lifetime) : undefined,
           });
         }
       } catch {}
     };
-    const stored = localStorage.getItem('bookdock_plus_user');
-    if (stored) {
-      const user = JSON.parse(stored);
-      setVipUser(user);
-      if (user.isVip) {
-        navigate('/member-detail');
-      }
-    }
-
+    refreshVipStatus().then((vip) => {
+      if (vip) navigate('/member-detail');
+    });
     loadPrice();
     plusGetMyCoupons().then((res) => {
       if (res.code === 0 && Array.isArray(res.data)) setCoupons(res.data);
     }).catch(() => {});
+  }, [navigate, refreshVipStatus]);
 
-    // Fetch products
-    fetch(`${API_BASE}/vip/products`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setProducts(data);
-      })
-      .catch(() => {
-        // Fallback to static products
-        setProducts([
-          {
-            id: 'year',
-            name: '年卡',
-            description: '1年会员特权',
-            price: 20,
-            badge: '1年',
-            features: ['无限书籍阅读', '优先客服支持', '新功能抢先体验', '去除广告'],
-          },
-          {
-            id: 'lifetime',
-            name: '永久卡',
-            description: '一次购买，永久有效',
-            price: 60,
-            badge: '永久',
-            features: ['永久会员特权', '无限书籍阅读', '优先客服支持', '新功能抢先体验', '去除广告'],
-          },
-        ]);
-      });
-  }, [navigate]);
-
-  // Create order and simulate payment
-  const handleBuy = useCallback(async (productId: string) => {
-    const token = localStorage.getItem('bookdock_plus_token');
-    if (!token) {
-      navigate('/member-login');
-      return;
-    }
-
-    setCreatingOrder(productId);
-    setError(null);
-
-    try {
-      const userId = vipUser?.id;
-      if (!userId) {
-        setError('请先登录会员账户');
-        navigate('/member-login');
+  const startPolling = useCallback((orderId: string, userId: string, tier: string) => {
+    let attempts = 0;
+    const maxAttempts = 60;
+    const timer = setInterval(async () => {
+      attempts++;
+      if (attempts > maxAttempts) {
+        clearInterval(timer);
+        setError('支付超时，请刷新页面重试');
+        setIsPolling(false);
         return;
       }
-      const method = productId === 'lifetime' ? 'ALIPAY' : 'WECHAT';
+      try {
+        const res = await plusQueryPaymentStatus(orderId);
+        if (res.code === 0 && res.data) {
+          const status = res.data.status;
+          if (status === 'paid') {
+            clearInterval(timer);
+            setIsPolling(false);
+            const meRes = await plusGetMe(userId);
+            const me = meRes.data;
+            const currentTier = me?.vipTier;
+            const isVipNow = currentTier === 'BASIC' || currentTier === 'LIFETIME';
+            const updatedUser = { ...vipUser, level: currentTier === 'LIFETIME' ? 'lifetime' : currentTier === 'BASIC' ? 'year' : 'free', isVip: isVipNow, expiredAt: me?.vipExpiresAt ?? null };
+            localStorage.setItem('bookdock_plus_user', JSON.stringify(updatedUser));
+            setPlusUser(updatedUser);
+            setPaymentOverlay(null);
+            navigate('/member-payment-success');
+          } else if (status === 'failed' || status === 'cancelled') {
+            clearInterval(timer);
+            setIsPolling(false);
+            setError('支付失败或已取消');
+          }
+        }
+      } catch {
+        // continue polling
+      }
+    }, 3000);
+    pollRef.current = timer;
+    setIsPolling(true);
+  }, [vipUser, navigate]);
+
+  const handleBuy = useCallback(async (productId: string, method: 'WECHAT' | 'ALIPAY') => {
+    const token = localStorage.getItem('bookdock_plus_token');
+    if (!token) {
+      navigate('/member-login', { state: { from: location.pathname } });
+      return;
+    }
+    setCreatingOrder(productId);
+    setError(null);
+    try {
+      const userId = vipUser?.id || (() => {
+        const idStr = localStorage.getItem('bookdock_plus_user_id');
+        return idStr ? JSON.parse(idStr) : null;
+      })();
+      if (!userId) {
+        setError('请先登录会员账户');
+        navigate('/member-login', { state: { from: location.pathname } });
+        return;
+      }
       const rawAmount = productId === 'lifetime' ? (lowestPrice.lifetime ?? 60) : (lowestPrice.annual ?? 20);
       const amount = Number((rawAmount * (100 - couponDiscount) / 100).toFixed(2));
       const vipTier = productId === 'lifetime' ? 'LIFETIME' : 'BASIC';
@@ -111,18 +157,35 @@ export default function MemberBenefits() {
         setError(data.message || '创建订单失败');
         return;
       }
-      const statusRes = await plusGetVipStatus(userId);
-      const vipStatus = statusRes.data;
-      const updatedUser = { ...vipUser, level: vipTier === 'LIFETIME' ? 'lifetime' : 'year', isVip: vipStatus?.isVip ?? true, expiredAt: vipStatus?.expiresAt ?? null };
-      localStorage.setItem('bookdock_plus_user', JSON.stringify(updatedUser));
-      setVipUser(updatedUser);
-      navigate('/member-payment-success');
+      const result = data.data;
+      if (!result) {
+        setError('创建订单失败，未返回数据');
+        return;
+      }
+      if (method === 'ALIPAY' && result.paymentUrl) {
+        window.open(result.paymentUrl, '_blank');
+      }
+      setPaymentOverlay({ productId, method, result });
+      startPolling(result.orderId, userId, vipTier);
     } catch {
       setError('网络错误，请重试');
     } finally {
       setCreatingOrder(null);
     }
-  }, [navigate, vipUser]);
+  }, [navigate, vipUser, lowestPrice, couponDiscount, couponCode, location.pathname, startPolling]);
+
+  const closeOverlay = async () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    if (paymentOverlay?.result?.orderId) {
+      try {
+        await plusCancelOrder(paymentOverlay.result.orderId);
+      } catch {
+        // ignore cancel error
+      }
+    }
+    setPaymentOverlay(null);
+    setIsPolling(false);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-orange-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-8 px-4">
@@ -211,7 +274,7 @@ export default function MemberBenefits() {
                   <div className="space-y-2">
                     <div className="flex gap-2">
                       <Button
-                        onClick={() => handleBuy(product.id)}
+                        onClick={() => handleBuy(product.id, 'WECHAT')}
                         disabled={creatingOrder !== null}
                         className="flex-1"
                         style={{ background: product.id === 'lifetime' ? 'linear-gradient(135deg, #f59e0b, #ea580c)' : undefined }}
@@ -220,7 +283,7 @@ export default function MemberBenefits() {
                       </Button>
                       <Button
                         variant="secondary"
-                        onClick={() => handleBuy(product.id)}
+                        onClick={() => handleBuy(product.id, 'ALIPAY')}
                         disabled={creatingOrder !== null}
                         className="flex-1"
                       >
@@ -282,6 +345,42 @@ export default function MemberBenefits() {
           </button>
         </div>
       </div>
+
+      {/* Payment Overlay */}
+      {paymentOverlay && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-6 relative max-h-[90vh] overflow-y-auto">
+            <button onClick={closeOverlay} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 text-center">订单已创建</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-4">
+              订单号：{paymentOverlay.result?.orderId} · 金额：¥{paymentOverlay.result?.finalAmount}
+            </p>
+            {paymentOverlay.method === 'WECHAT' && paymentOverlay.result?.qrCode && (
+              <div className="flex flex-col items-center gap-4 mb-4">
+                <p className="text-sm text-gray-500 dark:text-gray-400">请使用微信扫一扫完成支付</p>
+                <div className="p-3 bg-white rounded-lg">
+                  <QRCodeSVG value={paymentOverlay.result.qrCode} size={200} />
+                </div>
+                <p className="text-xs text-gray-400">支付完成后将自动跳转</p>
+              </div>
+            )}
+            {paymentOverlay.method === 'ALIPAY' && (
+              <div className="flex flex-col items-center gap-4 mb-4">
+                <p className="text-sm text-gray-500 dark:text-gray-400">已在浏览器新标签页打开支付宝支付页面</p>
+                <p className="text-xs text-gray-400">支付完成后将自动跳转</p>
+              </div>
+            )}
+            {isPolling && (
+              <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                正在查询支付结果...
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

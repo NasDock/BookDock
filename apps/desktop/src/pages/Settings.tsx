@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@bookdock/auth';
 import { Button, Card, CardHeader, CardTitle, CardContent, CardFooter } from '@bookdock/ui';
-import { useThemeStore } from '../stores/authStore';
+import { useThemeStore, useAuthStore } from '../stores/authStore';
 import { useReaderStore as useReaderStore2 } from '../stores/themeStore';
 import { getApiClient, User } from '@bookdock/api-client';
 import type { ReaderMode } from '@bookdock/ebook-reader';
@@ -227,7 +227,12 @@ function StorageSection() {
 export default function Settings() {
   const { user, logout, membership } = useAuth();
   const { theme, setTheme } = useThemeStore();
+  const { isVip, vipTier, vipExpiresAt, refreshVipStatus } = useAuthStore();
   const readerConfig = useReaderStore2();
+
+  useEffect(() => {
+    refreshVipStatus();
+  }, [refreshVipStatus]);
 
   // TTS settings
   const [ttsVoice, setTtsVoice] = useState<string>('');
@@ -342,18 +347,12 @@ export default function Settings() {
               <span className="text-gray-600 dark:text-gray-400">用户名</span>
               <span className="font-medium text-gray-900 dark:text-white">{user?.username || '未设置'}</span>
             </div>
-            {user?.email && (
-              <div className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
-                <span className="text-gray-600 dark:text-gray-400">邮箱</span>
-                <span className="font-medium text-gray-900 dark:text-white">{user.email}</span>
-              </div>
-            )}
             <div className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
               <span className="text-gray-600 dark:text-gray-400">会员类型</span>
               <span>
-                {membership === 'premium' ? (
+                {membership === 'premium' || isVip ? (
                   <span className="px-3 py-1 bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-full text-sm font-medium">
-                    Premium
+                    {isVip ? (vipTier === 'LIFETIME' ? '永久会员' : '年卡会员') : 'Premium'}
                   </span>
                 ) : (
                   <span className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-full text-sm">
@@ -362,6 +361,14 @@ export default function Settings() {
                 )}
               </span>
             </div>
+            {isVip && vipExpiresAt && vipTier !== 'LIFETIME' && (
+              <div className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
+                <span className="text-gray-600 dark:text-gray-400">到期时间</span>
+                <span className="font-medium text-gray-900 dark:text-white">
+                  {new Date(vipExpiresAt).toLocaleDateString('zh-CN')}
+                </span>
+              </div>
+            )}
             <div className="flex items-center justify-between py-2">
               <span className="text-gray-600 dark:text-gray-400">注册时间</span>
               <span className="font-medium text-gray-900 dark:text-white">
@@ -370,10 +377,10 @@ export default function Settings() {
             </div>
           </div>
         </CardContent>
-        {membership !== 'premium' && (
+        {membership !== 'premium' && !isVip && (
           <CardFooter>
-            <Button onClick={handleUpgrade} className="w-full bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 border-0">
-              <Star className="w-4 h-4 mr-1" /> 升级到 Premium
+            <Button onClick={() => window.location.href = '#/membership'} className="w-full bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 border-0">
+              <Star className="w-4 h-4 mr-1" /> 升级到会员
             </Button>
           </CardFooter>
         )}

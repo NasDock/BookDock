@@ -6,7 +6,7 @@ export function MemberPaymentSuccessScreen() {
   const [vipUser, setVipUser] = useState<any>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem('bookdock_vip_user');
+    const stored = localStorage.getItem('bookdock_plus_user');
     if (stored) setVipUser(JSON.parse(stored));
 
     const timer = setInterval(() => {

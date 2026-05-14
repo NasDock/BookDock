@@ -42,7 +42,7 @@ import { MemberPaymentSuccessScreen } from './screens/MemberPaymentSuccessScreen
 
 // Stores
 import { useDesktopStore } from './stores/desktopStore';
-import { useThemeStore } from './stores/authStore';
+import { useThemeStore, useAuthStore } from './stores/authStore';
 import { useDesktopEvents } from './hooks/useDesktopCommands';
 import { getSavedApiBaseUrl } from './utils/network';
 
@@ -91,7 +91,8 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 
 function PremiumRoute({ children }: { children: React.ReactNode }) {
   const { membership, isLoading } = useAuth();
-  const isPremium = membership === 'premium';
+  const { isVip } = useAuthStore();
+  const isPremium = membership === 'premium' || isVip;
   const location = useLocation();
   if (isLoading) {
     return (
@@ -113,6 +114,13 @@ function WebLayout({ children }: { children: React.ReactNode }) {
   const isPremium = membership === 'premium';
   const location = useLocation();
   const { theme, toggleTheme } = useThemeStore();
+  const { isVip: isPlusVip, refreshVipStatus } = useAuthStore();
+
+  useEffect(() => {
+    refreshVipStatus();
+    const interval = setInterval(refreshVipStatus, 30000);
+    return () => clearInterval(interval);
+  }, [refreshVipStatus]);
 
   if (!isAuthenticated) {
     return <>{children}</>;
@@ -120,7 +128,6 @@ function WebLayout({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { path: '/', label: '书库', icon: BookOpen },
-    { path: '/membership', label: '会员', icon: Crown },
     { path: '/settings', label: '设置', icon: SettingsIcon },
   ];
 
@@ -174,7 +181,11 @@ function WebLayout({ children }: { children: React.ReactNode }) {
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-gray-600 dark:text-gray-400">{user?.username}</span>
                   {isPremium && <PremiumBadge />}
-                  {!isPremium && (
+                  {isPlusVip ? (
+                    <Link to="/membership" className="ml-1 hover:opacity-80 transition-opacity">
+                      <Crown className="w-4 h-4 text-amber-500" />
+                    </Link>
+                  ) : (
                     <Link
                       to="/membership"
                       className="ml-1 px-2 py-0.5 text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors font-medium"
@@ -217,10 +228,10 @@ function WebAppRoutes() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/member-login" element={<MemberLogin />} />
-        <Route path="/member-benefits" element={<MemberBenefits />} />
-        <Route path="/member-detail" element={<MemberDetail />} />
-        <Route path="/member-payment-success" element={<MemberPaymentSuccess />} />
-        <Route path="/membership" element={<Membership />} />
+        <Route path="/member-benefits" element={<ProtectedRoute><MemberBenefits /></ProtectedRoute>} />
+        <Route path="/member-detail" element={<ProtectedRoute><MemberDetail /></ProtectedRoute>} />
+        <Route path="/member-payment-success" element={<ProtectedRoute><MemberPaymentSuccess /></ProtectedRoute>} />
+        <Route path="/membership" element={<ProtectedRoute><Membership /></ProtectedRoute>} />
         <Route
           path="/"
           element={

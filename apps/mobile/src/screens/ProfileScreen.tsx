@@ -23,7 +23,7 @@ export function ProfileScreen() {
   const navigation = useNavigation();
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
-  const { user, logout } = useAuthStore();
+  const { user, logout, isVip, vipTier } = useAuthStore();
   const { books, localBooks } = useLibraryStore();
 
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -95,18 +95,17 @@ export function ProfileScreen() {
               {user?.username?.charAt(0).toUpperCase() || 'U'}
             </Text>
           </View>
-          {user?.membership === 'premium' && (
+          {(user?.membership === 'premium' || isVip) && (
             <View style={styles.premiumBadge}>
               <Ionicons name="star" size={12} color="#FFD700" />
             </View>
           )}
         </View>
         <Text style={styles.username}>{user?.username || 'User'}</Text>
-        <Text style={styles.email}>{user?.email || 'No email'}</Text>
         <View style={styles.roleContainer}>
           <View style={[styles.roleBadge, { backgroundColor: theme.colors.primary + '20' }]}>
             <Text style={[styles.roleText, { color: theme.colors.primary }]}>
-              {user?.role === 'admin' ? 'Admin' : user?.membership === 'premium' ? 'Premium' : 'Free'}
+              {user?.role === 'admin' ? 'Admin' : isVip ? (vipTier === 'LIFETIME' ? '永久会员' : '年卡会员') : user?.membership === 'premium' ? 'Premium' : 'Free'}
             </Text>
           </View>
         </View>
@@ -134,16 +133,16 @@ export function ProfileScreen() {
       >
         <View style={styles.membershipHeader}>
           <Ionicons
-            name={user?.membership === 'premium' ? 'diamond' : 'diamond-outline'}
+            name={(user?.membership === 'premium' || isVip) ? 'diamond' : 'diamond-outline'}
             size={24}
-            color={user?.membership === 'premium' ? '#FFD700' : theme.colors.textSecondary}
+            color={(user?.membership === 'premium' || isVip) ? '#FFD700' : theme.colors.textSecondary}
           />
           <View style={styles.membershipInfo}>
             <Text style={styles.membershipTitle}>
-              {user?.membership === 'premium' ? 'Premium Member' : 'Free Plan'}
+              {isVip ? (vipTier === 'LIFETIME' ? '永久会员' : '年卡会员') : user?.membership === 'premium' ? 'Premium Member' : 'Free Plan'}
             </Text>
             <Text style={styles.membershipSubtitle}>
-              {user?.membership === 'premium'
+              {(user?.membership === 'premium' || isVip)
                 ? 'All features unlocked'
                 : 'Upgrade for more features'}
             </Text>
@@ -216,11 +215,6 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontWeight: '700',
       color: theme.colors.text,
       marginTop: spacing.md,
-    },
-    email: {
-      fontSize: fontSizes.md,
-      color: theme.colors.textSecondary,
-      marginTop: spacing.xs,
     },
     roleContainer: {
       marginTop: spacing.sm,

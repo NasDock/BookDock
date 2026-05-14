@@ -29,6 +29,7 @@ export function MemberDetailScreen({ navigation }: any) {
   const handleLogout = async () => {
     await AsyncStorage.removeItem('bookdock_plus_token');
     await AsyncStorage.removeItem('bookdock_plus_user');
+    await AsyncStorage.removeItem('bookdock_plus_user_id');
     navigation.replace('MemberLogin');
   };
 

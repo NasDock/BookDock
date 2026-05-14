@@ -1,29 +1,28 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@bookdock/ui';
 import { Crown, Gift, BookOpen, Headphones, Star, Ban, MessageCircle, Smartphone, ArrowLeft } from 'lucide-react';
+import { useAuthStore } from '../stores/authStore';
 
 export default function MemberDetail() {
   const navigate = useNavigate();
-  const [vipUser, setVipUser] = useState<any>(null);
+  const { plusUser: vipUser, isVip, clearPlusAuth, refreshVipStatus } = useAuthStore();
 
   useEffect(() => {
-    const stored = localStorage.getItem('bookdock_plus_user');
-    if (!stored) {
-      navigate('/member-login');
-      return;
-    }
-    const user = JSON.parse(stored);
-    if (!user.isVip) {
-      navigate('/member-benefits');
-      return;
-    }
-    setVipUser(user);
-  }, [navigate]);
+    refreshVipStatus().then((vip) => {
+      if (!vip) {
+        const stored = localStorage.getItem('bookdock_plus_user');
+        if (!stored) {
+          navigate('/member-login');
+        } else {
+          navigate('/member-benefits');
+        }
+      }
+    });
+  }, [navigate, refreshVipStatus]);
 
   const handleLogout = () => {
-    localStorage.removeItem('bookdock_plus_token');
-    localStorage.removeItem('bookdock_plus_user');
+    clearPlusAuth();
     navigate('/member-login');
   };
 

@@ -5,7 +5,7 @@ export function MemberDetailScreen() {
   const [vipUser, setVipUser] = useState<any>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem('bookdock_vip_user');
+    const stored = localStorage.getItem('bookdock_plus_user');
     if (!stored) { window.location.hash = '#/member-login'; return; }
     const user = JSON.parse(stored);
     if (!user.isVip) { window.location.hash = '#/member-benefits'; return; }
@@ -13,8 +13,9 @@ export function MemberDetailScreen() {
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem('bookdock_vip_token');
-    localStorage.removeItem('bookdock_vip_user');
+    localStorage.removeItem('bookdock_plus_token');
+    localStorage.removeItem('bookdock_plus_user');
+    localStorage.removeItem('bookdock_plus_user_id');
     window.location.hash = '#/member-login';
     window.location.reload();
   };

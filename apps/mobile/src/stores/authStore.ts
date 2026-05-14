@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { User } from '@bookdock/api-client';
 import { getApiClient, initApiClient } from '@bookdock/api-client';
+import { plusGetMe } from '../services/plus';
 
 interface AuthState {
   user: User | null;
@@ -10,6 +11,10 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
+  plusUser: any | null;
+  isVip: boolean;
+  vipTier: string | null;
+  vipExpiresAt: string | null;
 
   // Actions
   setUser: (user: User | null) => void;
@@ -20,6 +25,9 @@ interface AuthState {
   setLoading: (loading: boolean) => void;
   restoreAuth: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  refreshVipStatus: () => Promise<boolean>;
+  setPlusUser: (user: any | null) => void;
+  clearPlusAuth: () => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -30,6 +38,10 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: false,
       error: null,
+      plusUser: null,
+      isVip: false,
+      vipTier: null,
+      vipExpiresAt: null,
 
       setUser: (user) => set({ user, isAuthenticated: !!user }),
 
@@ -116,6 +128,77 @@ export const useAuthStore = create<AuthState>()(
         } catch (error) {
           console.error('Failed to refresh user:', error);
         }
+      },
+
+      refreshVipStatus: async () => {
+        try {
+          let stored = await AsyncStorage.getItem('bookdock_plus_user');
+          let parsed: any = null;
+          if (stored) {
+            try {
+              parsed = JSON.parse(stored);
+            } catch {
+              parsed = null;
+            }
+          }
+          if (!parsed) {
+            const idStr = await AsyncStorage.getItem('bookdock_plus_user_id');
+            if (idStr) {
+              try {
+                parsed = { id: JSON.parse(idStr) };
+              } catch {
+                parsed = null;
+              }
+            }
+          }
+          if (!parsed || !parsed.id) {
+            set({ isVip: false, vipTier: null, vipExpiresAt: null, plusUser: null });
+            return false;
+          }
+          const res = await plusGetMe(parsed.id);
+          if (res.code === 0 && res.data) {
+            const me = res.data;
+            const currentTier = me?.vipTier;
+            const isVipNow = currentTier === 'BASIC' || currentTier === 'LIFETIME';
+            const updatedUser = {
+              ...parsed,
+              ...me,
+              isVip: isVipNow,
+              level: currentTier === 'LIFETIME' ? 'lifetime' : currentTier === 'BASIC' ? 'year' : 'free',
+              expiredAt: me?.vipExpiresAt ?? null,
+            };
+            await AsyncStorage.setItem('bookdock_plus_user', JSON.stringify(updatedUser));
+            set({ isVip: isVipNow, vipTier: currentTier || null, vipExpiresAt: me?.vipExpiresAt ?? null, plusUser: updatedUser });
+            return isVipNow;
+          }
+          const tier = parsed.vipTier || (parsed.level === 'lifetime' ? 'LIFETIME' : parsed.level === 'year' ? 'BASIC' : null);
+          const isVipNow = tier === 'BASIC' || tier === 'LIFETIME' || parsed.isVip === true;
+          set({ isVip: isVipNow, vipTier: tier || null, vipExpiresAt: parsed.expiredAt ?? parsed.vipExpiresAt ?? null, plusUser: parsed });
+          return isVipNow;
+        } catch {
+          set({ isVip: false, vipTier: null, vipExpiresAt: null, plusUser: null });
+          return false;
+        }
+      },
+
+      setPlusUser: (user) => {
+        if (user) {
+          const tier = user.vipTier || (user.level === 'lifetime' ? 'LIFETIME' : user.level === 'year' ? 'BASIC' : null);
+          const isVipNow = tier === 'BASIC' || tier === 'LIFETIME';
+          const updated = { ...user, isVip: isVipNow, vipTier: tier };
+          AsyncStorage.setItem('bookdock_plus_user', JSON.stringify(updated));
+          set({ plusUser: updated, isVip: isVipNow, vipTier: tier || null, vipExpiresAt: user.expiredAt ?? user.vipExpiresAt ?? null });
+        } else {
+          AsyncStorage.removeItem('bookdock_plus_user');
+          set({ plusUser: null, isVip: false, vipTier: null, vipExpiresAt: null });
+        }
+      },
+
+      clearPlusAuth: () => {
+        AsyncStorage.removeItem('bookdock_plus_token');
+        AsyncStorage.removeItem('bookdock_plus_user');
+        AsyncStorage.removeItem('bookdock_plus_user_id');
+        set({ plusUser: null, isVip: false, vipTier: null, vipExpiresAt: null });
       },
     }),
     {

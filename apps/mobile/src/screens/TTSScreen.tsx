@@ -77,17 +77,26 @@ export function TTSScreen() {
     };
   }, []);
 
-  // Fetch book content for TTS
+  // Fetch book content for TTS via server-parsed chapters (avoids client-side encoding issues)
   const fetchBookContent = useCallback(async () => {
     if (!book) return '';
     try {
       setIsLoading(true);
       const apiClient = getApiClient();
-      const blob = await apiClient.getBookFile(book.id);
-      const text = new TextDecoder('utf-8').decode(blob);
-      // For EPUB/MOBI this would need proper parsing, but for TXT/PDF text extraction:
+      const chaptersRes = await apiClient.getChapters(book.id);
+      if (chaptersRes.success && chaptersRes.data && chaptersRes.data.length > 0) {
+        const contents = await Promise.all(
+          chaptersRes.data.map(async (ch) => {
+            const contentRes = await apiClient.getChapterContent(book.id, ch.index);
+            return contentRes.success && contentRes.data ? contentRes.data.content : '';
+          })
+        );
+        const text = contents.join('\n\n');
+        setIsLoading(false);
+        return text.slice(0, 5000); // Limit to first 5000 chars for demo
+      }
       setIsLoading(false);
-      return text.slice(0, 5000); // Limit to first 5000 chars for demo
+      return `This is the book "${book.title}" by ${book.author}. The full text content would be loaded from the server for text-to-speech processing.`;
     } catch {
       setIsLoading(false);
       return `This is the book "${book.title}" by ${book.author}. The full text content would be loaded from the server for text-to-speech processing.`;

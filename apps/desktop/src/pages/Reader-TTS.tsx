@@ -51,47 +51,6 @@ function splitTextIntoChunks(text: string, chunkSize = 500): TextChunk[] {
   return chunks;
 }
 
-// Extract text from HTML
-function extractTextFromHTML(html: string): string {
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  return doc.body.textContent || '';
-}
-
-// Parse book content based on file type
-async function extractBookContent(blob: Blob, fileType: string): Promise<string> {
-  try {
-    if (fileType === 'txt') {
-      return await blob.text();
-    }
-
-    if (fileType === 'epub') {
-      // For EPUB, we'd normally use epub.js to extract text
-      // For now, return a structured extraction
-      const arrayBuffer = await blob.arrayBuffer();
-      const text = new TextDecoder('utf-8').decode(arrayBuffer);
-
-      // Basic extraction - in production, use proper EPUB parsing
-      // Remove HTML tags and extract text
-      const plainText = text
-        .replace(/<[^>]*>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      return plainText;
-    }
-
-    if (fileType === 'pdf') {
-      // For PDF, we'd normally use pdf.js to extract text
-      // For now, return a placeholder
-      return 'PDF 文件内容提取需要使用 pdf.js 库。';
-    }
-
-    return '无法识别的文件格式';
-  } catch (error) {
-    console.error('Error extracting content:', error);
-    return '内容提取失败';
-  }
-}
 
 // Playback controls component
 function PlaybackControls({
@@ -260,6 +219,9 @@ export default function ReaderTTS() {
   const [showSettings, setShowSettings] = useState(false);
 
   const contentRef = useRef<HTMLDivElement>(null);
+  const currentChunkRef = useRef<HTMLParagraphElement | null>(null);
+  const prevIsPlayingRef = useRef(false);
+  const isUserStoppedRef = useRef(false);
   const skipTimeRef = useRef(10); // seconds
 
   const {
@@ -283,7 +245,7 @@ export default function ReaderTTS() {
     init,
   } = useTTS({ autoInit: true });
 
-  // Fetch book content
+  // Fetch book content via server-parsed chapters (avoids client-side encoding issues)
   useEffect(() => {
     const fetchBook = async () => {
       if (!id) return;
@@ -296,14 +258,24 @@ export default function ReaderTTS() {
         if (response.success && response.data) {
           setBook(response.data);
 
-          // Fetch book file
-          const fileBlob = await apiClient.getBookFileBlob(id);
-          const text = await extractBookContent(fileBlob, response.data.fileType);
-          setContent(text);
-
-          // Split into chunks for TTS
-          const textChunks = splitTextIntoChunks(text);
-          setChunks(textChunks);
+          // Fetch chapters then load content from server-parsed text
+          const chaptersRes = await apiClient.getChapters(id);
+          if (chaptersRes.success && chaptersRes.data && chaptersRes.data.length > 0) {
+            const chapterList = chaptersRes.data;
+            const contents = await Promise.all(
+              chapterList.map(async (ch) => {
+                const contentRes = await apiClient.getChapterContent(id, ch.index);
+                return contentRes.success && contentRes.data ? contentRes.data.content : '';
+              })
+            );
+            const fullText = contents.join('\n\n');
+            setContent(fullText);
+            const textChunks = splitTextIntoChunks(fullText);
+            setChunks(textChunks);
+          } else {
+            setContent('本书暂无章节内容，请先解析章节。');
+            setChunks([]);
+          }
         } else {
           setError(response.error || '加载书籍失败');
         }
@@ -318,20 +290,6 @@ export default function ReaderTTS() {
     init();
   }, [id, init]);
 
-  // Scroll to current chunk in content view
-  useEffect(() => {
-    if (contentRef.current && chunks.length > 0) {
-      const currentChunk = chunks[currentChunkIndex];
-      if (currentChunk) {
-        // Highlight current chunk
-        const innerHTML = contentRef.current.innerHTML;
-        // Simple approach - just scroll to approximate position
-        const scrollPercentage = (currentChunk.startIndex / content.length) * 100;
-        contentRef.current.scrollTop = (contentRef.current.scrollHeight * scrollPercentage) / 100;
-      }
-    }
-  }, [currentChunkIndex, chunks, content]);
-
   const handleGoBack = useCallback(() => {
     stop();
     navigate(-1);
@@ -344,7 +302,7 @@ export default function ReaderTTS() {
       if (isPaused) {
         resume();
       } else {
-        // Speak current chunk
+        isUserStoppedRef.current = false;
         const chunkToSpeak = chunks[currentChunkIndex];
         if (chunkToSpeak) {
           speak(chunkToSpeak.text);
@@ -354,13 +312,14 @@ export default function ReaderTTS() {
   }, [isPlaying, isPaused, content, chunks, currentChunkIndex, speak, pause, resume]);
 
   const handleStop = useCallback(() => {
+    isUserStoppedRef.current = true;
     stop();
     setCurrentChunkIndex(0);
   }, [stop]);
 
   const handleSkipBack = useCallback(() => {
-    // Skip back by restarting current chunk or going to previous
     if (currentChunkIndex > 0) {
+      isUserStoppedRef.current = false;
       setCurrentChunkIndex(currentChunkIndex - 1);
       if (isPlaying) {
         speak(chunks[currentChunkIndex - 1].text);
@@ -369,8 +328,8 @@ export default function ReaderTTS() {
   }, [currentChunkIndex, chunks, isPlaying, speak]);
 
   const handleSkipForward = useCallback(() => {
-    // Skip forward to next chunk
     if (currentChunkIndex < chunks.length - 1) {
+      isUserStoppedRef.current = false;
       setCurrentChunkIndex(currentChunkIndex + 1);
       if (isPlaying) {
         speak(chunks[currentChunkIndex + 1].text);
@@ -408,20 +367,35 @@ export default function ReaderTTS() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handlePlayPause, handleSkipBack, handleSkipForward]);
 
-  // Handle TTS progress updates
+  // Auto advance to next chunk when current TTS finishes naturally
   useEffect(() => {
-    if (progress.isPlaying && progress.currentIndex !== currentChunkIndex) {
-      setCurrentChunkIndex(progress.currentIndex);
-    }
-  }, [progress]);
+    const wasPlaying = prevIsPlayingRef.current;
+    prevIsPlayingRef.current = isPlaying;
 
-  // Handle TTS end - auto advance to next chunk
-  useEffect(() => {
-    if (!isPlaying && !isPaused && chunks.length > 0 && currentChunkIndex < chunks.length - 1) {
-      // Current chunk finished, advance to next
-      // This would be triggered by TTS completion
+    if (wasPlaying && !isPlaying && !isPaused && !isUserStoppedRef.current && chunks.length > 0 && currentChunkIndex < chunks.length - 1) {
+      const timer = setTimeout(() => {
+        if (!isPlaying && !isPaused && !isUserStoppedRef.current) {
+          const nextIndex = currentChunkIndex + 1;
+          setCurrentChunkIndex(nextIndex);
+          const nextChunk = chunks[nextIndex];
+          if (nextChunk) {
+            speak(nextChunk.text);
+          }
+        }
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, [isPlaying, isPaused, currentChunkIndex, chunks.length]);
+  }, [isPlaying, isPaused, currentChunkIndex, chunks, speak]);
+
+  // Scroll current chunk into view when it changes
+  useEffect(() => {
+    if (currentChunkRef.current && contentRef.current) {
+      currentChunkRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center',
+      });
+    }
+  }, [currentChunkIndex]);
 
   if (isLoading) {
     return (
@@ -614,7 +588,23 @@ export default function ReaderTTS() {
             style={{ maxHeight: 'calc(100vh - 300px)' }}
           >
             <div className="prose dark:prose-invert max-w-none">
-              {content ? (
+              {chunks.length > 0 ? (
+                <div className="text-lg leading-relaxed space-y-4">
+                  {chunks.map((chunk, idx) => (
+                    <p
+                      key={chunk.id}
+                      ref={idx === currentChunkIndex ? (el) => { currentChunkRef.current = el; } : undefined}
+                      className={`transition-colors duration-300 rounded px-2 py-1 ${
+                        idx === currentChunkIndex
+                          ? 'bg-amber-100/80 dark:bg-amber-900/40 font-medium'
+                          : 'opacity-50'
+                      }`}
+                    >
+                      {chunk.text}
+                    </p>
+                  ))}
+                </div>
+              ) : content ? (
                 <div className="whitespace-pre-wrap text-lg leading-relaxed">
                   {content}
                 </div>
