@@ -186,7 +186,7 @@ export const plusLogin = async (data: LoginDto) => {
 };
 
 export const plusGetMe = async (userId: string) => {
-  return plusFetch(`/users/me?userId=${encodeURIComponent(userId)}`);
+  return plusFetch<PlusUser>(`/users/me?userId=${encodeURIComponent(userId)}`);
 };
 
 export const plusGetVipStatus = async (userId: string) => {
@@ -211,8 +211,18 @@ export const plusCancelOrder = async (orderId: string) => {
   });
 };
 
+export interface PriceItem {
+  currentPrice: number;
+  originalPrice: number;
+}
+
 export const plusGetCurrentLowestPrice = async () => {
-  return plusFetch<{ annual?: number; lifetime?: number; annualPrice?: number; lifetimePrice?: number }>("/vip/current-lowest-price");
+  return plusFetch<{
+    annual?: number | PriceItem;
+    lifetime?: number | PriceItem;
+    annualPrice?: number | PriceItem;
+    lifetimePrice?: number | PriceItem;
+  }>("/vip/current-lowest-price");
 };
 
 export interface PlusCoupon {

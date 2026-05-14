@@ -75,11 +75,6 @@ export function RootNavigator() {
                 headerBackTitle: 'Back',
               }}
             />
-            <Stack.Screen
-              name="MemberLogin"
-              component={MemberLoginScreen}
-              options={{ headerShown: false }}
-            />
           </>
         )}
         <Stack.Screen
