@@ -357,6 +357,7 @@ interface ReaderControlsProps {
   showToc: boolean;
   showSettings: boolean;
   onNavigateTts: () => void;
+  scrollContainerRef?: React.RefObject<HTMLDivElement>;
 }
 
 function ReaderControls({
@@ -376,138 +377,201 @@ function ReaderControls({
   showToc,
   showSettings,
   onNavigateTts,
+  scrollContainerRef,
 }: ReaderControlsProps) {
+  const [hidden, setHidden] = useState(false);
+  const lastScrollY = useRef(0);
+  const hideTimer = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const container = scrollContainerRef?.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const currentY = container.scrollTop;
+      if (currentY > lastScrollY.current && currentY > 60) {
+        // Scrolling down: hide
+        setHidden(true);
+      } else if (currentY < lastScrollY.current) {
+        // Scrolling up: show
+        setHidden(false);
+      }
+      lastScrollY.current = currentY;
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [scrollContainerRef]);
+
+  const handleMouseEnterTop = () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    setHidden(false);
+  };
+
+  const handleMouseLeaveTop = () => {
+    hideTimer.current = setTimeout(() => setHidden(true), 2000);
+  };
+
+  const handleMouseEnterBottom = () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    setHidden(false);
+  };
+
+  const handleMouseLeaveBottom = () => {
+    hideTimer.current = setTimeout(() => setHidden(true), 2000);
+  };
+
+  const barTransition = 'transform 0.3s ease-in-out';
+
   return (
-    <div className="fixed top-0 left-0 right-0 z-50">
+    <>
       {/* Top bar */}
-      <div className="bg-white/95 dark:bg-gray-900/95 backdrop-blur border-b border-gray-200 dark:border-gray-700 shadow-sm">
-        <div className="flex items-center justify-between px-4 h-14 relative">
-          {/* Left: back */}
-          <button
-            onClick={onGoBack}
-            className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors z-10"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="text-sm hidden sm:inline">返回</span>
-          </button>
-
-          {/* Center: chapter title */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <h1
-              className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate max-w-[60%] text-center"
-              title={chapterTitle}
+      <div
+        className="fixed top-0 left-0 right-0 z-50"
+        onMouseEnter={handleMouseEnterTop}
+        onMouseLeave={handleMouseLeaveTop}
+      >
+        <div
+          className="bg-white/70 dark:bg-gray-900/70 backdrop-blur-md border-b border-white/20 dark:border-gray-700/30 shadow-sm"
+          style={{ transform: hidden ? 'translateY(-100%)' : 'translateY(0)', transition: barTransition }}
+        >
+          <div className="flex items-center justify-between px-4 h-14 relative">
+            {/* Left: back */}
+            <button
+              onClick={onGoBack}
+              className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors z-10"
             >
-              {chapterTitle || `第 ${currentChapter + 1} 章`}
-            </h1>
-          </div>
+              <ArrowLeft className="w-4 h-4" />
+              <span className="text-sm hidden sm:inline">返回</span>
+            </button>
 
-          {/* Right: settings */}
-          <button
-            onClick={onToggleSettings}
-            className={`p-2 rounded-lg transition-colors z-10 ${
-              showSettings
-                ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
-                : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
-            }`}
-            title="设置"
-          >
-            <Settings className="w-5 h-5" />
-          </button>
+            {/* Center: chapter title */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <h1
+                className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate max-w-[60%] text-center"
+                title={chapterTitle}
+              >
+                {chapterTitle || `第 ${currentChapter + 1} 章`}
+              </h1>
+            </div>
+
+            {/* Right: settings */}
+            <button
+              onClick={onToggleSettings}
+              className={`p-2 rounded-lg transition-colors z-10 ${
+                showSettings
+                  ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
+                  : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
+              }`}
+              title="设置"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Bottom navigation bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-700 z-50">
-        <div className="flex items-center justify-between gap-1 sm:gap-2 py-2 px-3 sm:px-4">
-          {/* Left: TOC + Bookmark */}
-          <div className="flex items-center gap-1">
-            <button
-              onClick={onToggleToc}
-              className={`p-2 sm:p-2.5 rounded-lg transition-colors ${
-                showToc
-                  ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
-                  : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
-              }`}
-              title="目录"
-            >
-              <BookOpen className="w-5 h-5" />
-            </button>
-            <button
-              onClick={onAddBookmark}
-              className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-400"
-              title="添加书签"
-            >
-              <Bookmark className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Center: prev + progress + next */}
-          <div className="flex items-center gap-1 sm:gap-2 flex-1 justify-center max-w-md">
-            <button
-              onClick={onPrevPage}
-              className="p-2 sm:p-2.5 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={currentChapter === 0}
-              title="上一章"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-
-            <div className="flex-1 mx-1 sm:mx-2">
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={totalChapters > 0 ? Math.round(((currentChapter + 1) / totalChapters) * 100) : 0}
-                onChange={(e) => {
-                  const pct = parseInt(e.target.value);
-                  const targetPage = Math.round((pct / 100) * totalChapters);
-                  onGoToPage(Math.max(1, targetPage));
-                }}
-                className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:hover:bg-blue-600"
-              />
-              <div className="flex justify-between text-[10px] text-gray-400 mt-0.5 px-1">
-                <span>0%</span>
-                <span className="text-blue-500 font-medium">
-                  {totalChapters > 0 ? Math.round(((currentChapter + 1) / totalChapters) * 100) : 0}%
-                </span>
-                <span>100%</span>
-              </div>
+      <div
+        className="fixed bottom-0 left-0 right-0 z-50"
+        onMouseEnter={handleMouseEnterBottom}
+        onMouseLeave={handleMouseLeaveBottom}
+      >
+        <div
+          className="bg-white/70 dark:bg-gray-900/70 backdrop-blur-md border-t border-white/20 dark:border-gray-700/30"
+          style={{ transform: hidden ? 'translateY(100%)' : 'translateY(0)', transition: barTransition }}
+        >
+          <div className="flex items-center justify-between gap-1 sm:gap-2 py-2 px-3 sm:px-4">
+            {/* Left: TOC + Bookmark */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={onToggleToc}
+                className={`p-2 sm:p-2.5 rounded-lg transition-colors ${
+                  showToc
+                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
+                }`}
+                title="目录"
+              >
+                <BookOpen className="w-5 h-5" />
+              </button>
+              <button
+                onClick={onAddBookmark}
+                className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-400"
+                title="添加书签"
+              >
+                <Bookmark className="w-5 h-5" />
+              </button>
             </div>
 
-            <button
-              onClick={onNextPage}
-              className="p-2 sm:p-2.5 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={currentChapter >= totalChapters - 1}
-              title="下一章 (→)"
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
+            {/* Center: prev + progress + next */}
+            <div className="flex items-center gap-1 sm:gap-2 flex-1 justify-center max-w-md">
+              <button
+                onClick={onPrevPage}
+                className="p-2 sm:p-2.5 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={currentChapter === 0}
+                title="上一章"
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
 
-          {/* Right: TTS + Timer */}
-          <div className="flex items-center gap-1">
-            <button
-              onClick={onNavigateTts}
-              className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-400"
-              title="听书模式"
-            >
-              <Volume2 className="w-5 h-5" />
-            </button>
-            <button
-              onClick={onToggleAutoScroll}
-              className={`p-2 sm:p-2.5 rounded-lg transition-colors ${
-                isAutoScroll
-                  ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
-                  : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
-              }`}
-              title={isAutoScroll ? '关闭自动滚动' : '开启自动滚动'}
-            >
-              <Timer className="w-5 h-5" />
-            </button>
+              <div className="flex-1 mx-1 sm:mx-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={totalChapters > 0 ? Math.round(((currentChapter + 1) / totalChapters) * 100) : 0}
+                  onChange={(e) => {
+                    const pct = parseInt(e.target.value);
+                    const targetPage = Math.round((pct / 100) * totalChapters);
+                    onGoToPage(Math.max(1, targetPage));
+                  }}
+                  className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:hover:bg-blue-600"
+                />
+                <div className="flex justify-between text-[10px] text-gray-400 mt-0.5 px-1">
+                  <span>0%</span>
+                  <span className="text-blue-500 font-medium">
+                    {totalChapters > 0 ? Math.round(((currentChapter + 1) / totalChapters) * 100) : 0}%
+                  </span>
+                  <span>100%</span>
+                </div>
+              </div>
+
+              <button
+                onClick={onNextPage}
+                className="p-2 sm:p-2.5 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={currentChapter >= totalChapters - 1}
+                title="下一章 (→)"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Right: TTS + Timer */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={onNavigateTts}
+                className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-400"
+                title="听书模式"
+              >
+                <Volume2 className="w-5 h-5" />
+              </button>
+              <button
+                onClick={onToggleAutoScroll}
+                className={`p-2 sm:p-2.5 rounded-lg transition-colors ${
+                  isAutoScroll
+                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
+                }`}
+                title={isAutoScroll ? '关闭自动滚动' : '开启自动滚动'}
+              >
+                <Timer className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -1019,6 +1083,7 @@ export default function Reader() {
         showToc={showToc}
         showSettings={showSettings}
         onNavigateTts={handleNavigateTts}
+        scrollContainerRef={contentRef}
       />
 
       {/* Chapter Drawer (TOC) - LEFT */}
@@ -1052,12 +1117,9 @@ export default function Reader() {
       {/* Reader container */}
       <div
         ref={contentRef}
-        className={`reading-container ${mode} pt-14 pb-20 overflow-auto`}
+        className={`reading-container ${mode} pt-20 pb-20 overflow-auto`}
         style={{
-          padding: `${margin}px`,
-          paddingBottom: `${margin + 80}px`,
-          maxWidth: '800px',
-          margin: '0 auto',
+          padding: `${margin + 80}px ${margin}px ${margin + 80}px`,
           height: '100vh',
           boxSizing: 'border-box',
           fontFamily,

@@ -1,59 +1,106 @@
 // @ts-nocheck
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useLibraryStore, selectRecentlyRead, selectBooksByProgress } from '../stores/libraryStore';
-import { useAuthStore } from '../stores/authStore';
-import { Button, Input, Card, CardContent } from '@bookdock/ui';
-import { getApiClient, EbookSource, Book } from '@bookdock/api-client';
-import { BookOpen, Cloud, ArrowDown, ArrowUp, Search, PenLine, Clock, FolderOpen, LayoutGrid, List } from 'lucide-react';
+import { Book, EbookSource, getApiClient } from "@bookdock/api-client";
+import { Button, Card, CardContent } from "@bookdock/ui";
+import {
+  ArrowDown,
+  ArrowUp,
+  BookOpen,
+  Clock,
+  Cloud,
+  FolderOpen,
+  LayoutGrid,
+  List,
+  PenLine,
+  Search,
+} from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuthStore } from "../stores/authStore";
+import {
+  selectBooksByProgress,
+  selectRecentlyRead,
+  useLibraryStore,
+} from "../stores/libraryStore";
 
 // Extended book type with source info for NAS books
 interface BookWithSource extends Book {
   _sourceId?: string;
-  _sourceType?: 'local' | 'webdav' | 'smb' | 'ftp';
+  _sourceType?: "local" | "webdav" | "smb" | "ftp";
 }
 
 const formatFileSize = (bytes: number): string => {
-  if (bytes === 0) return '0 B';
+  if (bytes === 0) return "0 B";
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 };
 
 const formatDate = (dateString?: string): string => {
-  if (!dateString) return '';
+  if (!dateString) return "";
   const date = new Date(dateString);
-  return date.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
+  return date.toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
   });
 };
 
 // Reading progress categories
-type ProgressFilter = 'all' | 'unread' | 'reading' | 'completed';
-type SortOption = 'title' | 'author' | 'lastRead' | 'addedAt';
+type ProgressFilter = "all" | "unread" | "reading" | "completed";
+type SortOption = "title" | "author" | "lastRead" | "addedAt";
 
-const BookCard: React.FC<{ book: Book; onSelect: () => void }> = ({ book, onSelect }) => {
+// Generate a stable gradient for a book based on its title
+function getBookGradient(title: string): string {
+  const gradients = [
+    "from-blue-400 to-purple-500",
+    "from-orange-400 to-red-500",
+    "from-green-400 to-teal-500",
+    "from-pink-400 to-rose-500",
+    "from-cyan-400 to-blue-500",
+    "from-amber-400 to-orange-500",
+    "from-indigo-400 to-violet-500",
+    "from-emerald-400 to-green-500",
+  ];
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) {
+    hash = title.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return gradients[Math.abs(hash) % gradients.length];
+}
+
+const BookCard: React.FC<{ book: Book; onSelect: () => void }> = ({
+  book,
+  onSelect,
+}) => {
   const nasBook = book as BookWithSource;
   const isNas = !!nasBook._sourceId;
+  const progress = book.readingProgress ?? 0;
+  const statusText = progress === 0 ? "未读" : progress >= 100 ? "已读完" : "在读";
+  const statusColor = progress === 0
+    ? "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+    : progress >= 100
+      ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
+      : "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400";
 
   return (
-    <Card
-      className="group cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-105"
+    <div
+      className="group cursor-pointer"
       onClick={onSelect}
     >
-      <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-t-xl overflow-hidden relative">
+      {/* Cover */}
+      <div className="aspect-[2/3] rounded-xl overflow-hidden relative shadow-sm group-hover:shadow-md transition-shadow">
         {book.coverUrl ? (
           <img
             src={book.coverUrl}
             alt={book.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            className="w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500">
-            <span className="text-4xl text-white font-bold">{book.title.charAt(0)}</span>
+          <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}>
+            <span className="text-5xl text-white font-bold">
+              {book.title.charAt(0)}
+            </span>
           </div>
         )}
 
@@ -65,58 +112,67 @@ const BookCard: React.FC<{ book: Book; onSelect: () => void }> = ({ book, onSele
         )}
 
         {/* Progress indicator */}
-        {book.readingProgress !== undefined && book.readingProgress > 0 && (
-          <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-300 dark:bg-gray-600">
+        {progress > 0 && (
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/30">
             <div
-              className="h-full bg-blue-500 transition-all duration-300"
-              style={{ width: `${book.readingProgress}%` }}
+              className="h-full bg-blue-500"
+              style={{ width: `${progress}%` }}
             />
           </div>
         )}
 
         {/* Format badge */}
-        <div className="absolute top-2 right-2 px-2 py-1 bg-black/50 rounded text-xs text-white uppercase">
+        <div className="absolute top-2 right-2 px-2 py-0.5 bg-orange-400/90 rounded-md text-[10px] text-white font-medium uppercase">
           {book.fileType}
         </div>
       </div>
 
-      <CardContent className="p-3">
-        <h3 className="font-semibold text-sm text-gray-900 dark:text-white truncate" title={book.title}>
+      {/* Info */}
+      <div className="mt-3">
+        <h3
+          className="font-medium text-sm text-gray-900 dark:text-white truncate"
+          title={book.title}
+        >
           {book.title}
         </h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
-          {book.author || '未知作者'}
+        <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">
+          {book.author || "未知作者"}
         </p>
-        <div className="flex items-center justify-between mt-2 text-xs text-gray-400 dark:text-gray-500">
-          <span>{formatFileSize(book.fileSize)}</span>
-          {book.readingProgress !== undefined && book.readingProgress > 0 && (
-            <span className="text-blue-500">{book.readingProgress}%</span>
-          )}
+        <div className="flex items-center gap-2 mt-2">
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${statusColor}`}>
+            {statusText}
+          </span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">
+            {formatFileSize(book.fileSize)}
+          </span>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 };
 
 export default function Library() {
   const navigate = useNavigate();
-  const { books, isLoading, error, searchQuery, fetchBooks, setSearchQuery } = useLibraryStore();
+  const { books, isLoading, error, searchQuery, fetchBooks, setSearchQuery } =
+    useLibraryStore();
   const { user } = useAuthStore();
 
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   // Source filter state
   const [sources, setSources] = useState<EbookSource[]>([]);
-  const [selectedSourceId, setSelectedSourceId] = useState<string>('all');
+  const [selectedSourceId, setSelectedSourceId] = useState<string>("all");
   const [sourcesLoading, setSourcesLoading] = useState(false);
   const [nasBooks, setNasBooks] = useState<BookWithSource[]>([]);
 
   // Advanced filters
-  const [filterFormat, setFilterFormat] = useState<Book['fileType'] | 'all'>('all');
-  const [filterProgress, setFilterProgress] = useState<ProgressFilter>('all');
-  const [sortBy, setSortBy] = useState<SortOption>('addedAt');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [authorSearch, setAuthorSearch] = useState('');
+  const [filterFormat, setFilterFormat] = useState<Book["fileType"] | "all">(
+    "all",
+  );
+  const [filterProgress, setFilterProgress] = useState<ProgressFilter>("all");
+  const [sortBy, setSortBy] = useState<SortOption>("addedAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [authorSearch, setAuthorSearch] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -130,13 +186,13 @@ export default function Library() {
       if (res.success) {
         await fetchBooks();
       } else {
-        alert('上传失败: ' + (res.error || '未知错误'));
+        alert("上传失败: " + (res.error || "未知错误"));
       }
     } catch (err: any) {
-      alert('上传失败: ' + err.message);
+      alert("上传失败: " + err.message);
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -150,7 +206,9 @@ export default function Library() {
           const enabledSources = response.data.filter((s) => s.enabled);
           setSources(enabledSources);
         }
-      } catch { /* ignore - sources are optional */ }
+      } catch {
+        /* ignore - sources are optional */
+      }
     };
     loadSources();
   }, []);
@@ -158,7 +216,7 @@ export default function Library() {
   // Load NAS books when source changes
   useEffect(() => {
     const loadNasBooks = async () => {
-      if (selectedSourceId === 'all') {
+      if (selectedSourceId === "all") {
         setNasBooks([]);
         return;
       }
@@ -166,40 +224,65 @@ export default function Library() {
       setSourcesLoading(true);
       try {
         const apiClient = getApiClient();
-        const response = await apiClient.getSourceFiles(selectedSourceId, '/');
+        const response = await apiClient.getSourceFiles(selectedSourceId, "/");
         if (response.success && response.data) {
-          const booksFromSource = sources.find((s) => s.id === selectedSourceId);
-          const sourceType = booksFromSource?.type || 'webdav';
+          const booksFromSource = sources.find(
+            (s) => s.id === selectedSourceId,
+          );
+          const sourceType = booksFromSource?.type || "webdav";
 
           // Filter to ebook files only
-          const supportedExts = ['epub', 'pdf', 'mobi', 'txt', 'azw3', 'fb2', 'djvu'];
-          const nasBooksWithSource: BookWithSource[] = (response.data)
-            .filter((f: { isDirectory: boolean; name: string }) => !f.isDirectory && supportedExts.some(ext => f.name.toLowerCase().endsWith(`.${ext}`)))
-            .map((f: { path: string; name: string; size: number; lastModified: string }) => {
-              const ext = f.name.split('.').pop()?.toLowerCase() || 'other';
-              return {
-                id: `nas_${selectedSourceId}_${f.path}`,
-                title: f.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' '),
-                author: '未知作者',
-                fileType: ext as Book['fileType'],
-                filePath: f.path,
-                fileSize: f.size,
-                addedAt: f.lastModified,
-                _sourceId: selectedSourceId,
-                _sourceType: sourceType as BookWithSource['_sourceType'],
-                // Mark as from NAS
-                coverUrl: undefined,
-              } as BookWithSource;
-            });
+          const supportedExts = [
+            "epub",
+            "pdf",
+            "mobi",
+            "txt",
+            "azw3",
+            "fb2",
+            "djvu",
+          ];
+          const nasBooksWithSource: BookWithSource[] = response.data
+            .filter(
+              (f: { isDirectory: boolean; name: string }) =>
+                !f.isDirectory &&
+                supportedExts.some((ext) =>
+                  f.name.toLowerCase().endsWith(`.${ext}`),
+                ),
+            )
+            .map(
+              (f: {
+                path: string;
+                name: string;
+                size: number;
+                lastModified: string;
+              }) => {
+                const ext = f.name.split(".").pop()?.toLowerCase() || "other";
+                return {
+                  id: `nas_${selectedSourceId}_${f.path}`,
+                  title: f.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "),
+                  author: "未知作者",
+                  fileType: ext as Book["fileType"],
+                  filePath: f.path,
+                  fileSize: f.size,
+                  addedAt: f.lastModified,
+                  _sourceId: selectedSourceId,
+                  _sourceType: sourceType as BookWithSource["_sourceType"],
+                  // Mark as from NAS
+                  coverUrl: undefined,
+                } as BookWithSource;
+              },
+            );
 
           setNasBooks(nasBooksWithSource);
         }
-      } catch { /* ignore */ } finally {
+      } catch {
+        /* ignore */
+      } finally {
         setSourcesLoading(false);
       }
     };
 
-    if (selectedSourceId !== 'all') {
+    if (selectedSourceId !== "all") {
       loadNasBooks();
     } else {
       setNasBooks([]);
@@ -208,7 +291,7 @@ export default function Library() {
 
   // Merge local books with NAS books when viewing "all"
   const allBooks = useMemo(() => {
-    if (selectedSourceId === 'all') {
+    if (selectedSourceId === "all") {
       return [...books, ...nasBooks] as Book[];
     }
     return nasBooks as Book[];
@@ -228,7 +311,7 @@ export default function Library() {
       result = result.filter(
         (book) =>
           book.author?.toLowerCase().includes(q) ||
-          book.title.toLowerCase().includes(q)
+          book.title.toLowerCase().includes(q),
       );
     }
 
@@ -238,22 +321,23 @@ export default function Library() {
       result = result.filter(
         (book) =>
           book.title.toLowerCase().includes(q) ||
-          book.author?.toLowerCase().includes(q)
+          book.author?.toLowerCase().includes(q),
       );
     }
 
     // Format filter
-    if (filterFormat !== 'all') {
+    if (filterFormat !== "all") {
       result = result.filter((book) => book.fileType === filterFormat);
     }
 
     // Progress filter
-    if (filterProgress !== 'all') {
+    if (filterProgress !== "all") {
       result = result.filter((book) => {
         const progress = book.readingProgress ?? 0;
-        if (filterProgress === 'unread') return progress === 0;
-        if (filterProgress === 'reading') return progress > 0 && progress < 100;
-        if (filterProgress === 'completed') return progress >= 100 || progress === 100;
+        if (filterProgress === "unread") return progress === 0;
+        if (filterProgress === "reading") return progress > 0 && progress < 100;
+        if (filterProgress === "completed")
+          return progress >= 100 || progress === 100;
         return true;
       });
     }
@@ -262,27 +346,42 @@ export default function Library() {
     result.sort((a, b) => {
       let cmp = 0;
       switch (sortBy) {
-        case 'title':
-          cmp = a.title.localeCompare(b.title, 'zh-CN');
+        case "title":
+          cmp = a.title.localeCompare(b.title, "zh-CN");
           break;
-        case 'author':
-          cmp = (a.author || 'zzz').localeCompare(b.author || 'zzz', 'zh-CN');
+        case "author":
+          cmp = (a.author || "zzz").localeCompare(b.author || "zzz", "zh-CN");
           break;
-        case 'lastRead':
-          cmp = (new Date(a.lastReadAt || 0).getTime()) - (new Date(b.lastReadAt || 0).getTime());
+        case "lastRead":
+          cmp =
+            new Date(a.lastReadAt || 0).getTime() -
+            new Date(b.lastReadAt || 0).getTime();
           break;
-        case 'addedAt':
+        case "addedAt":
         default:
-          cmp = (new Date(a.addedAt || 0).getTime()) - (new Date(b.addedAt || 0).getTime());
+          cmp =
+            new Date(a.addedAt || 0).getTime() -
+            new Date(b.addedAt || 0).getTime();
           break;
       }
-      return sortOrder === 'asc' ? cmp : -cmp;
+      return sortOrder === "asc" ? cmp : -cmp;
     });
 
     return result;
-  }, [allBooks, searchQuery, authorSearch, filterFormat, filterProgress, sortBy, sortOrder]);
+  }, [
+    allBooks,
+    searchQuery,
+    authorSearch,
+    filterFormat,
+    filterProgress,
+    sortBy,
+    sortOrder,
+  ]);
 
-  const recentlyRead = useMemo(() => selectRecentlyRead(allBooks, 5), [allBooks]);
+  const recentlyRead = useMemo(
+    () => selectRecentlyRead(allBooks, 5),
+    [allBooks],
+  );
   const inProgress = useMemo(() => selectBooksByProgress(allBooks), [allBooks]);
 
   const handleSearch = (e?: React.FormEvent) => {
@@ -295,7 +394,7 @@ export default function Library() {
   };
 
   const toggleSortOrder = () => {
-    setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
   };
 
   if (error) {
@@ -307,14 +406,22 @@ export default function Library() {
     );
   }
 
-  const isAnyLoading = isLoading || (selectedSourceId !== 'all' && sourcesLoading);
+  const isAnyLoading =
+    isLoading || (selectedSourceId !== "all" && sourcesLoading);
 
   // Stats
   const stats = useMemo(() => {
     const total = allBooks.length;
-    const unread = allBooks.filter((b) => !b.readingProgress || b.readingProgress === 0).length;
-    const reading = allBooks.filter((b) => b.readingProgress && b.readingProgress > 0 && b.readingProgress < 100).length;
-    const completed = allBooks.filter((b) => b.readingProgress && b.readingProgress >= 100).length;
+    const unread = allBooks.filter(
+      (b) => !b.readingProgress || b.readingProgress === 0,
+    ).length;
+    const reading = allBooks.filter(
+      (b) =>
+        b.readingProgress && b.readingProgress > 0 && b.readingProgress < 100,
+    ).length;
+    const completed = allBooks.filter(
+      (b) => b.readingProgress && b.readingProgress >= 100,
+    ).length;
     return { total, unread, reading, completed };
   }, [allBooks]);
 
@@ -323,13 +430,20 @@ export default function Library() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">我的书库</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+            我的书库
+          </h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1 flex flex-wrap gap-3">
             <span>共 {stats.total} 本</span>
-            <span className="text-green-600 dark:text-green-400">{stats.completed} 已读完</span>
-            <span className="text-blue-600 dark:text-blue-400">{stats.reading} 在读</span>
+            <span className="text-green-600 dark:text-green-400">
+              {stats.completed} 已读完
+            </span>
+            <span className="text-blue-600 dark:text-blue-400">
+              {stats.reading} 在读
+            </span>
             <span className="text-gray-400">{stats.unread} 未读</span>
-            {(user as { membership?: string } | null)?.membership === 'premium' && (
+            {(user as { membership?: string } | null)?.membership ===
+              "premium" && (
               <span className="ml-2 text-amber-500">Premium 会员</span>
             )}
           </p>
@@ -365,108 +479,122 @@ export default function Library() {
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
           >
-            {uploading ? <><Clock className="w-4 h-4 mr-1 animate-spin" /> 上传中...</> : <><BookOpen className="w-4 h-4 mr-1" /> 添加书籍</>}
+            {uploading ? (
+              <>
+                <Clock className="w-4 h-4 mr-1 animate-spin" /> 上传中...
+              </>
+            ) : (
+              <>
+                <BookOpen className="w-4 h-4 mr-1" /> 添加书籍
+              </>
+            )}
           </Button>
         </div>
       </div>
 
       {/* Search and Filters Row */}
-      <div className="space-y-3">
-        {/* Main search bar */}
-        <form onSubmit={handleSearch} className="flex gap-3">
-          <div className="relative flex-1">
-            <input
-              type="text"
-              placeholder="搜索书名..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2.5 pl-10 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          </div>
-          <div className="relative flex-1">
-            <input
-              type="text"
-              placeholder="搜索作者..."
-              value={authorSearch}
-              onChange={(e) => setAuthorSearch(e.target.value)}
-              className="w-full px-4 py-2.5 pl-10 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <PenLine className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          </div>
-        </form>
+      <div className="flex items-center gap-3">
+        {/* Search title */}
+        <div className="relative flex-[2]">
+          <input
+            type="text"
+            placeholder="搜索书名..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full px-4 py-2.5 pl-10 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        </div>
 
-        {/* Filter and Sort Row */}
-        <div className="flex flex-wrap gap-2 items-center">
-          {/* Format filter */}
-          <select
-            value={filterFormat}
-            onChange={(e) => setFilterFormat(e.target.value as Book['fileType'] | 'all')}
-            className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          >
-            <option value="all">全部格式</option>
-            <option value="epub">EPUB</option>
-            <option value="pdf">PDF</option>
-            <option value="mobi">MOBI</option>
-            <option value="txt">TXT</option>
-          </select>
+        {/* Search author */}
+        <div className="relative flex-[2]">
+          <input
+            type="text"
+            placeholder="搜索作者..."
+            value={authorSearch}
+            onChange={(e) => setAuthorSearch(e.target.value)}
+            className="w-full px-4 py-2.5 pl-10 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <PenLine className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        </div>
 
-          {/* Progress filter */}
-          <select
-            value={filterProgress}
-            onChange={(e) => setFilterProgress(e.target.value as ProgressFilter)}
-            className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          >
-            <option value="all">全部状态</option>
-            <option value="unread">未读</option>
-            <option value="reading">在读</option>
-            <option value="completed">已读完</option>
-          </select>
+        {/* Format filter */}
+        <select
+          value={filterFormat}
+          onChange={(e) =>
+            setFilterFormat(e.target.value as Book["fileType"] | "all")
+          }
+          className="px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm flex-shrink-0"
+        >
+          <option value="all">全部格式</option>
+          <option value="epub">EPUB</option>
+          <option value="pdf">PDF</option>
+          <option value="mobi">MOBI</option>
+          <option value="txt">TXT</option>
+        </select>
 
-          {/* Sort */}
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as SortOption)}
-            className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-          >
-            <option value="addedAt">添加时间</option>
-            <option value="title">书名</option>
-            <option value="author">作者</option>
-            <option value="lastRead">最近阅读</option>
-          </select>
+        {/* Progress filter */}
+        <select
+          value={filterProgress}
+          onChange={(e) =>
+            setFilterProgress(e.target.value as ProgressFilter)
+          }
+          className="px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm flex-shrink-0"
+        >
+          <option value="all">全部状态</option>
+          <option value="unread">未读</option>
+          <option value="reading">在读</option>
+          <option value="completed">已读完</option>
+        </select>
 
+        {/* Sort */}
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as SortOption)}
+          className="px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm flex-shrink-0"
+        >
+          <option value="addedAt">添加时间</option>
+          <option value="title">书名</option>
+          <option value="author">作者</option>
+          <option value="lastRead">最近阅读</option>
+        </select>
+
+        {/* Sort order */}
+        <button
+          onClick={toggleSortOrder}
+          className="px-3 py-2.5 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
+          title={sortOrder === "desc" ? "降序" : "升序"}
+        >
+          {sortOrder === "desc" ? (
+            <ArrowDown className="w-4 h-4" />
+          ) : (
+            <ArrowUp className="w-4 h-4" />
+          )}
+        </button>
+
+        {/* View mode toggle */}
+        <div className="flex border border-gray-300 dark:border-gray-600 rounded-xl overflow-hidden flex-shrink-0">
           <button
-            onClick={toggleSortOrder}
-            className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-            title={sortOrder === 'desc' ? '降序' : '升序'}
+            onClick={() => setViewMode("grid")}
+            className={`px-3 py-2.5 ${viewMode === "grid" ? "bg-blue-500 text-white" : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400"}`}
           >
-            {sortOrder === 'desc' ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />}
+            <LayoutGrid className="w-4 h-4" />
           </button>
-
-          <div className="flex-1" />
-
-          {/* View mode toggle */}
-          <div className="flex border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`px-3 py-2 ${viewMode === 'grid' ? 'bg-blue-500 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}
-            >
-              <LayoutGrid className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setViewMode('list')}
-              className={`px-3 py-2 ${viewMode === 'list' ? 'bg-blue-500 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}
-            >
-                            <List className="w-4 h-4" />
-            </button>
-          </div>
+          <button
+            onClick={() => setViewMode("list")}
+            className={`px-3 py-2.5 ${viewMode === "list" ? "bg-blue-500 text-white" : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400"}`}
+          >
+            <List className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
       {/* Continue Reading */}
       {inProgress.length > 0 && (
         <section>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4"><BookOpen className="w-5 h-5 inline mr-1" /> 继续阅读</h2>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+            <BookOpen className="w-5 h-5 inline mr-1" /> 继续阅读
+          </h2>
           <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4">
             {inProgress.map((book) => (
               <div
@@ -476,10 +604,16 @@ export default function Library() {
               >
                 <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden relative">
                   {book.coverUrl ? (
-                    <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />
+                    <img
+                      src={book.coverUrl}
+                      alt={book.title}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500">
-                      <span className="text-3xl text-white font-bold">{book.title.charAt(0)}</span>
+                      <span className="text-3xl text-white font-bold">
+                        {book.title.charAt(0)}
+                      </span>
                     </div>
                   )}
                   <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-300 dark:bg-gray-600">
@@ -489,8 +623,12 @@ export default function Library() {
                     />
                   </div>
                 </div>
-                <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white truncate">{book.title}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{book.readingProgress}%</p>
+                <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white truncate">
+                  {book.title}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {book.readingProgress}%
+                </p>
               </div>
             ))}
           </div>
@@ -500,7 +638,9 @@ export default function Library() {
       {/* Recently Added */}
       {recentlyRead.length > 0 && (
         <section>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 inline-flex items-center gap-1"><Clock className="w-5 h-5" /> 最近阅读</h2>
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 inline-flex items-center gap-1">
+            <Clock className="w-5 h-5" /> 最近阅读
+          </h2>
           <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4">
             {recentlyRead.map((book) => (
               <div
@@ -510,15 +650,25 @@ export default function Library() {
               >
                 <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden">
                   {book.coverUrl ? (
-                    <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />
+                    <img
+                      src={book.coverUrl}
+                      alt={book.title}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-green-400 to-teal-500">
-                      <span className="text-3xl text-white font-bold">{book.title.charAt(0)}</span>
+                      <span className="text-3xl text-white font-bold">
+                        {book.title.charAt(0)}
+                      </span>
                     </div>
                   )}
                 </div>
-                <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white truncate">{book.title}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">{formatDate(book.lastReadAt)}</p>
+                <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white truncate">
+                  {book.title}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {formatDate(book.lastReadAt)}
+                </p>
               </div>
             ))}
           </div>
@@ -546,66 +696,94 @@ export default function Library() {
           </div>
         ) : filteredBooks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16">
-            <div className="mb-4 flex justify-center"><BookOpen className="w-16 h-16 text-gray-400" /></div>
-            <h3 className="text-xl font-medium text-gray-900 dark:text-white">暂无书籍</h3>
+            <div className="mb-4 flex justify-center">
+              <BookOpen className="w-16 h-16 text-gray-400" />
+            </div>
+            <h3 className="text-xl font-medium text-gray-900 dark:text-white">
+              暂无书籍
+            </h3>
             <p className="text-gray-500 dark:text-gray-400 mt-2">
-              {allBooks.length === 0 ? '点击上方按钮添加您的第一本书，或在管理面板配置 NAS 书源' : '没有找到符合条件的书籍'}
+              {allBooks.length === 0
+                ? "点击上方按钮添加您的第一本书，或在管理面板配置 NAS 书源"
+                : "没有找到符合条件的书籍"}
             </p>
           </div>
-        ) : viewMode === 'grid' ? (
+        ) : viewMode === "grid" ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
             {filteredBooks.map((book) => (
-              <BookCard key={book.id} book={book} onSelect={() => handleBookSelect(book)} />
+              <BookCard
+                key={book.id}
+                book={book}
+                onSelect={() => handleBookSelect(book)}
+              />
             ))}
           </div>
         ) : (
-          <div className="space-y-2">
-            {filteredBooks.map((book) => (
-              <div
-                key={book.id}
-                className="flex items-center gap-4 p-4 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md transition-shadow"
-                onClick={() => handleBookSelect(book)}
-              >
-                <div className="w-16 h-20 bg-gray-100 dark:bg-gray-700 rounded overflow-hidden flex-shrink-0">
-                  {book.coverUrl ? (
-                    <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500">
-                      <span className="text-lg text-white font-bold">{book.title.charAt(0)}</span>
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-gray-900 dark:text-white truncate">{book.title}</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{book.author || '未知作者'}</p>
-                  <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
-                    <span>{book.fileType.toUpperCase()}</span>
-                    <span>{formatFileSize(book.fileSize)}</span>
-                    {book.readingProgress && book.readingProgress > 0 && (
-                      <span className="text-blue-500">{book.readingProgress}%</span>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {filteredBooks.map((book) => {
+              const progress = book.readingProgress ?? 0;
+              const statusText = progress === 0 ? "未读" : progress >= 100 ? "已读完" : "在读";
+              const statusColor = progress === 0
+                ? "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+                : progress >= 100
+                  ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
+                  : "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400";
+
+              return (
+                <div
+                  key={book.id}
+                  className="flex items-center gap-4 py-4 cursor-pointer group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors -mx-4 px-4 rounded-lg"
+                  onClick={() => handleBookSelect(book)}
+                >
+                  {/* Cover */}
+                  <div className="w-12 h-16 rounded-lg overflow-hidden flex-shrink-0 shadow-sm">
+                    {book.coverUrl ? (
+                      <img
+                        src={book.coverUrl}
+                        alt={book.title}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}>
+                        <span className="text-sm text-white font-bold">
+                          {book.title.charAt(0)}
+                        </span>
+                      </div>
                     )}
                   </div>
-                </div>
-                {/* Reading progress bar in list view */}
-                {book.readingProgress !== undefined && book.readingProgress > 0 && (
-                  <div className="w-20 flex-shrink-0">
-                    <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full">
-                      <div
-                        className="h-full bg-blue-500 rounded-full"
-                        style={{ width: `${book.readingProgress}%` }}
-                      />
-                    </div>
+
+                  {/* Title + Author */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-medium text-gray-900 dark:text-white truncate">
+                      {book.title}
+                    </h3>
+                    <p className="text-sm text-gray-400 dark:text-gray-500 truncate">
+                      {book.author || "未知作者"}
+                    </p>
                   </div>
-                )}
-                <div className="text-2xl">›</div>
-              </div>
-            ))}
+
+                  {/* Format */}
+                  <span className="text-sm text-orange-500 dark:text-orange-400 flex-shrink-0">
+                    {book.fileType.toUpperCase()}
+                  </span>
+
+                  {/* Status badge */}
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${statusColor}`}>
+                    {statusText}
+                  </span>
+
+                  {/* File size */}
+                  <span className="text-sm text-gray-400 dark:text-gray-500 flex-shrink-0 w-20 text-right">
+                    {formatFileSize(book.fileSize)}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
 
       {/* Book Detail Modal */}
-
     </div>
   );
 }
