@@ -104,7 +104,7 @@ export function TTSReaderScreen() {
           }
         }
       } catch {
-        Alert.alert('Error', 'Failed to load book data');
+        Alert.alert('错误', '加载书籍数据失败');
       }
     };
 
@@ -125,7 +125,7 @@ export function TTSReaderScreen() {
         setSleepTimer((prev) => {
           if (prev === null || prev <= 1) {
             handlePause();
-            Alert.alert('Sleep Timer', 'Playback paused due to sleep timer.');
+            Alert.alert('睡眠定时', '已按定时设置暂停播放');
             return null;
           }
           return prev - 1;
@@ -188,7 +188,7 @@ export function TTSReaderScreen() {
       const text = await fetchChapterContent(selectedChapter);
       if (!text.trim()) {
         setIsLoading(false);
-        Alert.alert('Error', 'No text content available for this chapter');
+        Alert.alert('错误', '本章暂无文本内容');
         return;
       }
 
@@ -235,7 +235,7 @@ export function TTSReaderScreen() {
       ttsStore.setState('playing');
     } catch (err) {
       console.error('TTS error:', err);
-      Alert.alert('TTS Error', 'Failed to synthesize speech. Please check your network and backend service.');
+      Alert.alert('TTS 错误', '语音合成失败，请检查网络和后端服务');
     } finally {
       setIsLoading(false);
     }
@@ -359,9 +359,9 @@ export function TTSReaderScreen() {
     setSleepTimer(minutes);
     setShowSleepTimer(false);
     if (minutes === null) {
-      Alert.alert('Sleep Timer', 'Sleep timer cancelled');
+      Alert.alert('睡眠定时', '已取消睡眠定时');
     } else {
-      Alert.alert('Sleep Timer', `Playback will pause in ${minutes} minutes`);
+      Alert.alert('睡眠定时', `${minutes} 分钟后将暂停播放`);
     }
   }, []);
 
@@ -417,7 +417,7 @@ export function TTSReaderScreen() {
 
         {/* Chapter Info */}
         <Text style={styles.chapterTitle} numberOfLines={2}>
-          {currentChapter?.title || 'Loading...'}
+          {currentChapter?.title || '加载中...'}
         </Text>
         <Text style={styles.bookAuthor}>{book.author}</Text>
 
@@ -501,7 +501,7 @@ export function TTSReaderScreen() {
           >
             <Ionicons name="person" size={20} color={theme.colors.text} />
             <Text style={styles.additionalButtonText}>
-              {ttsStore.selectedVoice?.name || 'Voice'}
+              {ttsStore.selectedVoice?.name || '语音'}
             </Text>
           </TouchableOpacity>
 
@@ -695,7 +695,7 @@ export function TTSReaderScreen() {
                       sleepTimer === minutes && { color: '#fff' },
                     ]}
                   >
-                    {minutes === null ? 'Off' : `${minutes} min`}
+                    {minutes === null ? '关闭' : `${minutes} 分钟`}
                   </Text>
                 </TouchableOpacity>
               ))}

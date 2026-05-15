@@ -41,8 +41,8 @@ export function SettingsScreen() {
         setNotificationsEnabled(true);
       } else {
         Alert.alert(
-          'Permission Required',
-          'Please enable notifications in your device settings to receive reading reminders.'
+          '需要权限',
+          '请在设备设置中开启通知权限，以接收阅读提醒。'
         );
       }
     } else {
@@ -63,12 +63,12 @@ export function SettingsScreen() {
 
   const handleClearCache = useCallback(async () => {
     Alert.alert(
-      'Clear Cache',
-      'This will clear all cached data including downloaded books and reading progress. This cannot be undone.',
+      '清除缓存',
+      '这将清除所有缓存数据，包括已下载的书籍和阅读进度。此操作不可撤销。',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: '取消', style: 'cancel' },
         {
-          text: 'Clear',
+          text: '清除',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -77,9 +77,9 @@ export function SettingsScreen() {
                 const path = `${fileSystemService['booksDir']}${file}`;
                 await fileSystemService.deleteBookFile(path);
               }
-              Alert.alert('Success', 'Cache cleared successfully');
+              Alert.alert('成功', '缓存已清除');
             } catch {
-              Alert.alert('Error', 'Failed to clear cache');
+              Alert.alert('错误', '清除缓存失败');
             }
           },
         },
@@ -89,12 +89,12 @@ export function SettingsScreen() {
 
   const handleDeleteAccount = useCallback(() => {
     Alert.alert(
-      'Delete Account',
-      'This action is irreversible. All your data will be permanently deleted.',
+      '删除账户',
+      '此操作不可逆，您的所有数据将被永久删除。',
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: '取消', style: 'cancel' },
         {
-          text: 'Delete',
+          text: '删除',
           style: 'destructive',
           onPress: async () => {
             setIsLoading(true);
@@ -103,7 +103,7 @@ export function SettingsScreen() {
               await apiClient.deleteUser(authStore.user?.id || '');
               authStore.logout();
             } catch {
-              Alert.alert('Error', 'Failed to delete account. Please contact support.');
+              Alert.alert('错误', '删除账户失败，请联系客服');
             } finally {
               setIsLoading(false);
             }
@@ -157,7 +157,7 @@ export function SettingsScreen() {
           <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
           {renderRow('crown-outline', '会员类型',
             <View style={styles.rowValueRow}>
-              <Text style={styles.rowValueText}>{isPremium ? 'Premium' : '免费用户'}</Text>
+              <Text style={styles.rowValueText}>{isPremium ? '高级会员' : '免费用户'}</Text>
               <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
             </View>,
             () => {}

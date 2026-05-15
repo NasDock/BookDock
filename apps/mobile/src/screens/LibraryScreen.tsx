@@ -21,10 +21,21 @@ import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import type { Book } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
 
+// Adaptive grid: phone = 2 columns, tablet = 3-4 columns based on width
 const { width } = Dimensions.get('window');
-const GRID_COLUMNS = 3;
 const GAP = 12;
-const ITEM_WIDTH = (width - spacing.md * 2 - GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
+
+function getGridColumns(screenWidth: number): number {
+  if (screenWidth >= 900) return 5;
+  if (screenWidth >= 768) return 4;
+  if (screenWidth >= 600) return 3;
+  return 2;
+}
+
+function getItemWidth(screenWidth: number): number {
+  const columns = getGridColumns(screenWidth);
+  return (screenWidth - spacing.md * 2 - GAP * (columns - 1)) / columns;
+}
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -75,7 +86,18 @@ export function LibraryScreen() {
   const [filterFormat, setFilterFormat] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const [screenWidth, setScreenWidth] = useState(width);
+  const gridColumns = useMemo(() => getGridColumns(screenWidth), [screenWidth]);
+  const itemWidth = useMemo(() => getItemWidth(screenWidth), [screenWidth]);
+
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setScreenWidth(window.width);
+    });
+    return () => subscription?.remove();
+  }, []);
+
+  const styles = useMemo(() => createStyles(theme, itemWidth), [theme, itemWidth]);
 
   useFocusEffect(
     useCallback(() => {
@@ -155,7 +177,7 @@ export function LibraryScreen() {
     const isDownloaded = localBooks.some((b) => b.id === book.id && b.isDownloaded);
     if (isDownloaded) {
       Alert.alert('Confirm', 'Delete this downloaded book?', [
-        { text: 'Cancel', style: 'cancel' },
+        { text: '取消', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
@@ -171,12 +193,12 @@ export function LibraryScreen() {
     try {
       const path = await downloadBook(book);
       if (path) {
-        Alert.alert('Success', 'Book downloaded for offline reading');
+        Alert.alert('成功', '书籍已下载，可离线阅读');
       } else {
-        Alert.alert('Error', 'Failed to download book');
+        Alert.alert('错误', '下载失败');
       }
     } catch {
-      Alert.alert('Error', 'Failed to download book');
+      Alert.alert('错误', '下载失败');
     } finally {
       setDownloadingId(null);
     }
@@ -327,7 +349,7 @@ export function LibraryScreen() {
       <FlatList
         data={filteredBooks}
         keyExtractor={(item) => item.id}
-        numColumns={GRID_COLUMNS}
+        numColumns={gridColumns}
         renderItem={renderBookItem}
         ListHeaderComponent={renderHeader}
         contentContainerStyle={styles.listContentContainer}
@@ -342,8 +364,8 @@ export function LibraryScreen() {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Ionicons name="library-outline" size={64} color={theme.colors.textSecondary} />
-            <Text style={styles.emptyText}>{error || 'Your library is empty'}</Text>
-            <Text style={styles.emptySubtext}>Pull down to refresh</Text>
+            <Text style={styles.emptyText}>{error || '书库为空'}</Text>
+            <Text style={styles.emptySubtext}>下拉刷新</Text>
           </View>
         }
       />
@@ -359,7 +381,7 @@ function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
-function createStyles(theme: ReturnType<typeof getTheme>) {
+function createStyles(theme: ReturnType<typeof getTheme>, itemWidth: number) {
   return StyleSheet.create({
     container: {
       flex: 1,
@@ -427,7 +449,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       gap: GAP,
     },
     gridItem: {
-      width: ITEM_WIDTH,
+      width: itemWidth,
       marginBottom: spacing.md,
     },
     coverContainer: {

@@ -14,15 +14,13 @@ export type RootStackParamList = {
   MemberDetail: undefined;
   MemberPaymentSuccess: undefined;
   SourceManage: undefined;
+  Settings: undefined;
 };
 
 // Tab navigator param list
 export type MainTabParamList = {
   Library: undefined;
-  TTS: undefined;
   Profile: undefined;
-  Settings: undefined;
-  Sources: undefined;
 };
 
 // Navigation prop types

@@ -4,6 +4,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { MainTabNavigator } from './MainTabNavigator';
 import { ReaderScreen } from '../screens/ReaderScreen';
 import { TTSScreen } from '../screens/TTSScreen';
+import { SettingsScreen } from '../screens/SettingsScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { MemberLoginScreen } from '../screens/MemberLoginScreen';
 import { useAuthStore, useThemeStore } from '../stores';
@@ -63,16 +64,24 @@ export function RootNavigator() {
               name="Reader"
               component={ReaderScreen}
               options={({ route }) => ({
-                title: route.params?.book?.title || 'Reader',
-                headerBackTitle: 'Back',
+                title: route.params?.book?.title || '阅读',
+                headerBackTitle: '返回',
               })}
             />
             <Stack.Screen
               name="TTSScreen"
               component={TTSScreen}
               options={{
-                title: 'Listen',
-                headerBackTitle: 'Back',
+                title: '听书',
+                headerBackTitle: '返回',
+              }}
+            />
+            <Stack.Screen
+              name="Settings"
+              component={SettingsScreen}
+              options={{
+                title: '设置',
+                headerBackTitle: '返回',
               }}
             />
           </>

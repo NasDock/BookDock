@@ -43,7 +43,7 @@ export function TTSTabScreen() {
         {/* Currently Playing */}
         {ttsState.currentBookId && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Currently Playing</Text>
+            <Text style={styles.sectionTitle}>正在播放</Text>
             <View style={[styles.playerCard, { backgroundColor: theme.colors.surface }]}>
               <View style={[styles.playerCover, { backgroundColor: theme.colors.border }]}>
                 <Text style={styles.playerCoverText}>
@@ -52,10 +52,10 @@ export function TTSTabScreen() {
               </View>
               <View style={styles.playerInfo}>
                 <Text style={styles.playerTitle} numberOfLines={1}>
-                  {books.find((b) => b.id === ttsState.currentBookId)?.title || 'Unknown'}
+                  {books.find((b) => b.id === ttsState.currentBookId)?.title || '未知'}
                 </Text>
                 <Text style={styles.playerAuthor} numberOfLines={1}>
-                  {books.find((b) => b.id === ttsState.currentBookId)?.author || 'Unknown'}
+                  {books.find((b) => b.id === ttsState.currentBookId)?.author || '未知'}
                 </Text>
               </View>
               <TouchableOpacity style={styles.playButton} onPress={handlePlayPause}>
@@ -71,9 +71,9 @@ export function TTSTabScreen() {
 
         {/* Quick Start */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Quick Listen</Text>
+          <Text style={styles.sectionTitle}>快速收听</Text>
           <Text style={styles.sectionSubtitle}>
-            Select a book to start listening
+            选择一本书开始收听
           </Text>
           <View style={styles.bookGrid}>
             {books.slice(0, 4).map((book) => (
@@ -95,14 +95,14 @@ export function TTSTabScreen() {
 
         {/* Playback Settings */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Playback</Text>
+          <Text style={styles.sectionTitle}>播放设置</Text>
           <View style={[styles.settingsCard, { backgroundColor: theme.colors.surface }]}>
             <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>Speed</Text>
+              <Text style={styles.settingLabel}>语速</Text>
               <Text style={styles.settingValue}>{ttsState.playbackRate}x</Text>
             </View>
             <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>Volume</Text>
+              <Text style={styles.settingLabel}>音量</Text>
               <View style={styles.volumeContainer}>
                 <Ionicons name="volume-low" size={16} color={theme.colors.textSecondary} />
                 <View style={styles.volumeSlider}>
@@ -125,9 +125,9 @@ export function TTSTabScreen() {
           onPress={() => ttsState.setAutoPlay(!ttsState.isAutoPlay)}
         >
           <View>
-            <Text style={styles.autoPlayTitle}>Auto-play</Text>
+            <Text style={styles.autoPlayTitle}>自动播放</Text>
             <Text style={styles.autoPlaySubtitle}>
-              Automatically continue to next section
+              自动播放下一个章节
             </Text>
           </View>
           <View style={[

@@ -2,10 +2,7 @@ import type { JSX } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { LibraryScreen } from '../screens/LibraryScreen';
-import { TTSTabScreen } from '../screens/TTSTabScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
-import { SettingsScreen } from '../screens/SettingsScreen';
-import { SourceManageScreen } from '../screens/SourceManageScreen';
 import { useThemeStore } from '../stores';
 import { getTheme } from '../utils/theme';
 import type { MainTabParamList } from './types';
@@ -38,55 +35,22 @@ export function MainTabNavigator() {
         name="Library"
         component={LibraryScreen}
         options={{
-          title: 'Library',
+          title: '书库',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="library" size={size} color={color} />
           ),
-          headerTitle: 'My Library',
-        }}
-      />
-      <Tab.Screen
-        name="TTS"
-        component={TTSTabScreen}
-        options={{
-          title: 'Listen',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="headset" size={size} color={color} />
-          ),
-          headerTitle: 'Audio Books',
+          headerTitle: '我的书库',
         }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{
-          title: 'Profile',
+          title: '个人',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person" size={size} color={color} />
           ),
-          headerTitle: 'My Profile',
-        }}
-      />
-      <Tab.Screen
-        name="Settings"
-        component={SettingsScreen}
-        options={{
-          title: 'Settings',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings" size={size} color={color} />
-          ),
-          headerTitle: 'Settings',
-        }}
-      />
-      <Tab.Screen
-        name="Sources"
-        component={SourceManageScreen}
-        options={{
-          title: 'Sources',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="server" size={size} color={color} />
-          ),
-          headerShown: false,
+          headerTitle: '个人中心',
         }}
       />
     </Tab.Navigator>

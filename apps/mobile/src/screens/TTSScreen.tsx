@@ -56,7 +56,7 @@ export function TTSScreen() {
           }
         }
       } catch {
-        setError('No TTS voices available');
+        setError('暂无可用语音');
       }
     };
 
@@ -102,10 +102,10 @@ export function TTSScreen() {
         return text.slice(0, 5000);
       }
       setIsLoading(false);
-      return `This is the book "${book.title}" by ${book.author}. The full text content would be loaded from the server for text-to-speech processing.`;
+      return `《${book.title}》作者：${book.author}。完整内容将从服务器加载用于语音朗读。`;
     } catch {
       setIsLoading(false);
-      return `This is the book "${book.title}" by ${book.author}. The full text content would be loaded from the server for text-to-speech processing.`;
+      return `《${book.title}》作者：${book.author}。完整内容将从服务器加载用于语音朗读。`;
     }
   }, [book]);
 
@@ -118,7 +118,7 @@ export function TTSScreen() {
         setIsSpeaking(true);
         ttsStore.setState('playing');
       } catch {
-        Alert.alert('Error', 'Failed to resume playback');
+        Alert.alert('错误', '恢复播放失败');
       }
       return;
     }
@@ -129,7 +129,7 @@ export function TTSScreen() {
 
     if (!text.trim()) {
       setIsLoading(false);
-      Alert.alert('Error', 'No text content available for speech');
+      Alert.alert('错误', '没有可用于朗读的文本内容');
       return;
     }
 
@@ -178,7 +178,7 @@ export function TTSScreen() {
       setIsLoading(false);
       setIsSpeaking(false);
       ttsStore.setState('idle');
-      Alert.alert('TTS Error', 'Failed to synthesize speech. Please check your network and backend service.');
+      Alert.alert('TTS 错误', '语音合成失败，请检查网络和后端服务');
     }
   }, [isPaused, currentText, ttsStore, fetchBookContent]);
 
@@ -190,7 +190,7 @@ export function TTSScreen() {
         setIsPaused(true);
         ttsStore.setState('paused');
       } catch {
-        Alert.alert('Error', 'Failed to pause playback');
+        Alert.alert('错误', '暂停播放失败');
       }
     }
   }, [ttsStore]);
@@ -391,7 +391,7 @@ export function TTSScreen() {
           <Text style={styles.previewTitle}>Preview</Text>
           <ScrollView style={styles.previewScroll}>
             <Text style={[styles.previewText, { color: theme.colors.text }]} numberOfLines={10}>
-              {currentText || 'Tap play to load and listen to the book content.'}
+              {currentText || '点击播放加载并收听书籍内容'}
             </Text>
           </ScrollView>
         </View>

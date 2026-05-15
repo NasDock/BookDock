@@ -8,6 +8,8 @@ import {
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/types';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, useLibraryStore, useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
@@ -20,7 +22,7 @@ interface StatItem {
 }
 
 export function ProfileScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
   const { user, logout, isVip, vipTier } = useAuthStore();
@@ -35,13 +37,13 @@ export function ProfileScreen() {
   const avgProgress = totalBooks > 0 ? Math.round(totalReadingProgress / totalBooks) : 0;
 
   const stats: StatItem[] = [
-    { label: 'Books', value: totalBooks, icon: 'library' },
-    { label: 'Downloaded', value: downloadedBooks, icon: 'cloud-download' },
-    { label: 'Avg Progress', value: `${avgProgress}%`, icon: 'trending-up' },
+    { label: '书籍', value: totalBooks, icon: 'library' },
+    { label: '已下载', value: downloadedBooks, icon: 'cloud-download' },
+    { label: '平均进度', value: `${avgProgress}%`, icon: 'trending-up' },
   ];
 
   const handleEditProfile = useCallback(() => {
-    Alert.alert('Coming Soon', 'Profile editing will be available in a future update.');
+    Alert.alert('即将上线', '编辑资料功能将在后续版本开放');
   }, []);
 
   const handleManageSubscription = useCallback(() => {
@@ -50,10 +52,10 @@ export function ProfileScreen() {
   }, [navigation]);
 
   const handleLogout = useCallback(() => {
-    Alert.alert('Confirm', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert('确认', '确定要退出登录吗？', [
+      { text: '取消', style: 'cancel' },
       {
-        text: 'Sign Out',
+        text: '退出登录',
         style: 'destructive',
         onPress: async () => {
           try {
@@ -78,7 +80,7 @@ export function ProfileScreen() {
         useAuthStore.getState().setUser(response.data);
       }
     } catch {
-      Alert.alert('Error', 'Failed to refresh user data');
+      Alert.alert('错误', '刷新用户数据失败');
     }
   }, []);
 
@@ -87,6 +89,18 @@ export function ProfileScreen() {
       style={[styles.container, { backgroundColor: theme.colors.background }]}
       contentContainerStyle={styles.content}
     >
+      {/* Header with Settings button */}
+      <View style={styles.headerRow}>
+        <View style={{ width: 40 }} />
+        <Text style={styles.headerTitle}>My Profile</Text>
+        <TouchableOpacity
+          style={styles.settingsButton}
+          onPress={() => navigation.navigate('Settings')}
+        >
+          <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
+      </View>
+
       {/* Profile Header */}
       <View style={[styles.profileHeader, { backgroundColor: theme.colors.surface }]}>
         <View style={styles.avatarContainer}>
@@ -101,11 +115,11 @@ export function ProfileScreen() {
             </View>
           )}
         </View>
-        <Text style={styles.username}>{user?.username || 'User'}</Text>
+        <Text style={styles.username}>{user?.username || '用户'}</Text>
         <View style={styles.roleContainer}>
           <View style={[styles.roleBadge, { backgroundColor: theme.colors.primary + '20' }]}>
             <Text style={[styles.roleText, { color: theme.colors.primary }]}>
-              {user?.role === 'admin' ? 'Admin' : isVip ? (vipTier === 'LIFETIME' ? '永久会员' : '年卡会员') : user?.membership === 'premium' ? 'Premium' : 'Free'}
+              {user?.role === 'admin' ? '管理员' : isVip ? (vipTier === 'LIFETIME' ? '永久会员' : '年卡会员') : user?.membership === 'premium' ? '高级会员' : '免费用户'}
             </Text>
           </View>
         </View>
@@ -139,12 +153,12 @@ export function ProfileScreen() {
           />
           <View style={styles.membershipInfo}>
             <Text style={styles.membershipTitle}>
-              {isVip ? (vipTier === 'LIFETIME' ? '永久会员' : '年卡会员') : user?.membership === 'premium' ? 'Premium Member' : 'Free Plan'}
+              {isVip ? (vipTier === 'LIFETIME' ? '永久会员' : '年卡会员') : user?.membership === 'premium' ? '高级会员' : '免费用户'}
             </Text>
             <Text style={styles.membershipSubtitle}>
               {(user?.membership === 'premium' || isVip)
-                ? 'All features unlocked'
-                : 'Upgrade for more features'}
+                ? '已解锁全部功能'
+                : '升级解锁更多功能'}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
@@ -155,7 +169,7 @@ export function ProfileScreen() {
       <View style={[styles.actionsCard, { backgroundColor: theme.colors.surface }]}>
         <TouchableOpacity style={styles.actionItem} onPress={handleRefreshUser}>
           <Ionicons name="refresh" size={20} color={theme.colors.primary} />
-          <Text style={styles.actionText}>Refresh User Data</Text>
+          <Text style={styles.actionText}>刷新用户数据</Text>
           <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
         </TouchableOpacity>
 
@@ -163,7 +177,7 @@ export function ProfileScreen() {
 
         <TouchableOpacity style={styles.actionItem} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={20} color={theme.colors.error} />
-          <Text style={[styles.actionText, { color: theme.colors.error }]}>Sign Out</Text>
+          <Text style={[styles.actionText, { color: theme.colors.error }]}>退出登录</Text>
           <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
         </TouchableOpacity>
       </View>
@@ -305,6 +319,24 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     divider: {
       height: 1,
       marginHorizontal: spacing.md,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    headerTitle: {
+      fontSize: fontSizes.lg,
+      fontWeight: '600',
+      color: theme.colors.text,
+    },
+    settingsButton: {
+      width: 40,
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
   });
 }

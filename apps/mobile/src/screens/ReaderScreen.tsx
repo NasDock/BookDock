@@ -11,17 +11,19 @@ import {
   Pressable,
   Alert,
   AppState,
+  Animated,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useReaderStore, useThemeStore, useLibraryStore } from '../stores';
+import { useReaderStore, useThemeStore, useLibraryStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { getApiClient } from '@bookdock/api-client';
 import type { ReaderPosition } from '@bookdock/ebook-reader';
 import type { RootStackParamList } from '../navigation/types';
 import * as FileSystem from 'expo-file-system';
+import jschardet from 'jschardet';
 
 // Base64 encoder for React Native (btoa is not available)
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -49,6 +51,75 @@ function customBtoa(input: string): string {
     output += !isNaN(c) ? chars.charAt(bitmap & 63) : '=';
   }
   return output;
+}
+
+// Detect encoding and decode text from ArrayBuffer
+function decodeText(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+
+  // First try UTF-8 BOM
+  if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+    return new TextDecoder('utf-8').decode(bytes.slice(3));
+  }
+
+  // Use jschardet to detect encoding
+  const sample = bytes.slice(0, Math.min(bytes.length, 8192));
+  let binarySample = '';
+  for (let i = 0; i < sample.length; i++) {
+    binarySample += String.fromCharCode(sample[i]);
+  }
+
+  const detected = jschardet.detect(binarySample);
+  const encoding = detected.encoding?.toLowerCase() || 'utf-8';
+  const confidence = detected.confidence || 0;
+
+  // Try detected encoding first if confidence is high enough
+  if (confidence > 0.5 && encoding !== 'ascii') {
+    try {
+      if (encoding === 'gb2312' || encoding === 'gbk' || encoding === 'gb18030') {
+        // For Chinese GB encodings, use gb18030 as it covers all
+        return new TextDecoder('gb18030').decode(bytes);
+      }
+      if (encoding === 'big5') {
+        return new TextDecoder('big5').decode(bytes);
+      }
+      if (encoding === 'shift_jis' || encoding === 'shift-jis' || encoding === 'sjis') {
+        return new TextDecoder('shift_jis').decode(bytes);
+      }
+      if (encoding === 'euc-jp' || encoding === 'eucjp') {
+        return new TextDecoder('euc-jp').decode(bytes);
+      }
+      if (encoding === 'euc-kr' || encoding === 'euckr') {
+        return new TextDecoder('euc-kr').decode(bytes);
+      }
+      if (encoding === 'iso-8859-1' || encoding === 'latin1') {
+        return new TextDecoder('iso-8859-1').decode(bytes);
+      }
+      if (encoding === 'windows-1251' || encoding === 'cp1251') {
+        return new TextDecoder('windows-1251').decode(bytes);
+      }
+      if (encoding === 'windows-1252' || encoding === 'cp1252') {
+        return new TextDecoder('windows-1252').decode(bytes);
+      }
+      // For UTF-8, fall through to default
+    } catch {
+      // Fall through to UTF-8
+    }
+  }
+
+  // Default: try UTF-8
+  try {
+    const utf8Text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    return utf8Text;
+  } catch {
+    // If UTF-8 fails, try GB18030 (common for Chinese novels)
+    try {
+      return new TextDecoder('gb18030').decode(bytes);
+    } catch {
+      // Last resort: latin1 (never fails, preserves bytes)
+      return new TextDecoder('iso-8859-1').decode(bytes);
+    }
+  }
 }
 
 type ReaderScreenRouteProp = RouteProp<RootStackParamList, 'Reader'>;
@@ -110,6 +181,7 @@ function generateReaderHtml(
       background: ${bgColor};
       margin: 0;
       padding: ${config.margin}px;
+      padding-top: ${config.margin + 8}px;
       text-align: justify;
       word-wrap: break-word;
       transition: all 0.3s ease;
@@ -120,8 +192,6 @@ function generateReaderHtml(
   </style>
 </head>
 <body>
-  <h1>${bookTitle}</h1>
-  <p style="font-style: italic; margin-bottom: 2em;">by ${bookAuthor}</p>
   <pre>${safeContent}</pre>
 </body>
 </html>`;
@@ -159,9 +229,9 @@ function generateReaderHtml(
 <body>
   <div class="card">
     <h2>${bookTitle}</h2>
-    <p>by ${bookAuthor}</p>
-    <p>This book is in <span class="format">${fileType.toUpperCase()}</span> format.</p>
-    <p>Please download the book for offline reading with a compatible EPUB reader.</p>
+    <p>作者：${bookAuthor}</p>
+    <p>本书格式为 <span class="format">${fileType.toUpperCase()}</span></p>
+    <p>请下载本书以使用兼容的 EPUB 阅读器进行离线阅读。</p>
   </div>
 </body>
 </html>`;
@@ -182,8 +252,14 @@ export function ReaderScreen() {
   const [showSettings, setShowSettings] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedScrollOffset, setSavedScrollOffset] = useState(0);
+  const [showBars, setShowBars] = useState(true);
+  const [showChapters, setShowChapters] = useState(false);
+  const [chapters, setChapters] = useState<Array<{ index: number; title: string }>>([]);
   const webViewRef = useRef<WebView>(null);
   const latestPositionRef = useRef<ReaderPosition>({ percentage: book.readingProgress ?? 0, scrollOffset: 0 });
+  const lastScrollYRef = useRef(0);
+  const topBarAnim = useRef(new Animated.Value(1)).current;
+  const bottomBarAnim = useRef(new Animated.Value(1)).current;
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
@@ -194,6 +270,21 @@ export function ReaderScreen() {
     margin: readerStore.margin,
     theme: actualTheme === 'dark' ? 'dark' : 'light',
   }), [readerStore.fontSize, readerStore.lineHeight, readerStore.margin, actualTheme]);
+
+  // Animate bars visibility
+  const animateBars = useCallback((show: boolean) => {
+    setShowBars(show);
+    Animated.timing(topBarAnim, {
+      toValue: show ? 1 : 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+    Animated.timing(bottomBarAnim, {
+      toValue: show ? 1 : 0,
+      duration: 250,
+      useNativeDriver: true,
+    }).start();
+  }, [topBarAnim, bottomBarAnim]);
 
   // Load book content
   const loadBookContent = useCallback(async () => {
@@ -224,7 +315,9 @@ export function ReaderScreen() {
         if (fileInfo.exists) {
           // Use local file
           if (book.fileType === 'txt') {
-            const text = await FileSystem.readAsStringAsync(localPath);
+            const fileBuffer = await FileSystem.readAsStringAsync(localPath, { encoding: FileSystem.EncodingType.Base64 });
+            const binary = Buffer.from(fileBuffer, 'base64');
+            const text = decodeText(binary);
             const html = generateReaderHtml(book.title, book.author, text, book.fileType, readerConfig);
             setHtmlContent(html);
           } else if (book.fileType === 'pdf') {
@@ -246,12 +339,10 @@ export function ReaderScreen() {
       const arrayBuffer = await apiClient.downloadBookFile(book.id);
 
       if (book.fileType === 'txt') {
-        const decoder = new TextDecoder('utf-8');
-        const text = decoder.decode(arrayBuffer);
+        const text = decodeText(arrayBuffer);
         const html = generateReaderHtml(book.title, book.author, text, book.fileType, readerConfig);
         setHtmlContent(html);
       } else if (book.fileType === 'pdf') {
-        const bytes = new Uint8Array(arrayBuffer);
         const base64 = arrayBufferToBase64(arrayBuffer);
         const html = generateReaderHtml(book.title, book.author, base64, 'pdf', readerConfig, true);
         setHtmlContent(html);
@@ -262,7 +353,7 @@ export function ReaderScreen() {
       }
     } catch (err) {
       console.error('Failed to load book:', err);
-      setError((err as Error).message || 'Failed to load book');
+      setError((err as Error).message || '加载书籍失败');
     } finally {
       setIsLoading(false);
     }
@@ -282,11 +373,18 @@ export function ReaderScreen() {
         if (book.id && readerStore.autoSaveProgress) {
           libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
         }
+      } else if (data.type === 'scrollDirection') {
+        const direction = data.direction;
+        if (direction === 'down') {
+          animateBars(false);
+        } else if (direction === 'up') {
+          animateBars(true);
+        }
       }
     } catch {
       // Ignore parse errors
     }
-  }, [book.id, readerStore.autoSaveProgress, libraryStore]);
+  }, [book.id, readerStore.autoSaveProgress, libraryStore, animateBars]);
 
   const requestCurrentPositionSave = useCallback(() => {
     webViewRef.current?.injectJavaScript(`
@@ -335,6 +433,9 @@ export function ReaderScreen() {
     (function() {
       const initialScrollOffset = ${Math.max(0, Math.round(savedScrollOffset))};
       let lastScrollTop = -1;
+      let lastScrollDirection = '';
+      let scrollTimeout = null;
+
       const sendProgress = () => {
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
         const scrollHeight = Math.max(
@@ -352,6 +453,19 @@ export function ReaderScreen() {
         }
       };
 
+      const detectScrollDirection = () => {
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+        const direction = scrollTop > lastScrollTop ? 'down' : 'up';
+        if (direction !== lastScrollDirection && Math.abs(scrollTop - lastScrollTop) > 10) {
+          lastScrollDirection = direction;
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'scrollDirection',
+            direction: direction
+          }));
+        }
+        lastScrollTop = scrollTop;
+      };
+
       const restorePosition = () => {
         if (initialScrollOffset > 0) {
           window.scrollTo(0, initialScrollOffset);
@@ -360,7 +474,20 @@ export function ReaderScreen() {
         sendProgress();
       };
 
-      window.addEventListener('scroll', sendProgress, { passive: true });
+      window.addEventListener('scroll', () => {
+        sendProgress();
+        if (scrollTimeout) clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(detectScrollDirection, 100);
+      }, { passive: true });
+
+      document.addEventListener('click', function(e) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'click',
+          x: e.clientX,
+          y: e.clientY
+        }));
+      });
+
       requestAnimationFrame(() => {
         restorePosition();
         setTimeout(restorePosition, 250);
@@ -375,33 +502,70 @@ export function ReaderScreen() {
       const response = await apiClient.getBook(book.id);
       if (response.success && response.data) {
         const bookData = response.data;
-        const shareText = `I'm reading "${bookData.title}" by ${bookData.author} on BookDock`;
+        const shareText = `我正在 BookDock 阅读《${bookData.title}》，作者：${bookData.author}`;
         if (navigator?.share) {
           await navigator.share({ title: bookData.title, text: shareText });
         } else {
-          Alert.alert('Share', shareText);
+          Alert.alert('分享', shareText);
         }
       }
     } catch {
-      Alert.alert('Share', `I'm reading "${book.title}" by ${book.author} on BookDock`);
+      Alert.alert('分享', `我正在 BookDock 阅读《${book.title}》，作者：${book.author}`);
     }
   }, [book]);
 
   const handleDownload = useCallback(async () => {
     try {
       await libraryStore.downloadBook(book);
-      Alert.alert('Success', 'Book downloaded for offline reading');
+      Alert.alert('成功', '书籍已下载，可离线阅读');
     } catch {
-      Alert.alert('Error', 'Failed to download book');
+      Alert.alert('错误', '下载失败');
     }
   }, [libraryStore, book]);
+
+  const handleWebViewClick = useCallback(() => {
+    animateBars(!showBars);
+  }, [showBars, animateBars]);
+
+  const handleOpenChapters = useCallback(async () => {
+    try {
+      const apiClient = getApiClient();
+      const response = await apiClient.getChapters(book.id);
+      if (response.success && response.data) {
+        setChapters(response.data.map((ch) => ({ index: ch.index, title: ch.title })));
+        setShowChapters(true);
+      } else {
+        Alert.alert('提示', '暂无章节信息');
+      }
+    } catch {
+      Alert.alert('错误', '加载章节列表失败');
+    }
+  }, [book.id]);
+
+  const handleChapterPress = useCallback((chapterIndex: number) => {
+    setShowChapters(false);
+    // For txt files, we can't easily jump to a specific chapter
+    // This would require parsing the txt into chapters first
+    // For now, show a toast or alert
+    Alert.alert('提示', `已选择章节：${chapters.find(c => c.index === chapterIndex)?.title || ''}`);
+  }, [chapters]);
+
+  const topBarTranslate = topBarAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-60, 0],
+  });
+
+  const bottomBarTranslate = bottomBarAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [60, 0],
+  });
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <StatusBar barStyle={actualTheme === 'dark' ? 'light-content' : 'dark-content'} />
 
       {/* Top Toolbar */}
-      <View style={[styles.topBar, { borderBottomColor: theme.colors.border }]}>
+      <Animated.View style={[styles.topBar, { borderBottomColor: theme.colors.border, transform: [{ translateY: topBarTranslate }] }]}>
         <TouchableOpacity onPress={handleGoBack} style={styles.barButton}>
           <Ionicons name="arrow-back" size={22} color={theme.colors.text} />
         </TouchableOpacity>
@@ -413,20 +577,20 @@ export function ReaderScreen() {
         <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.barButton}>
           <Ionicons name="settings-outline" size={22} color={theme.colors.text} />
         </TouchableOpacity>
-      </View>
+      </Animated.View>
 
       {/* WebView */}
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>Loading book...</Text>
+          <Text style={[styles.loadingText, { color: theme.colors.textSecondary }]}>正在加载书籍...</Text>
         </View>
       ) : error ? (
         <View style={styles.loadingContainer}>
           <Ionicons name="alert-circle-outline" size={48} color={theme.colors.error} />
           <Text style={[styles.errorText, { color: theme.colors.error }]}>{error}</Text>
           <TouchableOpacity onPress={loadBookContent} style={styles.retryButton}>
-            <Text style={{ color: theme.colors.primary }}>Retry</Text>
+            <Text style={{ color: theme.colors.primary }}>重试</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -441,16 +605,17 @@ export function ReaderScreen() {
           originWhitelist={['*']}
           javaScriptEnabled={true}
           domStorageEnabled={true}
+          onTouchStart={handleWebViewClick}
           onError={(e) => {
             console.error('WebView error:', e.nativeEvent);
-            setError('Failed to render book content');
+            setError('渲染书籍内容失败');
           }}
         />
       )}
 
       {/* Bottom Toolbar */}
-      <View style={[styles.bottomBar, { borderTopColor: theme.colors.border }]}>
-        <TouchableOpacity style={styles.barButton} onPress={() => {}}>
+      <Animated.View style={[styles.bottomBar, { borderTopColor: theme.colors.border, transform: [{ translateY: bottomBarTranslate }] }]}>
+        <TouchableOpacity style={styles.barButton} onPress={handleOpenChapters}>
           <Ionicons name="book-outline" size={22} color={theme.colors.textSecondary} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.barButton} onPress={() => {}}>
@@ -473,7 +638,7 @@ export function ReaderScreen() {
         <TouchableOpacity style={styles.barButton} onPress={() => setShowSettings(true)}>
           <Ionicons name="settings-outline" size={22} color={theme.colors.textSecondary} />
         </TouchableOpacity>
-      </View>
+      </Animated.View>
 
       {/* Settings Modal */}
       <Modal
@@ -537,6 +702,52 @@ export function ReaderScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Chapters Modal */}
+      <Modal
+        visible={showChapters}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowChapters(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={styles.modalBackdrop} onPress={() => setShowChapters(false)} />
+          <View style={[styles.chaptersModalContent, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.chaptersHeader}>
+              <Text style={[styles.chaptersTitle, { color: theme.colors.text }]}>章节列表</Text>
+              <TouchableOpacity onPress={() => setShowChapters(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.text} />
+              </TouchableOpacity>
+            </View>
+            {chapters.length === 0 ? (
+              <View style={styles.chaptersEmpty}>
+                <Text style={{ color: theme.colors.textSecondary }}>暂无章节信息</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.chaptersList}>
+                {chapters.map((chapter, index) => (
+                  <TouchableOpacity
+                    key={chapter.index}
+                    style={[
+                      styles.chapterItem,
+                      { borderBottomColor: theme.colors.border },
+                    ]}
+                    onPress={() => handleChapterPress(chapter.index)}
+                  >
+                    <Text style={[styles.chapterNumber, { color: theme.colors.textSecondary }]}>
+                      {index + 1}
+                    </Text>
+                    <Text style={[styles.chapterName, { color: theme.colors.text }]} numberOfLines={1}>
+                      {chapter.title}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -547,19 +758,31 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       flex: 1,
     },
     topBar: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.sm,
       borderBottomWidth: 1,
+      backgroundColor: theme.colors.background,
+      zIndex: 10,
     },
     bottomBar: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-around',
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.sm,
       borderTopWidth: 1,
+      backgroundColor: theme.colors.background,
+      zIndex: 10,
     },
     barButton: {
       padding: spacing.sm,
@@ -583,6 +806,8 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     },
     webview: {
       flex: 1,
+      marginTop: 0,
+      marginBottom: 0,
     },
     loadingContainer: {
       flex: 1,
@@ -662,6 +887,45 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       color: '#fff',
       fontSize: fontSizes.md,
       fontWeight: '600',
+    },
+    chaptersModalContent: {
+      padding: spacing.lg,
+      borderTopLeftRadius: borderRadius.xl,
+      borderTopRightRadius: borderRadius.xl,
+      maxHeight: '70%',
+    },
+    chaptersHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: spacing.md,
+    },
+    chaptersTitle: {
+      fontSize: fontSizes.xl,
+      fontWeight: '600',
+    },
+    chaptersList: {
+      maxHeight: 400,
+    },
+    chaptersEmpty: {
+      paddingVertical: spacing.xl,
+      alignItems: 'center',
+    },
+    chapterItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: spacing.md,
+      borderBottomWidth: 1,
+      gap: spacing.sm,
+    },
+    chapterNumber: {
+      fontSize: fontSizes.sm,
+      width: 36,
+      textAlign: 'center',
+    },
+    chapterName: {
+      flex: 1,
+      fontSize: fontSizes.md,
     },
   });
 }
