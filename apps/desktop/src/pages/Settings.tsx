@@ -617,7 +617,7 @@ export default function Settings() {
               >
                 <option value="">默认语音</option>
                 {availableVoices
-                  .filter((v) => v.lang.startsWith('zh') || v.lang.startsWith('en'))
+                  .filter((v) => v.lang?.startsWith('zh') || v.lang?.startsWith('en'))
                   .map((voice) => (
                     <option key={voice.voiceURI} value={voice.voiceURI}>
                       {voice.name} ({voice.lang})

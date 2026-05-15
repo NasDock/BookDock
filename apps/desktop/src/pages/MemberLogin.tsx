@@ -1,30 +1,28 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { QRCodeSVG } from 'qrcode.react';
 import {
-  Crown,
-  Smartphone,
-  Sparkles,
-  Clock,
   ArrowLeft,
   Loader2,
-  RefreshCw,
   Monitor,
-} from 'lucide-react';
+  RefreshCw,
+  Smartphone,
+  Sparkles,
+} from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
+import React, { useCallback, useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
-  plusLogin,
-  plusSendCode,
+  consumeScanLoginSession,
   createScanLoginSession,
   getScanLoginSession,
-  subscribeScanLoginSession,
-  consumeScanLoginSession,
+  plusLogin,
+  plusSendCode,
   reportScanLoginResult,
   reportScanLoginResultViaSocket,
+  subscribeScanLoginSession,
   type ScanLoginSession,
   type ScanLoginSessionStatus,
-} from '../services/plus';
-import { applyDesktopScanLoginResult } from '../utils/scanLogin';
-import { useAuthStore } from '../stores/authStore';
+} from "../services/plus";
+import { useAuthStore } from "../stores/authStore";
+import { applyDesktopScanLoginResult } from "../utils/scanLogin";
 
 export default function MemberLogin() {
   const navigate = useNavigate();
@@ -32,8 +30,8 @@ export default function MemberLogin() {
   const { setPlusAuth } = useAuthStore();
 
   // Form state
-  const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
+  const [phone, setPhone] = useState("");
+  const [code, setCode] = useState("");
   const [countdown, setCountdown] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -41,7 +39,9 @@ export default function MemberLogin() {
 
   // Scan login state
   const [scanSession, setScanSession] = useState<ScanLoginSession | null>(null);
-  const [scanStatus, setScanStatus] = useState<ScanLoginSessionStatus | null>(null);
+  const [scanStatus, setScanStatus] = useState<ScanLoginSessionStatus | null>(
+    null,
+  );
   const [scanBusy, setScanBusy] = useState(false);
 
   // Countdown timer
@@ -56,13 +56,16 @@ export default function MemberLogin() {
   // Create scan login session
   const createTargetSession = useCallback(async () => {
     try {
-      const res = await createScanLoginSession({ role: 'target', deviceKind: 'desktop' });
+      const res = await createScanLoginSession({
+        role: "target",
+        deviceKind: "desktop",
+      });
       if (res.data) {
         setScanSession(res.data);
       }
     } catch (err) {
-      console.error('Failed to create scan session', err);
-      setError('创建扫码会话失败');
+      console.error("Failed to create scan session", err);
+      setError("创建扫码会话失败");
     }
   }, []);
 
@@ -75,7 +78,9 @@ export default function MemberLogin() {
     if (!scanSession) return;
 
     // Initial status fetch
-    getScanLoginSession(scanSession.sessionId, scanSession.secret).catch(console.error);
+    getScanLoginSession(scanSession.sessionId, scanSession.secret).catch(
+      console.error,
+    );
 
     const unsubscribe = subscribeScanLoginSession(
       scanSession.sessionId,
@@ -88,7 +93,7 @@ export default function MemberLogin() {
 
   // Handle confirmed scan login
   useEffect(() => {
-    if (!scanSession || scanStatus?.status !== 'confirmed') return;
+    if (!scanSession || scanStatus?.status !== "confirmed") return;
 
     const consumeConfirmedScan = async () => {
       try {
@@ -98,7 +103,7 @@ export default function MemberLogin() {
         });
 
         try {
-          if (!res.data) throw new Error('No data returned');
+          if (!res.data) throw new Error("No data returned");
           await applyDesktopScanLoginResult(res.data);
           if (res.data.plusAuth) {
             setPlusAuth(res.data.plusAuth.token, res.data.plusAuth.userId);
@@ -109,7 +114,12 @@ export default function MemberLogin() {
             success: false,
             error: applyErr.message,
           }).catch(console.error);
-          reportScanLoginResultViaSocket(scanSession.sessionId, scanSession.secret, false, applyErr.message);
+          reportScanLoginResultViaSocket(
+            scanSession.sessionId,
+            scanSession.secret,
+            false,
+            applyErr.message,
+          );
           throw applyErr;
         }
 
@@ -117,12 +127,16 @@ export default function MemberLogin() {
           secret: scanSession.secret,
           success: true,
         }).catch(console.error);
-        reportScanLoginResultViaSocket(scanSession.sessionId, scanSession.secret, true);
+        reportScanLoginResultViaSocket(
+          scanSession.sessionId,
+          scanSession.secret,
+          true,
+        );
 
-        navigate('/', { replace: true });
+        navigate("/", { replace: true });
       } catch (err: any) {
         console.error(err);
-        setError(err.message || '扫码登录失败');
+        setError(err.message || "扫码登录失败");
         createTargetSession();
       } finally {
         setScanBusy(false);
@@ -130,12 +144,18 @@ export default function MemberLogin() {
     };
 
     consumeConfirmedScan();
-  }, [scanSession?.sessionId, scanStatus?.status, navigate, setPlusAuth, createTargetSession]);
+  }, [
+    scanSession?.sessionId,
+    scanStatus?.status,
+    navigate,
+    setPlusAuth,
+    createTargetSession,
+  ]);
 
   // Send verification code
   const handleSendCode = useCallback(async () => {
     if (!/^1[3-9]\d{9}$/.test(phone)) {
-      setError('请输入正确的手机号');
+      setError("请输入正确的手机号");
       return;
     }
 
@@ -147,10 +167,10 @@ export default function MemberLogin() {
       if (res.code === 200 || res.code === 201) {
         setCountdown(60);
       } else {
-        setError(res.message || '发送失败');
+        setError(res.message || "发送失败");
       }
     } catch {
-      setError('网络错误，请重试');
+      setError("网络错误，请重试");
     } finally {
       setIsSending(false);
     }
@@ -161,7 +181,7 @@ export default function MemberLogin() {
     async (e: React.FormEvent) => {
       e.preventDefault();
       if (!code || code.length !== 6) {
-        setError('请输入6位验证码');
+        setError("请输入6位验证码");
         return;
       }
 
@@ -171,22 +191,27 @@ export default function MemberLogin() {
       try {
         const res = await plusLogin({ phone, code });
         setIsLoading(false);
+        console.log("Login response:", res);
 
-        if (res.code === 200 || res.code === 201) {
+        if (res.code === 0 || res.code === 201) {
           const { token, userId } = res.data!;
-          localStorage.setItem('bookdock_plus_token', token);
-          localStorage.setItem('bookdock_plus_user_id', JSON.stringify(userId));
-          localStorage.setItem('bookdock_plus_user', JSON.stringify({ id: userId }));
+          localStorage.setItem("bookdock_plus_token", token);
+          localStorage.setItem("bookdock_plus_user_id", JSON.stringify(userId));
+          localStorage.setItem(
+            "bookdock_plus_user",
+            JSON.stringify({ id: userId }),
+          );
           setPlusAuth(token, userId);
           const from = (location.state as any)?.from;
-          const returnTo = typeof from === 'string' ? from : (from?.pathname || '/membership');
+          const returnTo =
+            typeof from === "string" ? from : from?.pathname || "/membership";
           navigate(returnTo, { replace: true });
         } else {
-          setError(res.message || '登录失败');
+          setError(res.message || "登录失败");
         }
       } catch (err: any) {
         setIsLoading(false);
-        setError(err.message || '登录失败，请检查验证码');
+        setError(err.message || "登录失败，请检查验证码");
       }
     },
     [phone, code, navigate, setPlusAuth],
@@ -194,14 +219,14 @@ export default function MemberLogin() {
 
   const qrValue = scanSession
     ? JSON.stringify({
-        kind: 'bookdock-scan-login',
+        kind: "bookdock-scan-login",
         version: 1,
         sessionId: scanSession.sessionId,
         secret: scanSession.secret,
-        role: 'target',
-        deviceKind: 'desktop',
+        role: "target",
+        deviceKind: "desktop",
       })
-    : '';
+    : "";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-orange-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center p-4">
@@ -214,9 +239,17 @@ export default function MemberLogin() {
       <div className="w-full max-w-4xl relative">
         {/* Logo */}
         <div className="text-center mb-6">
-          <img src="/logo.png" alt="BookDock" className="w-16 h-16 object-contain mb-3 mx-auto" />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">用户登录</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">BookDock 书仓会员</p>
+          <img
+            src="/logo.png"
+            alt="BookDock"
+            className="w-16 h-16 object-contain mb-3 mx-auto"
+          />
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            用户登录
+          </h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
+            BookDock 书仓会员
+          </p>
         </div>
 
         {/* Main Card - Two columns like AudioDock */}
@@ -224,7 +257,7 @@ export default function MemberLogin() {
           <div className="grid md:grid-cols-2">
             {/* Left: Scan Login */}
             <div className="p-8 bg-gray-50 dark:bg-gray-700/30 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-gray-200 dark:border-gray-700">
-              {scanStatus?.status === 'waiting_confirm' ? (
+              {scanStatus?.status === "waiting_confirm" ? (
                 <div className="text-center py-8">
                   <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Smartphone className="w-8 h-8 text-amber-500" />
@@ -256,7 +289,9 @@ export default function MemberLogin() {
                     disabled={scanBusy}
                     className="flex items-center gap-2 text-sm text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
                   >
-                    <RefreshCw className={`w-4 h-4 ${scanBusy ? 'animate-spin' : ''}`} />
+                    <RefreshCw
+                      className={`w-4 h-4 ${scanBusy ? "animate-spin" : ""}`}
+                    />
                     刷新二维码
                   </button>
                 </>
@@ -293,7 +328,11 @@ export default function MemberLogin() {
                       disabled={countdown > 0 || isSending}
                       className="px-4 py-2.5 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
                     >
-                      {countdown > 0 ? `${countdown}s` : isSending ? '发送中...' : '获取验证码'}
+                      {countdown > 0
+                        ? `${countdown}s`
+                        : isSending
+                          ? "发送中..."
+                          : "获取验证码"}
                     </button>
                   </div>
                 </div>
@@ -306,7 +345,9 @@ export default function MemberLogin() {
                   <input
                     type="text"
                     value={code}
-                    onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    onChange={(e) =>
+                      setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                    }
                     placeholder="请输入6位验证码"
                     maxLength={6}
                     className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition-shadow text-center tracking-widest text-lg"
@@ -315,7 +356,9 @@ export default function MemberLogin() {
 
                 {error && (
                   <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                    <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                    <p className="text-sm text-red-600 dark:text-red-400">
+                      {error}
+                    </p>
                   </div>
                 )}
 
@@ -323,7 +366,9 @@ export default function MemberLogin() {
                   type="submit"
                   disabled={isLoading}
                   className="w-full py-3 rounded-lg text-white font-medium transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ background: 'linear-gradient(135deg, #f59e0b, #ea580c)' }}
+                  style={{
+                    background: "linear-gradient(135deg, #f59e0b, #ea580c)",
+                  }}
                 >
                   {isLoading ? (
                     <span className="flex items-center justify-center gap-2">
@@ -369,7 +414,7 @@ export default function MemberLogin() {
         <div className="mt-6 flex items-center justify-center gap-6 text-sm">
           <button
             type="button"
-            onClick={() => navigate('/login')}
+            onClick={() => navigate("/login")}
             className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1 transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />

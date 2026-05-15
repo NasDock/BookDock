@@ -271,7 +271,7 @@ export class TTSManager {
     }
 
     // Determine which TTS to use based on available voices
-    const hasChineseVoices = this.localVoices.some(v => v.lang.startsWith('zh'));
+    const hasChineseVoices = this.localVoices.some(v => v.lang?.startsWith('zh'));
     this.useServerFallback = !hasChineseVoices;
   }
 

@@ -371,7 +371,7 @@ export function useTTS() {
 
         // Find Chinese voice
         const voices = window.speechSynthesis.getVoices();
-        const chineseVoice = voices.find((v) => v.lang.startsWith('zh'));
+        const chineseVoice = voices.find((v) => v.lang?.startsWith('zh'));
         if (chineseVoice) {
           utterance.voice = chineseVoice;
         }

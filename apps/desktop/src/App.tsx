@@ -108,8 +108,9 @@ function AppLayout({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  // Hide global header on reader pages
+  // Hide global header on reader and login pages
   const isReaderPage = location.pathname.startsWith('/book/');
+  const isLoginPage = location.pathname === '/login' || location.pathname === '/member-login';
 
   const navItems = [
     { path: '/', label: '书库', icon: BookOpen },
@@ -122,7 +123,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {!isReaderPage && (
+      {!isReaderPage && !isLoginPage && (
       <header className="sticky top-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center h-16">
@@ -215,7 +216,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       )}
-      <main className={isReaderPage ? '' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}>{children}</main>
+      <main className={isReaderPage || isLoginPage ? '' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}>{children}</main>
     </div>
   );
 }
@@ -265,9 +266,7 @@ function AppRoutes() {
           path="/book/:id/tts"
           element={
             <ProtectedRoute>
-              <PremiumRoute>
-                <ReaderTTS />
-              </PremiumRoute>
+              <ReaderTTS />
             </ProtectedRoute>
           }
         />

@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { getApiClient, Book } from '@bookdock/api-client';
 import { useReaderStore } from '../stores/themeStore';
+import { useAuthStore } from '../stores/authStore';
 import { Button } from '@bookdock/ui';
 import type { ReaderMode } from '@bookdock/ebook-reader';
 import { ArrowLeft, Settings, BookOpen, Bookmark, ChevronLeft, ChevronRight, Volume2, Timer, X, Keyboard, Sun, Moon, ScrollText, Plus } from 'lucide-react';
@@ -579,6 +580,7 @@ function ReaderControls({
 export default function Reader() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [book, setBook] = useState<Book | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1011,9 +1013,28 @@ export default function Reader() {
     setIsAutoScroll(!isAutoScroll);
   };
 
-  const handleNavigateTts = useCallback(() => {
-    if (id) navigate(`/book/${id}/tts`);
-  }, [id, navigate]);
+  const handleNavigateTts = useCallback(async () => {
+    if (!id) return;
+    
+    // Check if user is logged in to Plus system
+    const { refreshVipStatus, plusToken } = useAuthStore.getState();
+    
+    // If not logged in to Plus, redirect to member login
+    if (!plusToken) {
+      navigate('/member-login', { state: { from: location.pathname } });
+      return;
+    }
+    
+    // If logged in but not VIP, redirect to membership page
+    const vipNow = await refreshVipStatus();
+    if (!vipNow) {
+      navigate('/membership', { state: { from: location.pathname } });
+      return;
+    }
+    
+    // User is VIP, navigate to TTS
+    navigate(`/book/${id}/tts`);
+  }, [id, navigate, location.pathname]);
 
   if (isLoading) {
     return (

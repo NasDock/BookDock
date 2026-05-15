@@ -104,7 +104,7 @@ export function useTTS(options: UseTTSOptions = {}): UseTTSReturn {
         }
       } else if (availableVoices.length > 0) {
         // Prefer Chinese voice
-        const chineseVoice = availableVoices.find((v) => v.lang.startsWith('zh'));
+        const chineseVoice = availableVoices.find((v) => v.lang?.startsWith('zh'));
         const voice = chineseVoice || availableVoices[0];
         setCurrentVoice(voice);
         ttsManagerRef.current.setVoice(voice.id);
