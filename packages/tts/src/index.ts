@@ -28,100 +28,6 @@ export interface TTSEventCallbacks {
   onError?: (error: Error) => void;
 }
 
-// Web Speech API wrapper for client-side TTS
-class WebSpeechTTS {
-  private synth: SpeechSynthesis;
-  private utterance: SpeechSynthesisUtterance | null = null;
-  private voices: SpeechSynthesisVoice[] = [];
-  private currentConfig: TTSConfig = {};
-
-  constructor() {
-    this.synth = window.speechSynthesis;
-    this.loadVoices();
-    
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.onvoiceschanged = () => this.loadVoices();
-    }
-  }
-
-  private loadVoices(): void {
-    this.voices = this.synth.getVoices();
-  }
-
-  getVoices(): TTSVoice[] {
-    return this.voices.map((voice, index) => ({
-      id: `web-speech-${index}`,
-      name: voice.name,
-      lang: voice.lang,
-      local: voice.localService,
-    }));
-  }
-
-  async speak(
-    text: string,
-    config: TTSConfig = {},
-    callbacks: TTSEventCallbacks = {}
-  ): Promise<void> {
-    this.stop();
-    this.currentConfig = config;
-
-    return new Promise((resolve, reject) => {
-      this.utterance = new SpeechSynthesisUtterance(text);
-      
-      // Apply config
-      this.utterance.rate = config.rate ?? 1.0;
-      this.utterance.pitch = config.pitch ?? 1.0;
-      this.utterance.volume = config.volume ?? 1.0;
-      this.utterance.lang = config.lang ?? 'zh-CN';
-
-      // Set voice if specified
-      if (config.voiceId) {
-        const voice = this.voices.find(v => `web-speech-${this.voices.indexOf(v)}` === config.voiceId);
-        if (voice) {
-          this.utterance.voice = voice;
-          this.utterance.lang = voice.lang;
-        }
-      }
-
-      this.utterance.onstart = () => callbacks.onStart?.();
-      this.utterance.onend = () => {
-        callbacks.onEnd?.();
-        resolve();
-      };
-      this.utterance.onerror = (event) => {
-        const error = new Error(event.error || 'TTS error');
-        callbacks.onError?.(error);
-        reject(error);
-      };
-      this.utterance.onpause = () => callbacks.onPause?.();
-      this.utterance.onresume = () => callbacks.onResume?.();
-
-      this.synth.speak(this.utterance);
-    });
-  }
-
-  pause(): void {
-    this.synth.pause();
-  }
-
-  resume(): void {
-    this.synth.resume();
-  }
-
-  stop(): void {
-    this.synth.cancel();
-    this.utterance = null;
-  }
-
-  isPaused(): boolean {
-    return this.synth.paused;
-  }
-
-  isSpeaking(): boolean {
-    return this.synth.speaking;
-  }
-}
-
 // Server-side TTS using API
 class ServerTTS {
   private audioElement: HTMLAudioElement | null = null;
@@ -232,10 +138,7 @@ class ServerTTS {
 
 // Unified TTS Manager
 export class TTSManager {
-  private webSpeech: WebSpeechTTS;
   private serverTTS: ServerTTS;
-  private useServerFallback: boolean = false;
-  private localVoices: TTSVoice[] = [];
   private serverVoices: TTSVoice[] = [];
   private currentConfig: TTSConfig = {};
   private textChunks: string[] = [];
@@ -251,15 +154,11 @@ export class TTSManager {
   };
 
   constructor() {
-    this.webSpeech = new WebSpeechTTS();
     this.serverTTS = new ServerTTS();
   }
 
   async initialize(): Promise<void> {
-    // Load local voices
-    this.localVoices = this.webSpeech.getVoices();
-    
-    // Try to load server voices
+    // Load server voices from backend
     try {
       const apiClient = getApiClient();
       const response = await apiClient.getVoices();
@@ -267,16 +166,12 @@ export class TTSManager {
         this.serverVoices = response.data;
       }
     } catch {
-      console.log('Server TTS not available, using local voices only');
+      console.log('Server TTS not available');
     }
-
-    // Determine which TTS to use based on available voices
-    const hasChineseVoices = this.localVoices.some(v => v.lang?.startsWith('zh'));
-    this.useServerFallback = !hasChineseVoices;
   }
 
   getAvailableVoices(): TTSVoice[] {
-    return this.useServerFallback ? this.serverVoices : this.localVoices;
+    return this.serverVoices;
   }
 
   getState(): TTSState {
@@ -320,10 +215,8 @@ export class TTSManager {
     this.state = 'playing';
     this.callbacks.onProgress?.(this.progress);
 
-    const tts = this.useServerFallback ? this.serverTTS : this.webSpeech;
-
     try {
-      await tts.speak(chunk, this.currentConfig, {
+      await this.serverTTS.speak(chunk, this.currentConfig, {
         onEnd: () => {
           this.currentChunkIndex++;
           this.speakChunk();
@@ -364,24 +257,21 @@ export class TTSManager {
   }
 
   pause(): void {
-    const tts = this.useServerFallback ? this.serverTTS : this.webSpeech;
-    tts.pause();
+    this.serverTTS.pause();
     this.state = 'paused';
     this.progress.isPlaying = false;
     this.callbacks.onPause?.();
   }
 
   resume(): void {
-    const tts = this.useServerFallback ? this.serverTTS : this.webSpeech;
-    tts.resume();
+    this.serverTTS.resume();
     this.state = 'playing';
     this.progress.isPlaying = true;
     this.callbacks.onResume?.();
   }
 
   stop(): void {
-    const tts = this.useServerFallback ? this.serverTTS : this.webSpeech;
-    tts.stop();
+    this.serverTTS.stop();
     this.state = 'idle';
     this.progress.isPlaying = false;
     this.textChunks = [];
@@ -398,16 +288,12 @@ export class TTSManager {
 
   setRate(rate: number): void {
     this.currentConfig.rate = rate;
-    if (this.useServerFallback) {
-      this.serverTTS.setPlaybackRate(rate);
-    }
+    this.serverTTS.setPlaybackRate(rate);
   }
 
   setVolume(volume: number): void {
     this.currentConfig.volume = volume;
-    if (this.useServerFallback) {
-      this.serverTTS.setVolume(volume);
-    }
+    this.serverTTS.setVolume(volume);
   }
 
   setVoice(voiceId: string): void {
@@ -430,4 +316,4 @@ export function initTTSManager(): TTSManager {
   return ttsManagerInstance;
 }
 
-export { WebSpeechTTS, ServerTTS };
+export { ServerTTS };

@@ -1,14 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Pause, Play, Square, X, ChevronUp, ChevronDown, Volume2 } from 'lucide-react';
 import { useDesktopStore } from '../stores/desktopStore';
-import { useTTS, getSystemVoices } from '../hooks/useDesktopCommands';
-
-interface Voice {
-  id: string;
-  name: string;
-  lang: string;
-  local: boolean;
-}
+import { useTTS } from '../hooks/useTTS';
+import type { TTSVoice } from '@bookdock/api-client';
 
 interface TTSControlsProps {
   text?: string;
@@ -18,60 +12,37 @@ interface TTSControlsProps {
 
 export const TTSControls: React.FC<TTSControlsProps> = ({ text, bookId, onClose }) => {
   const { ttsState, settings, updateSettings } = useDesktopStore();
-  const { speak, pause, resume, stop, togglePlayPause } = useTTS();
+  const { speak, pause, resume, stop, togglePlayPause, voices, setVoice, setRate, setVolume, init } = useTTS();
 
-  const [voices, setVoices] = useState<Voice[]>([]);
-  const [currentVoice, setCurrentVoice] = useState<string>(settings.ttsVoiceId || 'zh-CN-female');
-  const [rate, setRate] = useState(settings.ttsRate);
-  const [volume, setVolume] = useState(settings.ttsVolume);
+  const [currentVoice, setCurrentVoice] = useState<string>(settings.ttsVoiceId || '');
+  const [rate, setRateState] = useState(settings.ttsRate);
+  const [volume, setVolumeState] = useState(settings.ttsVolume);
   const [isExpanded, setIsExpanded] = useState(false);
 
   useEffect(() => {
-    // Load system voices
-    getSystemVoices()
-      .then(setVoices)
-      .catch(console.error);
-
-    // Also try to get Web Speech API voices
-    if ('speechSynthesis' in window) {
-      const loadVoices = () => {
-        const webVoices = window.speechSynthesis.getVoices();
-        if (webVoices.length > 0) {
-          const converted: Voice[] = webVoices.map((v, i) => ({
-            id: `web-${i}`,
-            name: v.name,
-            lang: v.lang,
-            local: v.localService,
-          }));
-          setVoices((prev) => {
-            const existing = new Set(prev.map((v) => v.id));
-            const newVoices = converted.filter((v) => !existing.has(v.id));
-            return [...prev, ...newVoices];
-          });
-        }
-      };
-      loadVoices();
-      window.speechSynthesis.onvoiceschanged = loadVoices;
-    }
-  }, []);
+    init();
+  }, [init]);
 
   const handlePlay = () => {
     if (text) {
-      speak(text, bookId);
+      speak(text);
     }
   };
 
   const handleVoiceChange = (voiceId: string) => {
     setCurrentVoice(voiceId);
+    setVoice(voiceId);
     updateSettings({ ttsVoiceId: voiceId });
   };
 
   const handleRateChange = (newRate: number) => {
+    setRateState(newRate);
     setRate(newRate);
     updateSettings({ ttsRate: newRate });
   };
 
   const handleVolumeChange = (newVolume: number) => {
+    setVolumeState(newVolume);
     setVolume(newVolume);
     updateSettings({ ttsVolume: newVolume });
   };
@@ -155,12 +126,16 @@ export const TTSControls: React.FC<TTSControlsProps> = ({ text, bookId, onClose 
               onChange={(e) => handleVoiceChange(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
-              {voices.map((voice) => (
+              <option value="">默认语音</option>
+              {voices.map((voice: TTSVoice) => (
                 <option key={voice.id} value={voice.id}>
                   {voice.name} ({voice.lang})
                 </option>
               ))}
             </select>
+            {voices.length === 0 && (
+              <p className="text-xs text-gray-400 mt-1">加载语音列表中...</p>
+            )}
           </div>
 
           {/* Speed control */}

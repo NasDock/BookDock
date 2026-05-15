@@ -222,7 +222,7 @@ class ApiClient {
     return data;
   }
 
-  async convertToSpeech(text: string, voiceId: string): Promise<Blob> {
+  async convertToSpeech(text: string, voiceId?: string): Promise<Blob> {
     const { data } = await this.client.post('/tts/synthesize', { text, voice: voiceId }, { responseType: 'blob' });
     return data;
   }

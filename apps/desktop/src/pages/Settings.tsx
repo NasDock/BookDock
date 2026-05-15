@@ -3,7 +3,7 @@ import { useAuth } from '@bookdock/auth';
 import { Button, Card, CardHeader, CardTitle, CardContent, CardFooter } from '@bookdock/ui';
 import { useThemeStore, useAuthStore } from '../stores/authStore';
 import { useReaderStore as useReaderStore2 } from '../stores/themeStore';
-import { getApiClient, User } from '@bookdock/api-client';
+import { getApiClient, User, type TTSVoice } from '@bookdock/api-client';
 import type { ReaderMode } from '@bookdock/ebook-reader';
 import { Monitor, Sun, Moon, ScrollText, Volume2, Star, Lock, HardDrive, Info, MousePointerClick, BookOpen, Hand } from 'lucide-react';
 
@@ -238,7 +238,7 @@ export default function Settings() {
   const [ttsVoice, setTtsVoice] = useState<string>('');
   const [ttsRate, setTtsRate] = useState<number>(1);
   const [ttsVolume, setTtsVolume] = useState<number>(1);
-  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [availableVoices, setAvailableVoices] = useState<TTSVoice[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
@@ -262,16 +262,19 @@ export default function Settings() {
       // Ignore
     }
 
-    // Load available voices
-    const loadVoices = () => {
-      const voices = window.speechSynthesis?.getVoices() || [];
-      setAvailableVoices(voices);
+    // Load available voices from server
+    const loadVoices = async () => {
+      try {
+        const apiClient = getApiClient();
+        const response = await apiClient.getVoices();
+        if (response.success && response.data) {
+          setAvailableVoices(response.data);
+        }
+      } catch {
+        console.log('Failed to load server voices');
+      }
     };
     loadVoices();
-    window.speechSynthesis?.addEventListener('voiceschanged', loadVoices);
-    return () => {
-      window.speechSynthesis?.removeEventListener('voiceschanged', loadVoices);
-    };
   }, []);
 
   const handleSaveTTS = () => {
@@ -619,9 +622,8 @@ export default function Settings() {
                 {availableVoices
                   .filter((v) => v.lang?.startsWith('zh') || v.lang?.startsWith('en'))
                   .map((voice) => (
-                    <option key={voice.voiceURI} value={voice.voiceURI}>
+                    <option key={voice.id} value={voice.id}>
                       {voice.name} ({voice.lang})
-                      {voice.localService ? ' [本地]' : ''}
                     </option>
                   ))}
               </select>
@@ -675,16 +677,16 @@ export default function Settings() {
 
             {/* Test TTS */}
             <button
-              onClick={() => {
-                if ('speechSynthesis' in window) {
-                  const utterance = new SpeechSynthesisUtterance('这是一个测试语音');
-                  if (ttsVoice) {
-                    const voice = availableVoices.find((v) => v.voiceURI === ttsVoice);
-                    if (voice) utterance.voice = voice;
-                  }
-                  utterance.rate = ttsRate;
-                  utterance.volume = ttsVolume;
-                  window.speechSynthesis.speak(utterance);
+              onClick={async () => {
+                try {
+                  const apiClient = getApiClient();
+                  const blob = await apiClient.convertToSpeech('这是一个测试语音', ttsVoice || undefined);
+                  const url = URL.createObjectURL(blob);
+                  const audio = new Audio(url);
+                  audio.play();
+                  audio.onended = () => URL.revokeObjectURL(url);
+                } catch {
+                  alert('语音试听失败，请检查后端 TTS 服务');
                 }
               }}
               className="text-sm text-blue-500 hover:text-blue-600 underline"

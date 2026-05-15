@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import * as Speech from 'expo-speech';
+import { Audio } from 'expo-av';
 import { useTTSStore, useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { getApiClient } from '@bookdock/api-client';
@@ -36,48 +36,54 @@ export function TTSScreen() {
   const [currentText, setCurrentText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [playbackProgress, setPlaybackProgress] = useState(0);
+
+  const soundRef = useRef<Audio.Sound | null>(null);
+  const audioUriRef = useRef<string | null>(null);
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  // Load available voices on mount
+  // Load available voices from server
   useEffect(() => {
     const loadVoices = async () => {
       try {
-        // Try to get voices from expo-speech
-        const voices = await Speech.getAvailableVoicesAsync();
-        const mapped: TTSVoice[] = voices.map((v, i) => ({
-          id: v.identifier || `voice-${i}`,
-          name: v.name,
-          lang: v.language,
-          local: true,
-        }));
-        setAvailableVoices(mapped);
-        if (mapped.length > 0 && !ttsStore.selectedVoice) {
-          ttsStore.setSelectedVoice(mapped[0]);
+        const apiClient = getApiClient();
+        const response = await apiClient.getVoices();
+        if (response.success && response.data) {
+          setAvailableVoices(response.data);
+          if (response.data.length > 0 && !ttsStore.selectedVoice) {
+            ttsStore.setSelectedVoice(response.data[0]);
+          }
         }
       } catch {
-        // Fallback: try server voices
-        try {
-          const apiClient = getApiClient();
-          const response = await apiClient.getVoices();
-          if (response.success && response.data) {
-            setAvailableVoices(response.data);
-          }
-        } catch {
-          setError('No TTS voices available');
-        }
+        setError('No TTS voices available');
       }
     };
 
     loadVoices();
 
-    // Cleanup speech on unmount
+    // Cleanup audio on unmount
     return () => {
-      Speech.stop();
+      cleanupAudio();
     };
   }, []);
 
-  // Fetch book content for TTS via server-parsed chapters (avoids client-side encoding issues)
+  const cleanupAudio = async () => {
+    if (soundRef.current) {
+      try {
+        await soundRef.current.stopAsync();
+        await soundRef.current.unloadAsync();
+      } catch {
+        // Ignore cleanup errors
+      }
+      soundRef.current = null;
+    }
+    if (audioUriRef.current) {
+      audioUriRef.current = null;
+    }
+  };
+
+  // Fetch book content for TTS via server-parsed chapters
   const fetchBookContent = useCallback(async () => {
     if (!book) return '';
     try {
@@ -93,7 +99,7 @@ export function TTSScreen() {
         );
         const text = contents.join('\n\n');
         setIsLoading(false);
-        return text.slice(0, 5000); // Limit to first 5000 chars for demo
+        return text.slice(0, 5000);
       }
       setIsLoading(false);
       return `This is the book "${book.title}" by ${book.author}. The full text content would be loaded from the server for text-to-speech processing.`;
@@ -104,75 +110,120 @@ export function TTSScreen() {
   }, [book]);
 
   const handlePlay = useCallback(async () => {
-    if (isPaused) {
-      // Resume not directly supported by expo-speech, re-speak from current position
-      setIsPaused(false);
-      setIsSpeaking(true);
+    if (isPaused && soundRef.current) {
+      // Resume playback
+      try {
+        await soundRef.current.playAsync();
+        setIsPaused(false);
+        setIsSpeaking(true);
+        ttsStore.setState('playing');
+      } catch {
+        Alert.alert('Error', 'Failed to resume playback');
+      }
       return;
     }
 
     setIsLoading(true);
     const text = currentText || (await fetchBookContent());
     setCurrentText(text);
-    setIsLoading(false);
 
     if (!text.trim()) {
+      setIsLoading(false);
       Alert.alert('Error', 'No text content available for speech');
       return;
     }
 
-    setIsSpeaking(true);
-    ttsStore.setState('playing');
-
     try {
-      await Speech.speak(text, {
-        language: ttsStore.selectedVoice?.lang || 'en-US',
-        rate: ttsStore.playbackRate,
-        pitch: 1.0,
-        volume: ttsStore.volume,
-        onDone: () => {
-          setIsSpeaking(false);
-          ttsStore.setState('idle');
-        },
-        onError: (err) => {
-          console.error('TTS error:', err);
-          setIsSpeaking(false);
-          ttsStore.setState('idle');
-          Alert.alert('TTS Error', 'Speech synthesis failed');
-        },
+      // Cleanup previous audio
+      await cleanupAudio();
+
+      const apiClient = getApiClient();
+      const voiceId = ttsStore.selectedVoice?.id;
+      const blob = await apiClient.convertToSpeech(text, voiceId || 'default');
+
+      // Create a temporary file URI from blob
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onloadend = () => {
+          const base64 = reader.result as string;
+          resolve(base64.split(',')[1]);
+        };
+        reader.onerror = reject;
       });
-    } catch {
+      reader.readAsDataURL(blob);
+      const base64Data = await base64Promise;
+
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: `data:audio/wav;base64,${base64Data}` },
+        { shouldPlay: true, rate: ttsStore.playbackRate, volume: ttsStore.volume },
+        (status) => {
+          if (status.isLoaded) {
+            setPlaybackProgress(status.positionMillis / (status.durationMillis || 1));
+            if (status.didJustFinish) {
+              setIsSpeaking(false);
+              setIsPaused(false);
+              ttsStore.setState('idle');
+            }
+          }
+        }
+      );
+
+      soundRef.current = sound;
+      setIsLoading(false);
+      setIsSpeaking(true);
+      setIsPaused(false);
+      ttsStore.setState('playing');
+    } catch (err) {
+      console.error('TTS error:', err);
+      setIsLoading(false);
       setIsSpeaking(false);
       ttsStore.setState('idle');
-      Alert.alert('Error', 'Failed to start speech synthesis');
+      Alert.alert('TTS Error', 'Failed to synthesize speech. Please check your network and backend service.');
     }
   }, [isPaused, currentText, ttsStore, fetchBookContent]);
 
-  const handlePause = useCallback(() => {
-    Speech.stop();
-    setIsSpeaking(false);
-    setIsPaused(true);
-    ttsStore.setState('paused');
+  const handlePause = useCallback(async () => {
+    if (soundRef.current) {
+      try {
+        await soundRef.current.pauseAsync();
+        setIsSpeaking(false);
+        setIsPaused(true);
+        ttsStore.setState('paused');
+      } catch {
+        Alert.alert('Error', 'Failed to pause playback');
+      }
+    }
   }, [ttsStore]);
 
-  const handleStop = useCallback(() => {
-    Speech.stop();
+  const handleStop = useCallback(async () => {
+    await cleanupAudio();
     setIsSpeaking(false);
     setIsPaused(false);
+    setPlaybackProgress(0);
     ttsStore.setState('idle');
   }, [ttsStore]);
 
-  const handleRateChange = useCallback((rate: number) => {
+  const handleRateChange = useCallback(async (rate: number) => {
     const newRate = Math.max(0.5, Math.min(2.0, rate));
     ttsStore.setPlaybackRate(newRate);
-    if (isSpeaking) {
-      Speech.stop();
-      setTimeout(() => handlePlay(), 100);
+    if (soundRef.current) {
+      try {
+        await soundRef.current.setRateAsync(newRate, true);
+      } catch {
+        // Ignore rate change errors
+      }
     }
-  }, [ttsStore, isSpeaking, handlePlay]);
+  }, [ttsStore]);
 
-  const handleVolumeChange = useCallback((volume: number) => {
+  const handleVolumeChange = useCallback(async (volume: number) => {
     ttsStore.setVolume(volume);
+    if (soundRef.current) {
+      try {
+        await soundRef.current.setVolumeAsync(volume);
+      } catch {
+        // Ignore volume change errors
+      }
+    }
   }, [ttsStore]);
 
   const handleVoiceSelect = useCallback((voice: TTSVoice) => {
@@ -224,6 +275,18 @@ export function TTSScreen() {
             >
               <Ionicons name="options-outline" size={24} color={theme.colors.textSecondary} />
             </TouchableOpacity>
+          </View>
+
+          {/* Progress bar */}
+          <View style={styles.progressContainer}>
+            <View style={[styles.progressBar, { backgroundColor: theme.colors.border + '40' }]}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { backgroundColor: theme.colors.primary, width: `${playbackProgress * 100}%` },
+                ]}
+              />
+            </View>
           </View>
 
           {/* Rate Control */}
@@ -405,6 +468,18 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       borderRadius: 32,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    progressContainer: {
+      marginTop: spacing.sm,
+    },
+    progressBar: {
+      height: 4,
+      borderRadius: 2,
+      overflow: 'hidden',
+    },
+    progressFill: {
+      height: '100%',
+      borderRadius: 2,
     },
     sliderContainer: {
       gap: spacing.sm,

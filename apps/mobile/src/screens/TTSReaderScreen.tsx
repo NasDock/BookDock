@@ -1,6 +1,7 @@
 /**
  * TTSReaderScreen - Dedicated TTS audiobook player screen
  * Provides immersive listening experience with full playback controls
+ * Uses backend TTS API via expo-av for audio playback
  */
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
@@ -14,36 +15,22 @@ import {
   ScrollView,
   Modal,
   Alert,
+  Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Audio } from 'expo-av';
 import { useTTSStore, useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
+import { getApiClient } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
 import type { TTSVoice } from '@bookdock/api-client';
 
 type TTSReaderRouteProp = RouteProp<RootStackParamList, 'TTSScreen'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
-
-// Mock chapters for demo (in production, these come from TTS API)
-const MOCK_CHAPTERS = [
-  { id: '1', title: 'Chapter 1: The Beginning', duration: 1200 },
-  { id: '2', title: 'Chapter 2: The Journey', duration: 1500 },
-  { id: '3', title: 'Chapter 3: The Discovery', duration: 1100 },
-  { id: '4', title: 'Chapter 4: The Challenge', duration: 1400 },
-  { id: '5', title: 'Chapter 5: The Resolution', duration: 1300 },
-];
-
-// Mock TTS voices
-const MOCK_VOICES: TTSVoice[] = [
-  { id: 'voice-1', name: 'Emma', lang: 'en-US', local: true },
-  { id: 'voice-2', name: 'Alex', lang: 'en-US', local: true },
-  { id: 'voice-3', name: 'Sophie', lang: 'en-GB', local: true },
-  { id: 'voice-4', name: 'James', lang: 'en-AU', local: true },
-  { id: 'voice-5', name: 'Marie', lang: 'fr-FR', local: false },
-];
 
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
@@ -51,7 +38,7 @@ function formatTime(seconds: number): string {
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
-  
+
   if (hrs > 0) {
     return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   }
@@ -68,20 +55,68 @@ export function TTSReaderScreen() {
 
   const ttsStore = useTTSStore();
 
+  const [chapters, setChapters] = useState<Array<{ id: string; title: string; duration: number }>>([]);
   const [selectedChapter, setSelectedChapter] = useState('1');
   const [showVoicePicker, setShowVoicePicker] = useState(false);
   const [showSpeedPicker, setShowSpeedPicker] = useState(false);
   const [sleepTimer, setSleepTimer] = useState<number | null>(null);
   const [showSleepTimer, setShowSleepTimer] = useState(false);
   const [volume, setVolume] = useState(ttsStore.volume);
+  const [availableVoices, setAvailableVoices] = useState<TTSVoice[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [playbackProgress, setPlaybackProgress] = useState(0);
+  const [currentPosition, setCurrentPosition] = useState(0);
+  const [totalDuration, setTotalDuration] = useState(0);
 
+  const soundRef = useRef<Audio.Sound | null>(null);
   const sleepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  const currentChapter = MOCK_CHAPTERS.find((c) => c.id === selectedChapter) || MOCK_CHAPTERS[0];
-  const currentTime = ttsStore.currentBookId === book.id ? ttsStore.currentPosition : 0;
-  const totalDuration = ttsStore.totalLength || currentChapter.duration;
+  const currentChapter = chapters.find((c) => c.id === selectedChapter) || chapters[0];
+
+  // Load chapters and voices on mount
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const apiClient = getApiClient();
+
+        // Load chapters
+        const chaptersRes = await apiClient.getChapters(book.id);
+        if (chaptersRes.success && chaptersRes.data) {
+          const loadedChapters = chaptersRes.data.map((ch, index) => ({
+            id: String(ch.index || index),
+            title: ch.title || `Chapter ${index + 1}`,
+            duration: 1200, // Estimated duration
+          }));
+          setChapters(loadedChapters);
+          if (loadedChapters.length > 0) {
+            setSelectedChapter(loadedChapters[0].id);
+          }
+        }
+
+        // Load voices
+        const voicesRes = await apiClient.getVoices();
+        if (voicesRes.success && voicesRes.data) {
+          setAvailableVoices(voicesRes.data);
+          if (voicesRes.data.length > 0 && !ttsStore.selectedVoice) {
+            ttsStore.setSelectedVoice(voicesRes.data[0]);
+          }
+        }
+      } catch {
+        Alert.alert('Error', 'Failed to load book data');
+      }
+    };
+
+    loadData();
+
+    return () => {
+      cleanupAudio();
+      if (sleepTimerRef.current) {
+        clearInterval(sleepTimerRef.current);
+      }
+    };
+  }, [book.id]);
 
   // Sleep timer effect
   useEffect(() => {
@@ -89,13 +124,13 @@ export function TTSReaderScreen() {
       sleepTimerRef.current = setInterval(() => {
         setSleepTimer((prev) => {
           if (prev === null || prev <= 1) {
-            ttsStore.setState('paused');
+            handlePause();
             Alert.alert('Sleep Timer', 'Playback paused due to sleep timer.');
             return null;
           }
           return prev - 1;
         });
-      }, 60000); // Every minute
+      }, 60000);
     }
 
     return () => {
@@ -105,58 +140,219 @@ export function TTSReaderScreen() {
     };
   }, [sleepTimer]);
 
-  const handlePlayPause = useCallback(() => {
-    if (ttsStore.state === 'playing' && ttsStore.currentBookId === book.id) {
-      ttsStore.setState('paused');
-    } else {
-      ttsStore.setCurrentBook(book.id, currentTime, totalDuration);
-      ttsStore.setState('playing');
+  const cleanupAudio = async () => {
+    if (soundRef.current) {
+      try {
+        await soundRef.current.stopAsync();
+        await soundRef.current.unloadAsync();
+      } catch {
+        // Ignore cleanup errors
+      }
+      soundRef.current = null;
     }
-  }, [ttsStore, book.id, currentTime, totalDuration]);
+  };
 
-  const handleSeek = useCallback((value: number) => {
-    ttsStore.setPosition(Math.floor(value));
-  }, [ttsStore]);
+  const fetchChapterContent = async (chapterId: string): Promise<string> => {
+    try {
+      const apiClient = getApiClient();
+      const chapterIndex = parseInt(chapterId, 10);
+      const contentRes = await apiClient.getChapterContent(book.id, chapterIndex);
+      return contentRes.success && contentRes.data ? contentRes.data.content : '';
+    } catch {
+      return '';
+    }
+  };
 
-  const handleSkipForward = useCallback(() => {
-    const newPosition = Math.min(currentTime + 30, totalDuration);
-    ttsStore.setPosition(newPosition);
-  }, [currentTime, totalDuration, ttsStore]);
+  const handlePlay = async () => {
+    if (isLoading) return;
 
-  const handleSkipBackward = useCallback(() => {
-    const newPosition = Math.max(currentTime - 30, 0);
-    ttsStore.setPosition(newPosition);
-  }, [currentTime, ttsStore]);
+    // If paused and has sound, resume
+    if (soundRef.current && !isLoading) {
+      try {
+        const status = await soundRef.current.getStatusAsync();
+        if (status.isLoaded && !status.isPlaying) {
+          await soundRef.current.playAsync();
+          ttsStore.setState('playing');
+          return;
+        }
+      } catch {
+        // Fall through to play new
+      }
+    }
+
+    setIsLoading(true);
+
+    try {
+      await cleanupAudio();
+
+      const text = await fetchChapterContent(selectedChapter);
+      if (!text.trim()) {
+        setIsLoading(false);
+        Alert.alert('Error', 'No text content available for this chapter');
+        return;
+      }
+
+      const apiClient = getApiClient();
+      const voiceId = ttsStore.selectedVoice?.id;
+      const blob = await apiClient.convertToSpeech(text, voiceId || 'default');
+
+      // Convert blob to base64 for expo-av
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onloadend = () => {
+          const base64 = reader.result as string;
+          resolve(base64.split(',')[1]);
+        };
+        reader.onerror = reject;
+      });
+      reader.readAsDataURL(blob);
+      const base64Data = await base64Promise;
+
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: `data:audio/wav;base64,${base64Data}` },
+        {
+          shouldPlay: true,
+          rate: ttsStore.playbackRate,
+          volume: ttsStore.volume,
+          positionMillis: currentPosition,
+        },
+        (status) => {
+          if (status.isLoaded) {
+            setCurrentPosition(status.positionMillis / 1000);
+            setTotalDuration((status.durationMillis || 1) / 1000);
+            setPlaybackProgress(status.positionMillis / (status.durationMillis || 1));
+            if (status.didJustFinish) {
+              ttsStore.setState('idle');
+              setPlaybackProgress(0);
+              setCurrentPosition(0);
+            }
+          }
+        }
+      );
+
+      soundRef.current = sound;
+      ttsStore.setCurrentBook(book.id, 0, 0);
+      ttsStore.setState('playing');
+    } catch (err) {
+      console.error('TTS error:', err);
+      Alert.alert('TTS Error', 'Failed to synthesize speech. Please check your network and backend service.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePause = async () => {
+    if (soundRef.current) {
+      try {
+        await soundRef.current.pauseAsync();
+        ttsStore.setState('paused');
+      } catch {
+        // Ignore
+      }
+    }
+  };
+
+  const handlePlayPause = useCallback(() => {
+    if (ttsStore.state === 'playing') {
+      handlePause();
+    } else {
+      handlePlay();
+    }
+  }, [ttsStore.state]);
+
+  const handleStop = async () => {
+    await cleanupAudio();
+    ttsStore.setState('idle');
+    setPlaybackProgress(0);
+    setCurrentPosition(0);
+  };
+
+  const handleSeek = useCallback(async (value: number) => {
+    setCurrentPosition(value);
+    if (soundRef.current) {
+      try {
+        await soundRef.current.setPositionAsync(value * 1000);
+      } catch {
+        // Ignore seek errors
+      }
+    }
+  }, []);
+
+  const handleSkipForward = useCallback(async () => {
+    const newPosition = Math.min(currentPosition + 30, totalDuration);
+    setCurrentPosition(newPosition);
+    if (soundRef.current) {
+      try {
+        await soundRef.current.setPositionAsync(newPosition * 1000);
+      } catch {
+        // Ignore
+      }
+    }
+  }, [currentPosition, totalDuration]);
+
+  const handleSkipBackward = useCallback(async () => {
+    const newPosition = Math.max(currentPosition - 30, 0);
+    setCurrentPosition(newPosition);
+    if (soundRef.current) {
+      try {
+        await soundRef.current.setPositionAsync(newPosition * 1000);
+      } catch {
+        // Ignore
+      }
+    }
+  }, [currentPosition]);
 
   const handlePreviousChapter = useCallback(() => {
-    const currentIndex = MOCK_CHAPTERS.findIndex((c) => c.id === selectedChapter);
+    const currentIndex = chapters.findIndex((c) => c.id === selectedChapter);
     if (currentIndex > 0) {
-      setSelectedChapter(MOCK_CHAPTERS[currentIndex - 1].id);
-      ttsStore.setPosition(0);
+      setSelectedChapter(chapters[currentIndex - 1].id);
+      setCurrentPosition(0);
+      setPlaybackProgress(0);
+      if (ttsStore.state === 'playing') {
+        handleStop().then(() => handlePlay());
+      }
     }
-  }, [selectedChapter, ttsStore]);
+  }, [selectedChapter, chapters, ttsStore.state]);
 
   const handleNextChapter = useCallback(() => {
-    const currentIndex = MOCK_CHAPTERS.findIndex((c) => c.id === selectedChapter);
-    if (currentIndex < MOCK_CHAPTERS.length - 1) {
-      setSelectedChapter(MOCK_CHAPTERS[currentIndex + 1].id);
-      ttsStore.setPosition(0);
+    const currentIndex = chapters.findIndex((c) => c.id === selectedChapter);
+    if (currentIndex < chapters.length - 1) {
+      setSelectedChapter(chapters[currentIndex + 1].id);
+      setCurrentPosition(0);
+      setPlaybackProgress(0);
+      if (ttsStore.state === 'playing') {
+        handleStop().then(() => handlePlay());
+      }
     }
-  }, [selectedChapter, ttsStore]);
+  }, [selectedChapter, chapters, ttsStore.state]);
 
   const handleVoiceSelect = useCallback((voice: TTSVoice) => {
     ttsStore.setSelectedVoice(voice);
     setShowVoicePicker(false);
   }, [ttsStore]);
 
-  const handleSpeedSelect = useCallback((speed: number) => {
+  const handleSpeedSelect = useCallback(async (speed: number) => {
     ttsStore.setPlaybackRate(speed);
     setShowSpeedPicker(false);
+    if (soundRef.current) {
+      try {
+        await soundRef.current.setRateAsync(speed, true);
+      } catch {
+        // Ignore
+      }
+    }
   }, [ttsStore]);
 
-  const handleVolumeChange = useCallback((value: number) => {
+  const handleVolumeChange = useCallback(async (value: number) => {
     setVolume(value);
     ttsStore.setVolume(value);
+    if (soundRef.current) {
+      try {
+        await soundRef.current.setVolumeAsync(value);
+      } catch {
+        // Ignore
+      }
+    }
   }, [ttsStore]);
 
   const handleSleepTimerSet = useCallback((minutes: number | null) => {
@@ -171,8 +367,12 @@ export function TTSReaderScreen() {
 
   const handleChapterSelect = useCallback((chapterId: string) => {
     setSelectedChapter(chapterId);
-    ttsStore.setPosition(0);
-  }, [ttsStore]);
+    setCurrentPosition(0);
+    setPlaybackProgress(0);
+    if (ttsStore.state === 'playing') {
+      handleStop().then(() => handlePlay());
+    }
+  }, [ttsStore.state]);
 
   const isCurrentChapter = ttsStore.currentBookId === book.id && ttsStore.state === 'playing';
 
@@ -217,7 +417,7 @@ export function TTSReaderScreen() {
 
         {/* Chapter Info */}
         <Text style={styles.chapterTitle} numberOfLines={2}>
-          {currentChapter.title}
+          {currentChapter?.title || 'Loading...'}
         </Text>
         <Text style={styles.bookAuthor}>{book.author}</Text>
 
@@ -226,16 +426,16 @@ export function TTSReaderScreen() {
           <Slider
             style={styles.progressSlider}
             minimumValue={0}
-            maximumValue={totalDuration}
-            value={currentTime}
+            maximumValue={totalDuration || 1}
+            value={currentPosition}
             onSlidingComplete={handleSeek}
             minimumTrackTintColor={theme.colors.primary}
             maximumTrackTintColor={theme.colors.border}
             thumbTintColor={theme.colors.primary}
           />
           <View style={styles.timeRow}>
-            <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
-            <Text style={styles.timeText}>-{formatTime(totalDuration - currentTime)}</Text>
+            <Text style={styles.timeText}>{formatTime(currentPosition)}</Text>
+            <Text style={styles.timeText}>-{formatTime((totalDuration || 0) - currentPosition)}</Text>
           </View>
         </View>
 
@@ -249,35 +449,40 @@ export function TTSReaderScreen() {
           <TouchableOpacity
             style={styles.controlButton}
             onPress={handlePreviousChapter}
-            disabled={selectedChapter === MOCK_CHAPTERS[0].id}
+            disabled={chapters.length === 0 || selectedChapter === chapters[0]?.id}
           >
             <Ionicons
               name="play-skip-back"
               size={24}
-              color={selectedChapter === MOCK_CHAPTERS[0].id ? theme.colors.border : theme.colors.text}
+              color={chapters.length === 0 || selectedChapter === chapters[0]?.id ? theme.colors.border : theme.colors.text}
             />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.playButton, { backgroundColor: theme.colors.primary }]}
             onPress={handlePlayPause}
+            disabled={isLoading}
           >
-            <Ionicons
-              name={isCurrentChapter ? 'pause' : 'play'}
-              size={36}
-              color="#fff"
-            />
+            {isLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Ionicons
+                name={isCurrentChapter ? 'pause' : 'play'}
+                size={36}
+                color="#fff"
+              />
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.controlButton}
             onPress={handleNextChapter}
-            disabled={selectedChapter === MOCK_CHAPTERS[MOCK_CHAPTERS.length - 1].id}
+            disabled={chapters.length === 0 || selectedChapter === chapters[chapters.length - 1]?.id}
           >
             <Ionicons
               name="play-skip-forward"
               size={24}
-              color={selectedChapter === MOCK_CHAPTERS[MOCK_CHAPTERS.length - 1].id ? theme.colors.border : theme.colors.text}
+              color={chapters.length === 0 || selectedChapter === chapters[chapters.length - 1]?.id ? theme.colors.border : theme.colors.text}
             />
           </TouchableOpacity>
 
@@ -327,63 +532,65 @@ export function TTSReaderScreen() {
         </View>
 
         {/* Chapters List */}
-        <View style={styles.chaptersSection}>
-          <Text style={styles.sectionTitle}>Chapters</Text>
-          {MOCK_CHAPTERS.map((chapter, index) => {
-            const isActive = chapter.id === selectedChapter;
-            const isPlayed = MOCK_CHAPTERS.findIndex((c) => c.id === selectedChapter) > index;
-            return (
-              <TouchableOpacity
-                key={chapter.id}
-                style={[
-                  styles.chapterItem,
-                  isActive && { backgroundColor: theme.colors.primary + '20' },
-                ]}
-                onPress={() => handleChapterSelect(chapter.id)}
-              >
-                <View style={styles.chapterLeft}>
-                  {isPlayed ? (
-                    <Ionicons name="checkmark-circle" size={20} color={theme.colors.success} />
-                  ) : (
-                    <View
-                      style={[
-                        styles.chapterNumber,
-                        { backgroundColor: isActive ? theme.colors.primary : theme.colors.border },
-                      ]}
-                    >
-                      <Text
+        {chapters.length > 0 && (
+          <View style={styles.chaptersSection}>
+            <Text style={styles.sectionTitle}>Chapters</Text>
+            {chapters.map((chapter, index) => {
+              const isActive = chapter.id === selectedChapter;
+              const isPlayed = chapters.findIndex((c) => c.id === selectedChapter) > index;
+              return (
+                <TouchableOpacity
+                  key={chapter.id}
+                  style={[
+                    styles.chapterItem,
+                    isActive && { backgroundColor: theme.colors.primary + '20' },
+                  ]}
+                  onPress={() => handleChapterSelect(chapter.id)}
+                >
+                  <View style={styles.chapterLeft}>
+                    {isPlayed ? (
+                      <Ionicons name="checkmark-circle" size={20} color={theme.colors.success} />
+                    ) : (
+                      <View
                         style={[
-                          styles.chapterNumberText,
-                          { color: isActive ? '#fff' : theme.colors.textSecondary },
+                          styles.chapterNumber,
+                          { backgroundColor: isActive ? theme.colors.primary : theme.colors.border },
                         ]}
                       >
-                        {index + 1}
+                        <Text
+                          style={[
+                            styles.chapterNumberText,
+                            { color: isActive ? '#fff' : theme.colors.textSecondary },
+                          ]}
+                        >
+                          {index + 1}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.chapterInfo}>
+                      <Text
+                        style={[
+                          styles.chapterItemTitle,
+                          { color: isActive ? theme.colors.primary : theme.colors.text },
+                        ]}
+                      >
+                        {chapter.title}
                       </Text>
+                      <Text style={styles.chapterDuration}>{formatTime(chapter.duration)}</Text>
+                    </View>
+                  </View>
+                  {isActive && isCurrentChapter && (
+                    <View style={styles.playingIndicator}>
+                      <View style={[styles.playingDot, { backgroundColor: theme.colors.primary }]} />
+                      <View style={[styles.playingDot, { backgroundColor: theme.colors.primary }]} />
+                      <View style={[styles.playingDot, { backgroundColor: theme.colors.primary }]} />
                     </View>
                   )}
-                  <View style={styles.chapterInfo}>
-                    <Text
-                      style={[
-                        styles.chapterItemTitle,
-                        { color: isActive ? theme.colors.primary : theme.colors.text },
-                      ]}
-                    >
-                      {chapter.title}
-                    </Text>
-                    <Text style={styles.chapterDuration}>{formatTime(chapter.duration)}</Text>
-                  </View>
-                </View>
-                {isActive && isCurrentChapter && (
-                  <View style={styles.playingIndicator}>
-                    <View style={[styles.playingDot, { backgroundColor: theme.colors.primary }]} />
-                    <View style={[styles.playingDot, { backgroundColor: theme.colors.primary }]} />
-                    <View style={[styles.playingDot, { backgroundColor: theme.colors.primary }]} />
-                  </View>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
 
       {/* Voice Picker Modal */}
@@ -397,7 +604,7 @@ export function TTSReaderScreen() {
           <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
             <Text style={styles.modalTitle}>Select Voice</Text>
             <ScrollView>
-              {MOCK_VOICES.map((voice) => (
+              {availableVoices.map((voice) => (
                 <TouchableOpacity
                   key={voice.id}
                   style={[
@@ -413,19 +620,15 @@ export function TTSReaderScreen() {
                     <Text style={styles.voiceLang}>{voice.lang}</Text>
                   </View>
                   <View style={styles.voiceBadges}>
-                    {voice.local && (
-                      <View style={[styles.voiceBadge, { backgroundColor: theme.colors.success + '20' }]}>
-                        <Text style={[styles.voiceBadgeText, { color: theme.colors.success }]}>
-                          Local
-                        </Text>
-                      </View>
-                    )}
                     {ttsStore.selectedVoice?.id === voice.id && (
                       <Ionicons name="checkmark-circle" size={22} color={theme.colors.primary} />
                     )}
                   </View>
                 </TouchableOpacity>
               ))}
+              {availableVoices.length === 0 && (
+                <Text style={styles.emptyVoices}>No voices available</Text>
+              )}
             </ScrollView>
           </View>
         </Pressable>
@@ -503,9 +706,6 @@ export function TTSReaderScreen() {
     </SafeAreaView>
   );
 }
-
-// Need to import Pressable since it's used in modals
-import { Pressable } from 'react-native';
 
 function createStyles(theme: ReturnType<typeof getTheme>) {
   return StyleSheet.create({
@@ -776,6 +976,11 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     voiceBadgeText: {
       fontSize: fontSizes.xs,
       fontWeight: '500',
+    },
+    emptyVoices: {
+      textAlign: 'center',
+      color: theme.colors.textSecondary,
+      padding: spacing.md,
     },
     speedGrid: {
       flexDirection: 'row',

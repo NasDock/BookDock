@@ -202,15 +202,6 @@ export async function getTtsState(): Promise<TtsState> {
   return invoke<TtsState>('get_tts_state');
 }
 
-export async function getSystemVoices(): Promise<Array<{
-  id: string;
-  name: string;
-  lang: string;
-  local: boolean;
-}>> {
-  return invoke('get_system_voices');
-}
-
 // ============================================================================
 // Settings Commands
 // ============================================================================
@@ -349,81 +340,4 @@ export function useFileBrowser() {
   };
 }
 
-export function useTTS() {
-  const { ttsState, setTtsState, settings } = useDesktopStore();
 
-  const speak = useCallback(
-    async (text: string, bookId?: string) => {
-      setTtsState({
-        isPlaying: true,
-        isPaused: false,
-        bookId,
-        currentText: text.slice(0, 100),
-        progress: 0,
-      });
-
-      // Use Web Speech API for TTS
-      if ('speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = settings.ttsRate;
-        utterance.volume = settings.ttsVolume;
-        utterance.lang = 'zh-CN';
-
-        // Find Chinese voice
-        const voices = window.speechSynthesis.getVoices();
-        const chineseVoice = voices.find((v) => v.lang?.startsWith('zh'));
-        if (chineseVoice) {
-          utterance.voice = chineseVoice;
-        }
-
-        utterance.onend = () => {
-          setTtsState({ isPlaying: false, isPaused: false, progress: 100 });
-        };
-
-        utterance.onerror = () => {
-          setTtsState({ isPlaying: false, isPaused: false });
-        };
-
-        window.speechSynthesis.speak(utterance);
-      }
-    },
-    [settings, setTtsState]
-  );
-
-  const pause = useCallback(() => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.pause();
-      setTtsState({ isPlaying: false, isPaused: true });
-    }
-  }, [setTtsState]);
-
-  const resume = useCallback(() => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.resume();
-      setTtsState({ isPlaying: true, isPaused: false });
-    }
-  }, [setTtsState]);
-
-  const stop = useCallback(() => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      setTtsState({ isPlaying: false, isPaused: false, progress: 0 });
-    }
-  }, [setTtsState]);
-
-  const togglePlayPause = useCallback(() => {
-    if (ttsState.isPlaying) {
-      pause();
-    } else if (ttsState.isPaused) {
-      resume();
-    }
-  }, [ttsState, pause, resume]);
-
-  return {
-    speak,
-    pause,
-    resume,
-    stop,
-    togglePlayPause,
-  };
-}
