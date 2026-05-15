@@ -100,7 +100,6 @@ export function SettingsScreen() {
             setIsLoading(true);
             try {
               const apiClient = getApiClient();
-              // Note: Backend may not have delete account endpoint, this is a placeholder
               await apiClient.deleteUser(authStore.user?.id || '');
               authStore.logout();
             } catch {
@@ -127,112 +126,108 @@ export function SettingsScreen() {
     icon: string,
     label: string,
     value: React.ReactNode,
-    onPress?: () => void
+    onPress?: () => void,
+    iconColor?: string
   ) => (
     <TouchableOpacity
       style={styles.row}
       onPress={onPress}
       disabled={!onPress}
     >
-      <Ionicons name={icon as any} size={20} color={theme.colors.primary} />
+      <Ionicons name={icon as any} size={20} color={iconColor || theme.colors.primary} />
       <Text style={styles.rowLabel}>{label}</Text>
       <View style={styles.rowValue}>{value}</View>
     </TouchableOpacity>
   );
+
+  const user = authStore.user;
+  const isPremium = user?.membership === 'premium';
 
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
       contentContainerStyle={styles.content}
     >
-      {/* Appearance */}
-      {renderSection('Appearance',
+      {/* Account */}
+      {renderSection('账户',
         <>
-          {renderRow('sunny-outline', 'Light', themeMode === 'light' && <Ionicons name="checkmark" size={20} color={theme.colors.primary} />, () => handleThemeChange('light'))}
+          {renderRow('person-outline', '用户名', <Text style={styles.rowValueText}>{user?.username || '-'}</Text>)}
           <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
-          {renderRow('moon-outline', 'Dark', themeMode === 'dark' && <Ionicons name="checkmark" size={20} color={theme.colors.primary} />, () => handleThemeChange('dark'))}
+          {renderRow('mail-outline', '邮箱', <Text style={styles.rowValueText}>{user?.email || '-'}</Text>)}
           <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
-          {renderRow('contrast-outline', 'System', themeMode === 'system' && <Ionicons name="checkmark" size={20} color={theme.colors.primary} />, () => handleThemeChange('system'))}
-        </>
-      )}
-
-      {/* Notifications */}
-      {renderSection('Notifications',
-        <>
-          {renderRow('notifications-outline', 'Enable Notifications',
-            <Switch
-              value={notificationsEnabled}
-              onValueChange={handleNotificationsToggle}
-              trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
-            />
+          {renderRow('crown-outline', '会员类型',
+            <View style={styles.rowValueRow}>
+              <Text style={styles.rowValueText}>{isPremium ? 'Premium' : '免费用户'}</Text>
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+            </View>,
+            () => {}
           )}
           <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
-          {renderRow('time-outline', 'Reading Reminder (8:00 PM)',
-            <Switch
-              value={readingReminder}
-              onValueChange={handleReadingReminderToggle}
-              trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
-            />
+          {renderRow('star-outline', '升级到 Premium',
+            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />,
+            () => {}
           )}
         </>
       )}
 
-      {/* Reader Preferences */}
-      {renderSection('Reader',
+      {/* Preferences */}
+      {renderSection('偏好设置',
         <>
-          {renderRow('text-outline', 'Font Size', <Text style={styles.rowValueText}>{readerStore.fontSize}px</Text>)}
+          {renderRow('contrast-outline', '外观',
+            <View style={styles.rowValueRow}>
+              <Text style={styles.rowValueText}>
+                {themeMode === 'light' ? '浅色' : themeMode === 'dark' ? '深色' : '跟随系统'}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+            </View>,
+            () => handleThemeChange(themeMode === 'light' ? 'dark' : 'light')
+          )}
           <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
-          {renderRow('resize-outline', 'Line Height', <Text style={styles.rowValueText}>{readerStore.lineHeight}x</Text>)}
+          {renderRow('book-outline', '阅读设置',
+            <View style={styles.rowValueRow}>
+              <Text style={styles.rowValueText}>字体 {readerStore.fontSize}px · 行距 {readerStore.lineHeight}x</Text>
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+            </View>,
+            () => {}
+          )}
           <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
-          {renderRow('save-outline', 'Auto Save Progress',
-            <Switch
-              value={readerStore.autoSaveProgress}
-              onValueChange={(v) => readerStore.setAutoSaveProgress(v)}
-              trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
-            />
+          {renderRow('volume-high-outline', '语音朗读设置',
+            <View style={styles.rowValueRow}>
+              <Text style={styles.rowValueText}>语速 {ttsStore.playbackRate}x</Text>
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+            </View>,
+            () => {}
           )}
         </>
       )}
 
-      {/* TTS Preferences */}
-      {renderSection('Text to Speech',
+      {/* Security */}
+      {renderSection('安全',
         <>
-          {renderRow('speedometer-outline', 'Playback Rate', <Text style={styles.rowValueText}>{ttsStore.playbackRate}x</Text>)}
-          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
-          {renderRow('volume-medium-outline', 'Volume', <Text style={styles.rowValueText}>{Math.round(ttsStore.volume * 100)}%</Text>)}
-        </>
-      )}
-
-      {/* Data Management */}
-      {renderSection('Data',
-        <>
-          <TouchableOpacity style={styles.row} onPress={handleClearCache}>
-            <Ionicons name="trash-outline" size={20} color={theme.colors.error} />
-            <Text style={[styles.rowLabel, { color: theme.colors.error }]}>Clear Cache</Text>
-            <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
-          </TouchableOpacity>
-          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
-          <TouchableOpacity style={styles.row} onPress={handleDeleteAccount}>
-            <Ionicons name="close-circle-outline" size={20} color={theme.colors.error} />
-            <Text style={[styles.rowLabel, { color: theme.colors.error }]}>Delete Account</Text>
-            {isLoading ? (
-              <ActivityIndicator size="small" color={theme.colors.error} />
-            ) : (
-              <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
-            )}
-          </TouchableOpacity>
+          {renderRow('lock-closed-outline', '修改密码',
+            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />,
+            () => {}
+          )}
         </>
       )}
 
       {/* About */}
-      <View style={styles.about}>
-        <Text style={[styles.aboutText, { color: theme.colors.textSecondary }]}>
-          BookDock v1.0.0
-        </Text>
-        <Text style={[styles.aboutText, { color: theme.colors.textSecondary }]}>
-          Built for NAS users
-        </Text>
-      </View>
+      {renderSection('关于',
+        <>
+          {renderRow('server-outline', '存储空间',
+            <Text style={styles.rowValueText}>0 GB</Text>
+          )}
+          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+          {renderRow('information-circle-outline', '关于 BookDock',
+            <Text style={styles.rowValueText}>v1.0.0</Text>
+          )}
+        </>
+      )}
+
+      {/* Logout */}
+      <TouchableOpacity style={styles.logoutButton} onPress={authStore.logout}>
+        <Text style={styles.logoutText}>退出登录</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -253,7 +248,6 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontSize: fontSizes.sm,
       fontWeight: '600',
       color: theme.colors.textSecondary,
-      textTransform: 'uppercase',
       marginBottom: spacing.sm,
       marginLeft: spacing.sm,
     },
@@ -276,6 +270,11 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       flexDirection: 'row',
       alignItems: 'center',
     },
+    rowValueRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+    },
     rowValueText: {
       fontSize: fontSizes.md,
       color: theme.colors.textSecondary,
@@ -284,13 +283,15 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       height: 1,
       marginLeft: spacing.md + 28,
     },
-    about: {
+    logoutButton: {
+      marginTop: spacing.lg,
+      paddingVertical: spacing.md,
       alignItems: 'center',
-      marginTop: spacing.xl,
-      gap: spacing.xs,
     },
-    aboutText: {
-      fontSize: fontSizes.sm,
+    logoutText: {
+      fontSize: fontSizes.md,
+      color: theme.colors.error,
+      fontWeight: '500',
     },
   });
 }

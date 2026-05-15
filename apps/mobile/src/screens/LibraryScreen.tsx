@@ -23,9 +23,37 @@ import type { RootStackParamList } from '../navigation/types';
 
 const { width } = Dimensions.get('window');
 const GRID_COLUMNS = 3;
-const ITEM_WIDTH = (width - spacing.md * 2 - spacing.sm * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
+const GAP = 12;
+const ITEM_WIDTH = (width - spacing.md * 2 - GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+const FORMATS = ['all', 'txt', 'epub', 'pdf', 'mobi'] as const;
+const STATUSES = ['all', 'unread', 'reading', 'completed'] as const;
+
+function getBookGradient(title: string): string[] {
+  const gradients = [
+    ['#3B82F6', '#6366F1'],
+    ['#8B5CF6', '#A855F7'],
+    ['#06B6D4', '#3B82F6'],
+    ['#10B981', '#34D399'],
+    ['#F59E0B', '#F97316'],
+    ['#EF4444', '#F97316'],
+    ['#EC4899', '#F43F5E'],
+    ['#6366F1', '#8B5CF6'],
+  ];
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) {
+    hash = title.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return gradients[Math.abs(hash) % gradients.length];
+}
+
+function getStatusLabel(progress: number): string {
+  if (progress === 0) return '未读';
+  if (progress >= 100) return '已读完';
+  return '在读';
+}
 
 export function LibraryScreen() {
   const navigation = useNavigation<NavigationProp>();
@@ -34,8 +62,6 @@ export function LibraryScreen() {
   const {
     books,
     localBooks,
-    viewMode,
-    setViewMode,
     fetchBooks,
     downloadBook,
     deleteLocalBook,
@@ -46,10 +72,11 @@ export function LibraryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [localSearchQuery, setLocalSearchQuery] = useState('');
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [filterFormat, setFilterFormat] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  // Load books on mount and when screen is focused
   useFocusEffect(
     useCallback(() => {
       fetchBooks();
@@ -57,14 +84,46 @@ export function LibraryScreen() {
   );
 
   const filteredBooks = useMemo(() => {
+    let result = [...books];
+
+    // Search
     const query = localSearchQuery.toLowerCase();
-    if (!query) return books;
-    return books.filter(
-      (book) =>
-        book.title.toLowerCase().includes(query) ||
-        book.author.toLowerCase().includes(query)
-    );
-  }, [books, localSearchQuery]);
+    if (query) {
+      result = result.filter(
+        (book) =>
+          book.title.toLowerCase().includes(query) ||
+          book.author.toLowerCase().includes(query)
+      );
+    }
+
+    // Format filter
+    if (filterFormat !== 'all') {
+      result = result.filter((book) => book.fileType === filterFormat);
+    }
+
+    // Status filter
+    if (filterStatus !== 'all') {
+      result = result.filter((book) => {
+        const progress = book.readingProgress ?? 0;
+        if (filterStatus === 'unread') return progress === 0;
+        if (filterStatus === 'reading') return progress > 0 && progress < 100;
+        if (filterStatus === 'completed') return progress >= 100;
+        return true;
+      });
+    }
+
+    return result;
+  }, [books, localSearchQuery, filterFormat, filterStatus]);
+
+  const stats = useMemo(() => {
+    const total = books.length;
+    const completed = books.filter((b) => (b.readingProgress ?? 0) >= 100).length;
+    const reading = books.filter((b) => {
+      const p = b.readingProgress ?? 0;
+      return p > 0 && p < 100;
+    }).length;
+    return { total, completed, reading };
+  }, [books]);
 
   const handleBookPress = useCallback((book: Book) => {
     navigation.navigate('Reader', { book });
@@ -123,23 +182,31 @@ export function LibraryScreen() {
     }
   }, [localBooks, downloadBook, deleteLocalBook]);
 
-  const renderGridItem = useCallback(({ item }: { item: Book }) => {
+  const renderBookItem = useCallback(({ item }: { item: Book }) => {
     const localBook = localBooks.find((b) => b.id === item.id);
     const isDownloaded = !!localBook?.isDownloaded;
     const isDownloading = downloadingId === item.id;
+    const progress = item.readingProgress ?? 0;
+    const statusLabel = getStatusLabel(progress);
+    const [gradStart, gradEnd] = getBookGradient(item.title);
 
     return (
       <Pressable
         style={styles.gridItem}
         onPress={() => handleBookPress(item)}
-        android_ripple={{ color: theme.colors.primary + '40' }}
+        android_ripple={{ color: theme.colors.primary + '20' }}
       >
-        <View style={[styles.coverPlaceholder, { backgroundColor: theme.colors.surface }]}>
-          {item.coverUrl ? (
-            <View style={styles.coverImagePlaceholder} />
-          ) : (
-            <Text style={styles.coverInitial}>{item.title.charAt(0).toUpperCase()}</Text>
-          )}
+        {/* Cover */}
+        <View style={[styles.coverContainer, { backgroundColor: gradStart }]}>
+          <View style={[styles.coverGradient, { backgroundColor: gradEnd }]} />
+          <Text style={styles.coverInitial}>{item.title.charAt(0)}</Text>
+
+          {/* Format badge */}
+          <View style={styles.formatBadge}>
+            <Text style={styles.formatBadgeText}>{item.fileType.toUpperCase()}</Text>
+          </View>
+
+          {/* Download button */}
           <TouchableOpacity
             style={styles.downloadButton}
             onPress={() => handleDownload(item)}
@@ -150,144 +217,99 @@ export function LibraryScreen() {
             ) : (
               <Ionicons
                 name={isDownloaded ? 'cloud-done' : 'cloud-download-outline'}
-                size={16}
+                size={14}
                 color="#fff"
               />
             )}
           </TouchableOpacity>
         </View>
-        <Text style={styles.bookTitle} numberOfLines={2}>
-          {item.title}
-        </Text>
-        <Text style={styles.bookAuthor} numberOfLines={1}>
-          {item.author}
-        </Text>
-        {item.readingProgress && item.readingProgress > 0 && (
-          <View style={styles.progressContainer}>
-            <View
-              style={[
-                styles.progressBar,
-                { width: `${item.readingProgress}%`, backgroundColor: theme.colors.primary },
-              ]}
-            />
-          </View>
-        )}
+
+        {/* Info */}
+        <Text style={styles.bookTitle} numberOfLines={1}>{item.title}</Text>
+        <Text style={styles.bookAuthor} numberOfLines={1}>{item.author || '未知作者'}</Text>
+        <View style={styles.bookMeta}>
+          <Text style={styles.statusText}>{statusLabel}</Text>
+          <Text style={styles.sizeText}>{formatFileSize(item.fileSize)}</Text>
+        </View>
       </Pressable>
     );
   }, [styles, theme, localBooks, downloadingId, handleBookPress, handleDownload]);
 
-  const renderListItem = useCallback(({ item }: { item: Book }) => {
-    const localBook = localBooks.find((b) => b.id === item.id);
-    const isDownloaded = !!localBook?.isDownloaded;
-    const isDownloading = downloadingId === item.id;
-
-    return (
-      <Pressable
-        style={[styles.listItem, { backgroundColor: theme.colors.surface }]}
-        onPress={() => handleBookPress(item)}
-        android_ripple={{ color: theme.colors.primary + '40' }}
-      >
-        <View style={[styles.listCover, { backgroundColor: theme.colors.border }]}>
-          <Text style={styles.coverInitial}>{item.title.charAt(0).toUpperCase()}</Text>
-        </View>
-        <View style={styles.listContent}>
-          <Text style={styles.listTitle} numberOfLines={1}>
-            {item.title}
-          </Text>
-          <Text style={styles.listAuthor} numberOfLines={1}>
-            {item.author}
-          </Text>
-          <View style={styles.listMeta}>
-            <Text style={styles.listMetaText}>
-              {item.fileType.toUpperCase()} • {formatFileSize(item.fileSize)}
-            </Text>
-            {isDownloaded && (
-              <View style={styles.downloadBadge}>
-                <Ionicons name="cloud-done" size={12} color={theme.colors.primary} />
-              </View>
-            )}
-          </View>
-          {item.readingProgress && item.readingProgress > 0 && (
-            <View style={styles.progressContainer}>
-              <View
-                style={[
-                  styles.progressBar,
-                  { width: `${item.readingProgress}%`, backgroundColor: theme.colors.primary },
-                ]}
-              />
-            </View>
-          )}
-        </View>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => handleTTSPress(item)}
-        >
-          <Ionicons name="headset" size={20} color={theme.colors.primary} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.actionButton}
-          onPress={() => handleDownload(item)}
-          disabled={isDownloading}
-        >
-          {isDownloading ? (
-            <ActivityIndicator size="small" color={theme.colors.primary} />
-          ) : (
-            <Ionicons
-              name={isDownloaded ? 'cloud-done' : 'cloud-download-outline'}
-              size={20}
-              color={isDownloaded ? theme.colors.success : theme.colors.textSecondary}
-            />
-          )}
-        </TouchableOpacity>
-      </Pressable>
-    );
-  }, [styles, theme, localBooks, downloadingId, handleBookPress, handleTTSPress, handleDownload]);
-
   const renderHeader = () => (
-    <View style={styles.header}>
+    <View>
+      {/* Title & Stats */}
+      <View style={styles.titleSection}>
+        <Text style={styles.pageTitle}>我的书库</Text>
+        <Text style={styles.statsText}>
+          共 {stats.total} 本 · {stats.completed} 已读完 · <Text style={{ color: theme.colors.primary }}>{stats.reading} 在读</Text>
+        </Text>
+      </View>
+
+      {/* Search */}
       <View style={[styles.searchContainer, { backgroundColor: theme.colors.surface }]}>
-        <Ionicons name="search" size={20} color={theme.colors.textSecondary} />
+        <Ionicons name="search" size={18} color={theme.colors.textSecondary} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Search books..."
+          placeholder="搜索书名或作者..."
           placeholderTextColor={theme.colors.textSecondary}
           value={localSearchQuery}
           onChangeText={setLocalSearchQuery}
         />
         {localSearchQuery.length > 0 && (
           <TouchableOpacity onPress={() => setLocalSearchQuery('')}>
-            <Ionicons name="close-circle" size={20} color={theme.colors.textSecondary} />
+            <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
           </TouchableOpacity>
         )}
       </View>
-      <View style={styles.viewToggle}>
-        <TouchableOpacity
-          style={[
-            styles.toggleButton,
-            viewMode === 'grid' && { backgroundColor: theme.colors.primary },
-          ]}
-          onPress={() => setViewMode('grid')}
-        >
-          <Ionicons
-            name="grid"
-            size={20}
-            color={viewMode === 'grid' ? '#fff' : theme.colors.textSecondary}
-          />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[
-            styles.toggleButton,
-            viewMode === 'list' && { backgroundColor: theme.colors.primary },
-          ]}
-          onPress={() => setViewMode('list')}
-        >
-          <Ionicons
-            name="list"
-            size={20}
-            color={viewMode === 'list' ? '#fff' : theme.colors.textSecondary}
-          />
-        </TouchableOpacity>
+
+      {/* Format Filters */}
+      <View style={styles.filterRow}>
+        {FORMATS.map((fmt) => (
+          <TouchableOpacity
+            key={fmt}
+            style={[
+              styles.filterChip,
+              filterFormat === fmt && { backgroundColor: theme.colors.primary },
+            ]}
+            onPress={() => setFilterFormat(fmt)}
+          >
+            <Text
+              style={[
+                styles.filterChipText,
+                filterFormat === fmt && { color: '#fff' },
+              ]}
+            >
+              {fmt === 'all' ? '全部' : fmt.toUpperCase()}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
+
+      {/* Status Filters */}
+      <View style={styles.filterRow}>
+        {STATUSES.map((st) => (
+          <TouchableOpacity
+            key={st}
+            style={[
+              styles.filterChip,
+              filterStatus === st && { backgroundColor: theme.colors.primary },
+            ]}
+            onPress={() => setFilterStatus(st)}
+          >
+            <Text
+              style={[
+                styles.filterChipText,
+                filterStatus === st && { color: '#fff' },
+              ]}
+            >
+              {st === 'all' ? '全部' : st === 'unread' ? '未读' : st === 'reading' ? '在读' : '已读完'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Count */}
+      <Text style={styles.countText}>共 {filteredBooks.length} 本书</Text>
     </View>
   );
 
@@ -305,12 +327,11 @@ export function LibraryScreen() {
       <FlatList
         data={filteredBooks}
         keyExtractor={(item) => item.id}
-        numColumns={viewMode === 'grid' ? GRID_COLUMNS : 1}
-        key={viewMode}
-        renderItem={viewMode === 'grid' ? renderGridItem : renderListItem}
+        numColumns={GRID_COLUMNS}
+        renderItem={renderBookItem}
         ListHeaderComponent={renderHeader}
         contentContainerStyle={styles.listContentContainer}
-        columnWrapperStyle={viewMode === 'grid' ? styles.gridRow : undefined}
+        columnWrapperStyle={styles.gridRow}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -343,17 +364,26 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     container: {
       flex: 1,
     },
-    header: {
-      flexDirection: 'row',
+    titleSection: {
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      alignItems: 'center',
-      gap: spacing.sm,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.sm,
+    },
+    pageTitle: {
+      fontSize: fontSizes.xxl,
+      fontWeight: 'bold',
+      color: theme.colors.text,
+    },
+    statsText: {
+      fontSize: fontSizes.sm,
+      color: theme.colors.textSecondary,
+      marginTop: 4,
     },
     searchContainer: {
-      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
+      marginHorizontal: spacing.md,
+      marginTop: spacing.md,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
       borderRadius: borderRadius.lg,
@@ -364,53 +394,88 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontSize: fontSizes.md,
       color: theme.colors.text,
     },
-    viewToggle: {
+    filterRow: {
       flexDirection: 'row',
-      gap: spacing.xs,
+      flexWrap: 'wrap',
+      paddingHorizontal: spacing.md,
+      marginTop: spacing.sm,
+      gap: spacing.sm,
     },
-    toggleButton: {
-      padding: spacing.sm,
-      borderRadius: borderRadius.md,
+    filterChip: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: borderRadius.full,
       backgroundColor: theme.colors.surface,
     },
-    listContentContainer: {
+    filterChipText: {
+      fontSize: fontSizes.sm,
+      color: theme.colors.textSecondary,
+      fontWeight: '500',
+    },
+    countText: {
+      fontSize: fontSizes.sm,
+      color: theme.colors.textSecondary,
       paddingHorizontal: spacing.md,
+      marginTop: spacing.md,
+      marginBottom: spacing.sm,
+    },
+    listContentContainer: {
       paddingBottom: spacing.xl,
     },
     gridRow: {
-      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      gap: GAP,
     },
     gridItem: {
       width: ITEM_WIDTH,
       marginBottom: spacing.md,
     },
-    coverPlaceholder: {
+    coverContainer: {
       width: '100%',
-      aspectRatio: 0.7,
-      borderRadius: borderRadius.md,
+      aspectRatio: 0.75,
+      borderRadius: borderRadius.lg,
       justifyContent: 'center',
       alignItems: 'center',
       overflow: 'hidden',
+      position: 'relative',
     },
-    coverImagePlaceholder: {
-      width: '100%',
-      height: '100%',
-      backgroundColor: theme.colors.border,
+    coverGradient: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      height: '60%',
+      opacity: 0.5,
     },
     coverInitial: {
       fontSize: fontSizes.xxxl,
       fontWeight: 'bold',
-      color: theme.colors.textSecondary,
+      color: '#fff',
+      zIndex: 1,
     },
-    downloadButton: {
+    formatBadge: {
       position: 'absolute',
       top: spacing.xs,
       right: spacing.xs,
-      backgroundColor: 'rgba(0,0,0,0.6)',
+      backgroundColor: 'rgba(255,255,255,0.25)',
+      borderRadius: borderRadius.sm,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    formatBadgeText: {
+      fontSize: 10,
+      color: '#fff',
+      fontWeight: '600',
+    },
+    downloadButton: {
+      position: 'absolute',
+      bottom: spacing.xs,
+      right: spacing.xs,
+      backgroundColor: 'rgba(0,0,0,0.4)',
       borderRadius: borderRadius.full,
       padding: spacing.xs,
-      minWidth: 28,
-      minHeight: 28,
+      minWidth: 24,
+      minHeight: 24,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -423,63 +488,21 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     bookAuthor: {
       fontSize: fontSizes.xs,
       color: theme.colors.textSecondary,
-    },
-    progressContainer: {
-      height: 3,
-      backgroundColor: theme.colors.border,
-      borderRadius: borderRadius.full,
-      marginTop: spacing.xs,
-      overflow: 'hidden',
-    },
-    progressBar: {
-      height: '100%',
-      borderRadius: borderRadius.full,
-    },
-    listItem: {
-      flexDirection: 'row',
-      padding: spacing.md,
-      borderRadius: borderRadius.lg,
-      marginBottom: spacing.sm,
-      alignItems: 'center',
-    },
-    listCover: {
-      width: 60,
-      height: 80,
-      borderRadius: borderRadius.sm,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    listContent: {
-      flex: 1,
-      marginLeft: spacing.md,
-    },
-    listTitle: {
-      fontSize: fontSizes.md,
-      fontWeight: '600',
-      color: theme.colors.text,
-    },
-    listAuthor: {
-      fontSize: fontSizes.sm,
-      color: theme.colors.textSecondary,
       marginTop: 2,
     },
-    listMeta: {
+    bookMeta: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginTop: spacing.xs,
+      marginTop: 4,
       gap: spacing.sm,
     },
-    listMetaText: {
-      fontSize: fontSizes.xs,
+    statusText: {
+      fontSize: 11,
       color: theme.colors.textSecondary,
     },
-    downloadBadge: {
-      backgroundColor: theme.colors.success + '20',
-      borderRadius: borderRadius.sm,
-      padding: spacing.xs,
-    },
-    actionButton: {
-      padding: spacing.sm,
+    sizeText: {
+      fontSize: 11,
+      color: theme.colors.textSecondary,
     },
     emptyContainer: {
       flex: 1,

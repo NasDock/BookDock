@@ -372,15 +372,11 @@ export function ReaderScreen() {
   const handleShare = useCallback(async () => {
     try {
       const apiClient = getApiClient();
-      // Try to get book details for sharing
       const response = await apiClient.getBook(book.id);
       if (response.success && response.data) {
         const bookData = response.data;
         const shareText = `I'm reading "${bookData.title}" by ${bookData.author} on BookDock`;
-        // Use Share API if available, otherwise clipboard
-        // @ts-ignore
         if (navigator?.share) {
-          // @ts-ignore
           await navigator.share({ title: bookData.title, text: shareText });
         } else {
           Alert.alert('Share', shareText);
@@ -404,29 +400,18 @@ export function ReaderScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <StatusBar barStyle={actualTheme === 'dark' ? 'light-content' : 'dark-content'} />
 
-      {/* Toolbar */}
-      <View style={[styles.toolbar, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity onPress={handleGoBack} style={styles.toolbarButton}>
-          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+      {/* Top Toolbar */}
+      <View style={[styles.topBar, { borderBottomColor: theme.colors.border }]}>
+        <TouchableOpacity onPress={handleGoBack} style={styles.barButton}>
+          <Ionicons name="arrow-back" size={22} color={theme.colors.text} />
         </TouchableOpacity>
-        <View style={styles.toolbarTitle}>
-          <Text style={[styles.toolbarTitleText, { color: theme.colors.text }]} numberOfLines={1}>
+        <View style={styles.barTitle}>
+          <Text style={[styles.barTitleText, { color: theme.colors.text }]} numberOfLines={1}>
             {book.title}
           </Text>
-          {book.readingProgress !== undefined && (
-            <Text style={[styles.toolbarProgress, { color: theme.colors.textSecondary }]}>
-              {Math.round(book.readingProgress)}% read
-            </Text>
-          )}
         </View>
-        <TouchableOpacity onPress={handleShare} style={styles.toolbarButton}>
-          <Ionicons name="share-outline" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.toolbarButton}>
-          <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={handleDownload} style={styles.toolbarButton}>
-          <Ionicons name="cloud-download-outline" size={24} color={theme.colors.primary} />
+        <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.barButton}>
+          <Ionicons name="settings-outline" size={22} color={theme.colors.text} />
         </TouchableOpacity>
       </View>
 
@@ -463,6 +448,33 @@ export function ReaderScreen() {
         />
       )}
 
+      {/* Bottom Toolbar */}
+      <View style={[styles.bottomBar, { borderTopColor: theme.colors.border }]}>
+        <TouchableOpacity style={styles.barButton} onPress={() => {}}>
+          <Ionicons name="book-outline" size={22} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.barButton} onPress={() => {}}>
+          <Ionicons name="bookmark-outline" size={22} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+        <View style={styles.progressContainer}>
+          <Text style={[styles.progressText, { color: theme.colors.primary }]}>
+            {Math.round(book.readingProgress ?? 0)}%
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.barButton} onPress={() => {}}>
+          <Ionicons name="chevron-back" size={22} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.barButton} onPress={() => {}}>
+          <Ionicons name="chevron-forward" size={22} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.barButton} onPress={() => {}}>
+          <Ionicons name="volume-high-outline" size={22} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.barButton} onPress={() => setShowSettings(true)}>
+          <Ionicons name="settings-outline" size={22} color={theme.colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+
       {/* Settings Modal */}
       <Modal
         visible={showSettings}
@@ -473,10 +485,10 @@ export function ReaderScreen() {
         <View style={styles.modalOverlay}>
           <Pressable style={styles.modalBackdrop} onPress={() => setShowSettings(false)} />
           <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: theme.colors.text }]}>Reader Settings</Text>
+            <Text style={[styles.modalTitle, { color: theme.colors.text }]}>阅读设置</Text>
 
             <View style={styles.settingRow}>
-              <Text style={[styles.settingLabel, { color: theme.colors.text }]}>Font Size</Text>
+              <Text style={[styles.settingLabel, { color: theme.colors.text }]}>字体大小</Text>
               <View style={styles.fontSizeControls}>
                 <TouchableOpacity
                   onPress={() => readerStore.setFontSize(Math.max(12, readerStore.fontSize - 2))}
@@ -495,7 +507,7 @@ export function ReaderScreen() {
             </View>
 
             <View style={styles.settingRow}>
-              <Text style={[styles.settingLabel, { color: theme.colors.text }]}>Line Height</Text>
+              <Text style={[styles.settingLabel, { color: theme.colors.text }]}>行间距</Text>
               <View style={styles.fontSizeControls}>
                 <TouchableOpacity
                   onPress={() => readerStore.setLineHeight(Math.max(1, readerStore.lineHeight - 0.2))}
@@ -517,10 +529,10 @@ export function ReaderScreen() {
               style={[styles.closeButton, { backgroundColor: theme.colors.primary }]}
               onPress={() => {
                 setShowSettings(false);
-                loadBookContent(); // Reload with new settings
+                loadBookContent();
               }}
             >
-              <Text style={styles.closeButtonText}>Apply</Text>
+              <Text style={styles.closeButtonText}>应用</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -534,27 +546,40 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     container: {
       flex: 1,
     },
-    toolbar: {
+    topBar: {
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.sm,
       borderBottomWidth: 1,
     },
-    toolbarButton: {
+    bottomBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-around',
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.sm,
+      borderTopWidth: 1,
+    },
+    barButton: {
       padding: spacing.sm,
     },
-    toolbarTitle: {
+    barTitle: {
       flex: 1,
       marginHorizontal: spacing.sm,
+      alignItems: 'center',
     },
-    toolbarTitleText: {
+    barTitleText: {
       fontSize: fontSizes.md,
       fontWeight: '600',
     },
-    toolbarProgress: {
-      fontSize: fontSizes.xs,
-      marginTop: 2,
+    progressContainer: {
+      minWidth: 40,
+      alignItems: 'center',
+    },
+    progressText: {
+      fontSize: fontSizes.sm,
+      fontWeight: '500',
     },
     webview: {
       flex: 1,
