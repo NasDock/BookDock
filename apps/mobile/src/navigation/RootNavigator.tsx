@@ -63,10 +63,7 @@ export function RootNavigator() {
             <Stack.Screen
               name="Reader"
               component={ReaderScreen}
-              options={({ route }) => ({
-                title: route.params?.book?.title || '阅读',
-                headerBackTitle: '返回',
-              })}
+              options={{ headerShown: false }}
             />
             <Stack.Screen
               name="TTSScreen"

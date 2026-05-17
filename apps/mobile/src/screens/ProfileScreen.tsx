@@ -72,35 +72,11 @@ export function ProfileScreen() {
     ]);
   }, [logout, navigation]);
 
-  const handleRefreshUser = useCallback(async () => {
-    try {
-      const apiClient = getApiClient();
-      const response = await apiClient.getCurrentUser();
-      if (response.success && response.data) {
-        useAuthStore.getState().setUser(response.data);
-      }
-    } catch {
-      Alert.alert('错误', '刷新用户数据失败');
-    }
-  }, []);
-
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
       contentContainerStyle={styles.content}
     >
-      {/* Header with Settings button */}
-      <View style={styles.headerRow}>
-        <View style={{ width: 40 }} />
-        <Text style={styles.headerTitle}>My Profile</Text>
-        <TouchableOpacity
-          style={styles.settingsButton}
-          onPress={() => navigation.navigate('Settings')}
-        >
-          <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-      </View>
-
       {/* Profile Header */}
       <View style={[styles.profileHeader, { backgroundColor: theme.colors.surface }]}>
         <View style={styles.avatarContainer}>
@@ -167,14 +143,6 @@ export function ProfileScreen() {
 
       {/* Actions */}
       <View style={[styles.actionsCard, { backgroundColor: theme.colors.surface }]}>
-        <TouchableOpacity style={styles.actionItem} onPress={handleRefreshUser}>
-          <Ionicons name="refresh" size={20} color={theme.colors.primary} />
-          <Text style={styles.actionText}>刷新用户数据</Text>
-          <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
-        </TouchableOpacity>
-
-        <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
-
         <TouchableOpacity style={styles.actionItem} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={20} color={theme.colors.error} />
           <Text style={[styles.actionText, { color: theme.colors.error }]}>退出登录</Text>
@@ -319,18 +287,6 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     divider: {
       height: 1,
       marginHorizontal: spacing.md,
-    },
-    headerRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-    },
-    headerTitle: {
-      fontSize: fontSizes.lg,
-      fontWeight: '600',
-      color: theme.colors.text,
     },
     settingsButton: {
       width: 40,

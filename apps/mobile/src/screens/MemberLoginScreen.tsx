@@ -13,7 +13,7 @@ import {
   Dimensions,
   Image,
 } from 'react-native';
-import { BarCodeScanner } from 'expo-barcode-scanner';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '../stores';
@@ -119,12 +119,23 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
   }, [phone, code, navigation]);
 
   // Scanner logic
+  const [permission, requestPermission] = useCameraPermissions();
+
   const requestCameraPermission = async () => {
-    const { status } = await BarCodeScanner.requestPermissionsAsync();
-    setHasCameraPermission(status === 'granted');
-    if (status !== 'granted') {
-      Alert.alert('需要相机权限', '请在设置中开启相机权限以使用扫码登录');
+    if (!permission) {
+      await requestPermission();
+      return;
+    }
+    if (!permission.granted) {
+      const result = await requestPermission();
+      setHasCameraPermission(result.granted);
+      if (!result.granted) {
+        Alert.alert('需要相机权限', '请在设置中开启相机权限以使用扫码登录');
+      } else {
+        setShowScanner(true);
+      }
     } else {
+      setHasCameraPermission(true);
       setShowScanner(true);
     }
   };
@@ -235,9 +246,10 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
           <View style={{ width: 40 }} />
         </View>
         {hasCameraPermission === true ? (
-          <BarCodeScanner
-            onBarCodeScanned={scanBusy ? undefined : handleBarCodeScanned}
+          <CameraView
+            onBarcodeScanned={scanBusy ? undefined : handleBarCodeScanned}
             style={StyleSheet.absoluteFillObject}
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
           />
         ) : (
           <View style={styles.scannerNoPermission}>

@@ -11,6 +11,7 @@ import {
   Pressable,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,7 +30,7 @@ function getGridColumns(screenWidth: number): number {
   if (screenWidth >= 900) return 5;
   if (screenWidth >= 768) return 4;
   if (screenWidth >= 600) return 3;
-  return 2;
+  return 3;
 }
 
 function getItemWidth(screenWidth: number): number {
@@ -259,14 +260,6 @@ export function LibraryScreen() {
 
   const renderHeader = () => (
     <View>
-      {/* Title & Stats */}
-      <View style={styles.titleSection}>
-        <Text style={styles.pageTitle}>我的书库</Text>
-        <Text style={styles.statsText}>
-          共 {stats.total} 本 · {stats.completed} 已读完 · <Text style={{ color: theme.colors.primary }}>{stats.reading} 在读</Text>
-        </Text>
-      </View>
-
       {/* Search */}
       <View style={[styles.searchContainer, { backgroundColor: theme.colors.surface }]}>
         <Ionicons name="search" size={18} color={theme.colors.textSecondary} />
@@ -285,7 +278,7 @@ export function LibraryScreen() {
       </View>
 
       {/* Format Filters */}
-      <View style={styles.filterRow}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
         {FORMATS.map((fmt) => (
           <TouchableOpacity
             key={fmt}
@@ -305,10 +298,10 @@ export function LibraryScreen() {
             </Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
       {/* Status Filters */}
-      <View style={styles.filterRow}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
         {STATUSES.map((st) => (
           <TouchableOpacity
             key={st}
@@ -328,10 +321,15 @@ export function LibraryScreen() {
             </Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
-      {/* Count */}
-      <Text style={styles.countText}>共 {filteredBooks.length} 本书</Text>
+      {/* Count & Stats */}
+      <View style={styles.countRow}>
+        <Text style={styles.countText}>共 {filteredBooks.length} 本书</Text>
+        <Text style={styles.statsText}>
+          {stats.total} 本 · {stats.completed} 已读完 · <Text style={{ color: theme.colors.primary }}>{stats.reading} 在读</Text>
+        </Text>
+      </View>
     </View>
   );
 
@@ -391,11 +389,6 @@ function createStyles(theme: ReturnType<typeof getTheme>, itemWidth: number) {
       paddingTop: spacing.md,
       paddingBottom: spacing.sm,
     },
-    pageTitle: {
-      fontSize: fontSizes.xxl,
-      fontWeight: 'bold',
-      color: theme.colors.text,
-    },
     statsText: {
       fontSize: fontSizes.sm,
       color: theme.colors.textSecondary,
@@ -418,10 +411,10 @@ function createStyles(theme: ReturnType<typeof getTheme>, itemWidth: number) {
     },
     filterRow: {
       flexDirection: 'row',
-      flexWrap: 'wrap',
       paddingHorizontal: spacing.md,
       marginTop: spacing.sm,
       gap: spacing.sm,
+      alignItems: 'center',
     },
     filterChip: {
       paddingHorizontal: spacing.md,
@@ -430,16 +423,21 @@ function createStyles(theme: ReturnType<typeof getTheme>, itemWidth: number) {
       backgroundColor: theme.colors.surface,
     },
     filterChipText: {
-      fontSize: fontSizes.sm,
+      fontSize: fontSizes.xs,
       color: theme.colors.textSecondary,
       fontWeight: '500',
+    },
+    countRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.md,
+      marginTop: spacing.md,
+      marginBottom: spacing.sm,
     },
     countText: {
       fontSize: fontSizes.sm,
       color: theme.colors.textSecondary,
-      paddingHorizontal: spacing.md,
-      marginTop: spacing.md,
-      marginBottom: spacing.sm,
     },
     listContentContainer: {
       paddingBottom: spacing.xl,

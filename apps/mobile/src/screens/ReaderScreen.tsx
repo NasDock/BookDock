@@ -12,8 +12,11 @@ import {
   Alert,
   AppState,
   Animated,
+  ScrollView,
+  Dimensions,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -24,6 +27,18 @@ import type { ReaderPosition } from '@bookdock/ebook-reader';
 import type { RootStackParamList } from '../navigation/types';
 import * as FileSystem from 'expo-file-system';
 import jschardet from 'jschardet';
+import * as gbkjs from 'gbk.js';
+
+// Base64 to ArrayBuffer decoder (Buffer is not available in React Native)
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binaryString = atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
 
 // Base64 encoder for React Native (btoa is not available)
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
@@ -33,7 +48,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   for (let i = 0; i < len; i++) {
     binary += String.fromCharCode(bytes[i]);
   }
-  return btoa ? btoa(binary) : Buffer.from ? Buffer.from(binary, 'binary').toString('base64') : customBtoa(binary);
+  return typeof btoa !== 'undefined' ? btoa(binary) : customBtoa(binary);
 }
 
 function customBtoa(input: string): string {
@@ -53,13 +68,32 @@ function customBtoa(input: string): string {
   return output;
 }
 
+// Decode bytes as latin1 (ISO-8859-1) - pure JS, always works
+function decodeLatin1(bytes: Uint8Array): string {
+  let result = '';
+  for (let i = 0; i < bytes.length; i++) {
+    result += String.fromCharCode(bytes[i]);
+  }
+  return result;
+}
+
+// Try UTF-8 decode using Hermes TextDecoder
+function tryDecodeUtf8(bytes: Uint8Array): string | null {
+  try {
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
 // Detect encoding and decode text from ArrayBuffer
 function decodeText(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
 
   // First try UTF-8 BOM
   if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
-    return new TextDecoder('utf-8').decode(bytes.slice(3));
+    const result = tryDecodeUtf8(bytes.slice(3));
+    if (result !== null) return result;
   }
 
   // Use jschardet to detect encoding
@@ -75,50 +109,27 @@ function decodeText(buffer: ArrayBuffer): string {
 
   // Try detected encoding first if confidence is high enough
   if (confidence > 0.5 && encoding !== 'ascii') {
-    try {
-      if (encoding === 'gb2312' || encoding === 'gbk' || encoding === 'gb18030') {
-        // For Chinese GB encodings, use gb18030 as it covers all
-        return new TextDecoder('gb18030').decode(bytes);
+    // GB family (most common for Chinese novels)
+    if (encoding === 'gb2312' || encoding === 'gbk' || encoding === 'gb18030') {
+      try {
+        return gbkjs.decode(bytes);
+      } catch {
+        // fall through
       }
-      if (encoding === 'big5') {
-        return new TextDecoder('big5').decode(bytes);
-      }
-      if (encoding === 'shift_jis' || encoding === 'shift-jis' || encoding === 'sjis') {
-        return new TextDecoder('shift_jis').decode(bytes);
-      }
-      if (encoding === 'euc-jp' || encoding === 'eucjp') {
-        return new TextDecoder('euc-jp').decode(bytes);
-      }
-      if (encoding === 'euc-kr' || encoding === 'euckr') {
-        return new TextDecoder('euc-kr').decode(bytes);
-      }
-      if (encoding === 'iso-8859-1' || encoding === 'latin1') {
-        return new TextDecoder('iso-8859-1').decode(bytes);
-      }
-      if (encoding === 'windows-1251' || encoding === 'cp1251') {
-        return new TextDecoder('windows-1251').decode(bytes);
-      }
-      if (encoding === 'windows-1252' || encoding === 'cp1252') {
-        return new TextDecoder('windows-1252').decode(bytes);
-      }
-      // For UTF-8, fall through to default
-    } catch {
-      // Fall through to UTF-8
     }
+    // For other encodings, try utf-8 first then fall back
   }
 
   // Default: try UTF-8
+  const utf8Text = tryDecodeUtf8(bytes);
+  if (utf8Text !== null) return utf8Text;
+
+  // If UTF-8 fails, try GBK (common for Chinese novels)
   try {
-    const utf8Text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    return utf8Text;
+    return gbkjs.decode(bytes);
   } catch {
-    // If UTF-8 fails, try GB18030 (common for Chinese novels)
-    try {
-      return new TextDecoder('gb18030').decode(bytes);
-    } catch {
-      // Last resort: latin1 (never fails, preserves bytes)
-      return new TextDecoder('iso-8859-1').decode(bytes);
-    }
+    // Last resort: latin1 (never fails, preserves bytes)
+    return decodeLatin1(bytes);
   }
 }
 
@@ -130,7 +141,20 @@ interface ReaderConfig {
   lineHeight: number;
   margin: number;
   theme: 'light' | 'dark' | 'sepia';
+  fontFamily: string;
 }
+
+const READER_THEMES = [
+  { key: 'light' as const, label: '浅色', bg: '#ffffff', text: '#1a1a1a', barBg: '#ffffff', barText: '#1a1a1a', border: '#e5e5e5' },
+  { key: 'dark' as const, label: '深色', bg: '#1a1a1a', text: '#e0e0e0', barBg: '#1a1a1a', barText: '#e0e0e0', border: '#333333' },
+  { key: 'sepia' as const, label: '护眼', bg: '#f4ecd8', text: '#5c4b37', barBg: '#f4ecd8', barText: '#5c4b37', border: '#d4c4a8' },
+];
+
+const FONT_OPTIONS = [
+  { label: '系统默认', value: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' },
+  { label: '衬线体', value: 'Georgia, "Noto Serif SC", serif' },
+  { label: '黑体', value: '"Noto Sans SC", "PingFang SC", sans-serif' },
+];
 
 // Generate HTML reader based on file type and content
 function generateReaderHtml(
@@ -174,7 +198,7 @@ function generateReaderHtml(
   <style>
     * { box-sizing: border-box; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: ${config.fontFamily};
       font-size: ${config.fontSize}px;
       line-height: ${config.lineHeight};
       color: ${textColor};
@@ -204,7 +228,7 @@ function generateReaderHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <style>
     body {
-      font-family: -apple-system, sans-serif;
+      font-family: ${config.fontFamily};
       font-size: ${config.fontSize}px;
       color: ${textColor};
       background: ${bgColor};
@@ -261,6 +285,9 @@ export function ReaderScreen() {
   const topBarAnim = useRef(new Animated.Value(1)).current;
   const bottomBarAnim = useRef(new Animated.Value(1)).current;
 
+  // Reader theme colors for native UI bars
+  const readerTheme = READER_THEMES.find(tm => tm.key === readerStore.mode) || READER_THEMES[0];
+
   const styles = useMemo(() => createStyles(theme), [theme]);
 
   // Reader config
@@ -268,8 +295,9 @@ export function ReaderScreen() {
     fontSize: readerStore.fontSize,
     lineHeight: readerStore.lineHeight,
     margin: readerStore.margin,
-    theme: actualTheme === 'dark' ? 'dark' : 'light',
-  }), [readerStore.fontSize, readerStore.lineHeight, readerStore.margin, actualTheme]);
+    theme: readerStore.mode,
+    fontFamily: readerStore.fontFamily,
+  }), [readerStore.fontSize, readerStore.lineHeight, readerStore.margin, readerStore.mode, readerStore.fontFamily]);
 
   // Animate bars visibility
   const animateBars = useCallback((show: boolean) => {
@@ -316,7 +344,7 @@ export function ReaderScreen() {
           // Use local file
           if (book.fileType === 'txt') {
             const fileBuffer = await FileSystem.readAsStringAsync(localPath, { encoding: FileSystem.EncodingType.Base64 });
-            const binary = Buffer.from(fileBuffer, 'base64');
+            const binary = base64ToArrayBuffer(fileBuffer);
             const text = decodeText(binary);
             const html = generateReaderHtml(book.title, book.author, text, book.fileType, readerConfig);
             setHtmlContent(html);
@@ -376,15 +404,24 @@ export function ReaderScreen() {
       } else if (data.type === 'scrollDirection') {
         const direction = data.direction;
         if (direction === 'down') {
+          // Scrolling down (reading) -> hide bars
           animateBars(false);
-        } else if (direction === 'up') {
-          animateBars(true);
+        }
+        // Scrolling up no longer auto-shows bars; only click does
+      } else if (data.type === 'click') {
+        const { x, y } = data;
+        const screenHeight = Dimensions.get('window').height;
+        const topZone = screenHeight * 0.15;
+        const bottomZone = screenHeight * 0.85;
+        // Click in top or bottom zone toggles bars; middle zone does nothing
+        if (y < topZone || y > bottomZone) {
+          animateBars(!showBars);
         }
       }
     } catch {
       // Ignore parse errors
     }
-  }, [book.id, readerStore.autoSaveProgress, libraryStore, animateBars]);
+  }, [book.id, readerStore.autoSaveProgress, libraryStore, animateBars, showBars]);
 
   const requestCurrentPositionSave = useCallback(() => {
     webViewRef.current?.injectJavaScript(`
@@ -434,6 +471,7 @@ export function ReaderScreen() {
       const initialScrollOffset = ${Math.max(0, Math.round(savedScrollOffset))};
       let lastScrollTop = -1;
       let lastScrollDirection = '';
+      let directionAnchor = 0;
       let scrollTimeout = null;
 
       const sendProgress = () => {
@@ -455,21 +493,27 @@ export function ReaderScreen() {
 
       const detectScrollDirection = () => {
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
-        const direction = scrollTop > lastScrollTop ? 'down' : 'up';
-        if (direction !== lastScrollDirection && Math.abs(scrollTop - lastScrollTop) > 10) {
+        const direction = scrollTop > directionAnchor ? 'down' : 'up';
+        const delta = Math.abs(scrollTop - directionAnchor);
+        // Only report direction change after significant movement (80px)
+        if (direction !== lastScrollDirection && delta > 80) {
           lastScrollDirection = direction;
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'scrollDirection',
-            direction: direction
-          }));
+          directionAnchor = scrollTop;
+          // Only report 'down' direction; 'up' is ignored (bars stay hidden)
+          if (direction === 'down') {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'scrollDirection',
+              direction: direction
+            }));
+          }
         }
-        lastScrollTop = scrollTop;
       };
 
       const restorePosition = () => {
         if (initialScrollOffset > 0) {
           window.scrollTo(0, initialScrollOffset);
           lastScrollTop = initialScrollOffset;
+          directionAnchor = initialScrollOffset;
         }
         sendProgress();
       };
@@ -477,7 +521,7 @@ export function ReaderScreen() {
       window.addEventListener('scroll', () => {
         sendProgress();
         if (scrollTimeout) clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(detectScrollDirection, 100);
+        scrollTimeout = setTimeout(detectScrollDirection, 150);
       }, { passive: true });
 
       document.addEventListener('click', function(e) {
@@ -524,8 +568,9 @@ export function ReaderScreen() {
   }, [libraryStore, book]);
 
   const handleWebViewClick = useCallback(() => {
-    animateBars(!showBars);
-  }, [showBars, animateBars]);
+    // Click handling is now done via message from WebView for precise zone detection
+    // This is kept as fallback but does nothing to avoid conflict
+  }, []);
 
   const handleOpenChapters = useCallback(async () => {
     try {
@@ -544,11 +589,84 @@ export function ReaderScreen() {
 
   const handleChapterPress = useCallback((chapterIndex: number) => {
     setShowChapters(false);
-    // For txt files, we can't easily jump to a specific chapter
-    // This would require parsing the txt into chapters first
-    // For now, show a toast or alert
-    Alert.alert('提示', `已选择章节：${chapters.find(c => c.index === chapterIndex)?.title || ''}`);
-  }, [chapters]);
+    webViewRef.current?.injectJavaScript(`
+      (function() {
+        const headings = document.querySelectorAll('h1, h2, h3');
+        if (headings[${chapterIndex}]) {
+          headings[${chapterIndex}].scrollIntoView({ behavior: 'smooth' });
+        }
+      })();
+      true;
+    `);
+  }, []);
+
+  const handleBookmark = useCallback(() => {
+    requestCurrentPositionSave();
+    Alert.alert('书签', '已保存当前阅读位置');
+  }, [requestCurrentPositionSave]);
+
+  const handlePrevPage = useCallback(() => {
+    webViewRef.current?.injectJavaScript(`
+      (function() {
+        window.scrollBy({ top: -window.innerHeight * 0.9, behavior: 'smooth' });
+      })();
+      true;
+    `);
+  }, []);
+
+  const handleNextPage = useCallback(() => {
+    webViewRef.current?.injectJavaScript(`
+      (function() {
+        window.scrollBy({ top: window.innerHeight * 0.9, behavior: 'smooth' });
+      })();
+      true;
+    `);
+  }, []);
+
+  const handleTTS = useCallback(() => {
+    navigation.navigate('TTSScreen', { book });
+  }, [navigation, book]);
+
+  // Apply reader settings to WebView in real-time
+  const applyReaderSettings = useCallback((
+    mode: string,
+    fontFamily: string,
+    fontSize: number,
+    lineHeight: number,
+    margin: number
+  ) => {
+    const t = READER_THEMES.find(tm => tm.key === mode) || READER_THEMES[0];
+    const safeFont = fontFamily.replace(/'/g, "\\'");
+    webViewRef.current?.injectJavaScript(`
+      (function() {
+        const body = document.body;
+        if (body) {
+          body.style.fontFamily = '${safeFont}';
+          body.style.fontSize = '${fontSize}px';
+          body.style.lineHeight = '${lineHeight}';
+          body.style.color = '${t.text}';
+          body.style.background = '${t.bg}';
+          body.style.padding = '${margin}px';
+          body.style.paddingTop = '${margin + 8}px';
+        }
+        const headings = document.querySelectorAll('h1, h2');
+        headings.forEach(h => {
+          h.style.color = '${t.text}';
+        });
+      })();
+      true;
+    `);
+  }, []);
+
+  // Track if WebView is ready for JS injection
+  const webViewReadyRef = useRef(false);
+
+  // Watch reader store changes and apply settings in real-time
+  useEffect(() => {
+    if (!isLoading && htmlContent && webViewReadyRef.current) {
+      applyReaderSettings(readerStore.mode, readerStore.fontFamily, readerStore.fontSize, readerStore.lineHeight, readerStore.margin);
+    }
+  }, [readerStore.mode, readerStore.fontFamily, readerStore.fontSize, readerStore.lineHeight, readerStore.margin, isLoading, htmlContent, applyReaderSettings]);
 
   const topBarTranslate = topBarAnim.interpolate({
     inputRange: [0, 1],
@@ -561,21 +679,21 @@ export function ReaderScreen() {
   });
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <StatusBar barStyle={actualTheme === 'dark' ? 'light-content' : 'dark-content'} />
+    <SafeAreaView style={[styles.container, { backgroundColor: readerTheme.barBg }]}>
+      <StatusBar barStyle={readerStore.mode === 'dark' ? 'light-content' : 'dark-content'} />
 
       {/* Top Toolbar */}
-      <Animated.View style={[styles.topBar, { borderBottomColor: theme.colors.border, transform: [{ translateY: topBarTranslate }] }]}>
+      <Animated.View style={[styles.topBar, { borderBottomColor: readerTheme.border, backgroundColor: readerTheme.barBg, transform: [{ translateY: topBarTranslate }] }]}>
         <TouchableOpacity onPress={handleGoBack} style={styles.barButton}>
-          <Ionicons name="arrow-back" size={22} color={theme.colors.text} />
+          <Ionicons name="arrow-back" size={22} color={readerTheme.barText} />
         </TouchableOpacity>
         <View style={styles.barTitle}>
-          <Text style={[styles.barTitleText, { color: theme.colors.text }]} numberOfLines={1}>
+          <Text style={[styles.barTitleText, { color: readerTheme.barText }]} numberOfLines={1}>
             {book.title}
           </Text>
         </View>
         <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.barButton}>
-          <Ionicons name="settings-outline" size={22} color={theme.colors.text} />
+          <Ionicons name="settings-outline" size={22} color={readerTheme.barText} />
         </TouchableOpacity>
       </Animated.View>
 
@@ -606,6 +724,7 @@ export function ReaderScreen() {
           javaScriptEnabled={true}
           domStorageEnabled={true}
           onTouchStart={handleWebViewClick}
+          onLoadEnd={() => { webViewReadyRef.current = true; }}
           onError={(e) => {
             console.error('WebView error:', e.nativeEvent);
             setError('渲染书籍内容失败');
@@ -614,29 +733,29 @@ export function ReaderScreen() {
       )}
 
       {/* Bottom Toolbar */}
-      <Animated.View style={[styles.bottomBar, { borderTopColor: theme.colors.border, transform: [{ translateY: bottomBarTranslate }] }]}>
+      <Animated.View style={[styles.bottomBar, { borderTopColor: readerTheme.border, backgroundColor: readerTheme.barBg, transform: [{ translateY: bottomBarTranslate }] }]}>
         <TouchableOpacity style={styles.barButton} onPress={handleOpenChapters}>
-          <Ionicons name="book-outline" size={22} color={theme.colors.textSecondary} />
+          <Ionicons name="book-outline" size={22} color={readerTheme.barText} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.barButton} onPress={() => {}}>
-          <Ionicons name="bookmark-outline" size={22} color={theme.colors.textSecondary} />
+        <TouchableOpacity style={styles.barButton} onPress={handleBookmark}>
+          <Ionicons name="bookmark-outline" size={22} color={readerTheme.barText} />
         </TouchableOpacity>
         <View style={styles.progressContainer}>
-          <Text style={[styles.progressText, { color: theme.colors.primary }]}>
+          <Text style={[styles.progressText, { color: readerTheme.barText }]}>
             {Math.round(book.readingProgress ?? 0)}%
           </Text>
         </View>
-        <TouchableOpacity style={styles.barButton} onPress={() => {}}>
-          <Ionicons name="chevron-back" size={22} color={theme.colors.textSecondary} />
+        <TouchableOpacity style={styles.barButton} onPress={handlePrevPage}>
+          <Ionicons name="chevron-back" size={22} color={readerTheme.barText} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.barButton} onPress={() => {}}>
-          <Ionicons name="chevron-forward" size={22} color={theme.colors.textSecondary} />
+        <TouchableOpacity style={styles.barButton} onPress={handleNextPage}>
+          <Ionicons name="chevron-forward" size={22} color={readerTheme.barText} />
         </TouchableOpacity>
-        <TouchableOpacity style={styles.barButton} onPress={() => {}}>
-          <Ionicons name="volume-high-outline" size={22} color={theme.colors.textSecondary} />
+        <TouchableOpacity style={styles.barButton} onPress={handleTTS}>
+          <Ionicons name="volume-high-outline" size={22} color={readerTheme.barText} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.barButton} onPress={() => setShowSettings(true)}>
-          <Ionicons name="settings-outline" size={22} color={theme.colors.textSecondary} />
+          <Ionicons name="settings-outline" size={22} color={readerTheme.barText} />
         </TouchableOpacity>
       </Animated.View>
 
@@ -652,6 +771,47 @@ export function ReaderScreen() {
           <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
             <Text style={[styles.modalTitle, { color: theme.colors.text }]}>阅读设置</Text>
 
+            {/* Theme */}
+            <View style={styles.settingRow}>
+              <Text style={[styles.settingLabel, { color: theme.colors.text }]}>阅读底色</Text>
+              <View style={styles.themeRow}>
+                {READER_THEMES.map((tm) => (
+                  <TouchableOpacity
+                    key={tm.key}
+                    style={[
+                      styles.themeChip,
+                      { backgroundColor: tm.bg, borderColor: readerStore.mode === tm.key ? theme.colors.primary : theme.colors.border },
+                      readerStore.mode === tm.key && styles.themeChipActive,
+                    ]}
+                    onPress={() => readerStore.setMode(tm.key)}
+                  >
+                    <Text style={[styles.themeChipText, { color: tm.text }]}>{tm.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Font Family */}
+            <View style={styles.settingRow}>
+              <Text style={[styles.settingLabel, { color: theme.colors.text }]}>字体</Text>
+              <View style={styles.fontSizeControls}>
+                {FONT_OPTIONS.map((f) => (
+                  <TouchableOpacity
+                    key={f.value}
+                    style={[
+                      styles.fontOptionButton,
+                      { borderColor: readerStore.fontFamily === f.value ? theme.colors.primary : theme.colors.border },
+                      readerStore.fontFamily === f.value && { backgroundColor: theme.colors.primary + '20' },
+                    ]}
+                    onPress={() => readerStore.setFontFamily(f.value)}
+                  >
+                    <Text style={[styles.fontOptionText, { color: theme.colors.text }]}>{f.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            {/* Font Size */}
             <View style={styles.settingRow}>
               <Text style={[styles.settingLabel, { color: theme.colors.text }]}>字体大小</Text>
               <View style={styles.fontSizeControls}>
@@ -671,6 +831,7 @@ export function ReaderScreen() {
               </View>
             </View>
 
+            {/* Line Height */}
             <View style={styles.settingRow}>
               <Text style={[styles.settingLabel, { color: theme.colors.text }]}>行间距</Text>
               <View style={styles.fontSizeControls}>
@@ -690,14 +851,31 @@ export function ReaderScreen() {
               </View>
             </View>
 
+            {/* Margin */}
+            <View style={styles.settingRow}>
+              <Text style={[styles.settingLabel, { color: theme.colors.text }]}>页边距</Text>
+              <View style={styles.fontSizeControls}>
+                <TouchableOpacity
+                  onPress={() => readerStore.setMargin(Math.max(8, readerStore.margin - 4))}
+                  style={[styles.fontButton, { borderColor: theme.colors.border }]}
+                >
+                  <Text style={{ color: theme.colors.text }}>-</Text>
+                </TouchableOpacity>
+                <Text style={[styles.fontValue, { color: theme.colors.text }]}>{readerStore.margin}px</Text>
+                <TouchableOpacity
+                  onPress={() => readerStore.setMargin(Math.min(48, readerStore.margin + 4))}
+                  style={[styles.fontButton, { borderColor: theme.colors.border }]}
+                >
+                  <Text style={{ color: theme.colors.text }}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <TouchableOpacity
               style={[styles.closeButton, { backgroundColor: theme.colors.primary }]}
-              onPress={() => {
-                setShowSettings(false);
-                loadBookContent();
-              }}
+              onPress={() => setShowSettings(false)}
             >
-              <Text style={styles.closeButtonText}>应用</Text>
+              <Text style={styles.closeButtonText}>完成</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -765,7 +943,8 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.sm,
+      paddingTop: spacing.xl,
+      paddingBottom: spacing.sm,
       borderBottomWidth: 1,
       backgroundColor: theme.colors.background,
       zIndex: 10,
@@ -887,6 +1066,32 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       color: '#fff',
       fontSize: fontSizes.md,
       fontWeight: '600',
+    },
+    themeRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    themeChip: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: borderRadius.md,
+      borderWidth: 2,
+    },
+    themeChipActive: {
+      borderWidth: 2,
+    },
+    themeChipText: {
+      fontSize: fontSizes.sm,
+      fontWeight: '500',
+    },
+    fontOptionButton: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: borderRadius.md,
+      borderWidth: 1,
+    },
+    fontOptionText: {
+      fontSize: fontSizes.sm,
     },
     chaptersModalContent: {
       padding: spacing.lg,

@@ -1,4 +1,5 @@
 import type { JSX } from 'react';
+import { TouchableOpacity } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { LibraryScreen } from '../screens/LibraryScreen';
@@ -6,8 +7,26 @@ import { ProfileScreen } from '../screens/ProfileScreen';
 import { useThemeStore } from '../stores';
 import { getTheme } from '../utils/theme';
 import type { MainTabParamList } from './types';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from './types';
+import { useNavigation } from '@react-navigation/native';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
+
+function ProfileHeaderRight() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const actualTheme = useThemeStore((state) => state.actualTheme);
+  const theme = getTheme(actualTheme === 'dark');
+
+  return (
+    <TouchableOpacity
+      style={{ marginRight: 16, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
+      onPress={() => navigation.navigate('Settings')}
+    >
+      <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
+    </TouchableOpacity>
+  );
+}
 
 export function MainTabNavigator() {
   const actualTheme = useThemeStore((state) => state.actualTheme);
@@ -50,7 +69,8 @@ export function MainTabNavigator() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person" size={size} color={color} />
           ),
-          headerTitle: '个人中心',
+          headerTitle: '',
+          headerRight: () => <ProfileHeaderRight />,
         }}
       />
     </Tab.Navigator>
