@@ -28,6 +28,7 @@ import type { RootStackParamList } from '../navigation/types';
 import * as FileSystem from 'expo-file-system';
 import jschardet from 'jschardet';
 import * as gbkjs from 'gbk.js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Base64 to ArrayBuffer decoder (Buffer is not available in React Native)
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
@@ -131,6 +132,45 @@ function decodeText(buffer: ArrayBuffer): string {
     // Last resort: latin1 (never fails, preserves bytes)
     return decodeLatin1(bytes);
   }
+}
+
+function parseLocalTxtChapters(text: string): { title: string; content: string }[] {
+  const lines = text.split(/\r?\n/);
+  const chapterPatterns = [
+    /^\s*前言\s*$/i,
+    /^\s*引子\s*$/i,
+    /^\s*楔子\s*$/i,
+    /^\s*序[章言]?\s*$/i,
+    /^\s*第[一二三四五六七八九十百千万零\d]+[章回节卷部集]\s*.*/,
+    /^\s*第\d+[章回节卷部集]\s*.*/,
+    /^\s*[\d零一二三四五六七八九十百千万]+\s*[、.．]\s*.*/,
+    /^\s*附录[一二三四五六七八九十]?\s*$/i,
+    /^\s*后记\s*$/i,
+    /^\s*尾声\s*$/i,
+  ];
+
+  const chaptersList: { title: string; startLine: number }[] = [];
+  lines.forEach((line, index) => {
+    for (const pattern of chapterPatterns) {
+      if (pattern.test(line)) {
+        chaptersList.push({ title: line.trim(), startLine: index });
+        break;
+      }
+    }
+  });
+
+  if (chaptersList.length === 0) {
+    chaptersList.push({ title: '正文', startLine: 0 });
+  }
+
+  const parsedChapters: { title: string; content: string }[] = [];
+  for (let i = 0; i < chaptersList.length; i++) {
+    const start = chaptersList[i].startLine;
+    const end = i + 1 < chaptersList.length ? chaptersList[i + 1].startLine : lines.length;
+    const content = lines.slice(start, end).join('\n');
+    parsedChapters.push({ title: chaptersList[i].title, content });
+  }
+  return parsedChapters;
 }
 
 type ReaderScreenRouteProp = RouteProp<RootStackParamList, 'Reader'>;
@@ -279,6 +319,9 @@ export function ReaderScreen() {
   const [showBars, setShowBars] = useState(true);
   const [showChapters, setShowChapters] = useState(false);
   const [chapters, setChapters] = useState<Array<{ index: number; title: string }>>([]);
+  const [currentChapter, setCurrentChapter] = useState(0);
+  const [readingProgress, setReadingProgress] = useState(book.readingProgress ?? 0);
+  const localChaptersRef = useRef<Array<{ title: string; content: string }>>([]);
   const webViewRef = useRef<WebView>(null);
   const latestPositionRef = useRef<ReaderPosition>({ percentage: book.readingProgress ?? 0, scrollOffset: 0 });
   const lastScrollYRef = useRef(0);
@@ -319,46 +362,128 @@ export function ReaderScreen() {
     }).start();
   }, [topBarAnim, bottomBarAnim]);
 
+  // Load specific chapter for TXT books
+  const loadChapter = useCallback(async (chapterIndex: number, scrollOffset = 0) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      setCurrentChapter(chapterIndex);
+      setSavedScrollOffset(scrollOffset);
+      
+      const localPath = libraryStore.getLocalBookPath(book.id);
+      let chapterContent = '';
+      if (localPath) {
+        const parsed = localChaptersRef.current;
+        if (parsed && parsed.length > 0) {
+          chapterContent = parsed[chapterIndex]?.content || '';
+        } else {
+          const fileBuffer = await FileSystem.readAsStringAsync(localPath, { encoding: FileSystem.EncodingType.Base64 });
+          const binary = base64ToArrayBuffer(fileBuffer);
+          const text = decodeText(binary);
+          const localParsed = parseLocalTxtChapters(text);
+          localChaptersRef.current = localParsed;
+          chapterContent = localParsed[chapterIndex]?.content || '';
+        }
+      } else {
+        const contentRes = await getApiClient().getChapterContent(book.id, chapterIndex);
+        if (contentRes.success && contentRes.data) {
+          chapterContent = contentRes.data.content;
+        } else {
+          throw new Error(contentRes.error || '加载章节内容失败');
+        }
+      }
+
+      const html = generateReaderHtml(book.title, book.author, chapterContent, book.fileType, readerConfigRef.current);
+      setHtmlContent(html);
+
+      const chsCount = chapters.length || localChaptersRef.current.length || 1;
+      const overallPercentage = Math.round(((chapterIndex + 1) / chsCount) * 100);
+      setReadingProgress(overallPercentage);
+
+      latestPositionRef.current = {
+        percentage: overallPercentage,
+        currentPage: chapterIndex,
+        scrollOffset,
+      };
+
+      if (readerStore.autoSaveProgress) {
+        libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
+      }
+    } catch (err) {
+      console.error('Failed to load chapter:', err);
+      setError((err as Error).message || '加载章节失败');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [book, chapters.length, libraryStore, readerStore.autoSaveProgress]);
+
   // Load book content
   const loadBookContent = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     try {
+      let initialChapter = 0;
       let initialScrollOffset = 0;
       try {
         const progressResponse = await getApiClient().getReadingProgress(book.id);
         if (progressResponse.success && progressResponse.data) {
+          initialChapter = progressResponse.data.currentChapter ?? 0;
           initialScrollOffset = progressResponse.data.scrollOffset ?? 0;
           latestPositionRef.current = {
             percentage: progressResponse.data.progressPct,
-            currentPage: progressResponse.data.currentChapter,
+            currentPage: initialChapter,
             scrollOffset: initialScrollOffset,
           };
         }
       } catch {
-        // First read or offline mode: start from top.
+        try {
+          const key = `reading_progress_${book.id}`;
+          const localProgress = await AsyncStorage.getItem(key);
+          if (localProgress) {
+            const data = JSON.parse(localProgress);
+            initialChapter = data.position.currentPage ?? 0;
+            initialScrollOffset = data.position.scrollOffset ?? 0;
+            latestPositionRef.current = data.position;
+          }
+        } catch {
+          // ignore
+        }
       }
       setSavedScrollOffset(initialScrollOffset);
+      setCurrentChapter(initialChapter);
+      setReadingProgress(latestPositionRef.current.percentage);
 
-      // Check if we have a local file first
       const localPath = libraryStore.getLocalBookPath(book.id);
       if (localPath) {
         const fileInfo = await FileSystem.getInfoAsync(localPath);
         if (fileInfo.exists) {
-          // Use local file
           if (book.fileType === 'txt') {
             const fileBuffer = await FileSystem.readAsStringAsync(localPath, { encoding: FileSystem.EncodingType.Base64 });
             const binary = base64ToArrayBuffer(fileBuffer);
             const text = decodeText(binary);
-            const html = generateReaderHtml(book.title, book.author, text, book.fileType, readerConfigRef.current);
+            const parsed = parseLocalTxtChapters(text);
+            localChaptersRef.current = parsed;
+            
+            const chs = parsed.map((ch, idx) => ({ index: idx, title: ch.title }));
+            setChapters(chs);
+
+            const chapterContent = parsed[initialChapter]?.content || '';
+            const html = generateReaderHtml(book.title, book.author, chapterContent, book.fileType, readerConfigRef.current);
             setHtmlContent(html);
+            
+            const overallPct = chs.length > 0 ? Math.round(((initialChapter + 1) / chs.length) * 100) : 0;
+            setReadingProgress(overallPct);
+            latestPositionRef.current = {
+              percentage: overallPct,
+              currentPage: initialChapter,
+              scrollOffset: initialScrollOffset,
+            };
           } else if (book.fileType === 'pdf') {
             const base64 = await FileSystem.readAsStringAsync(localPath, { encoding: FileSystem.EncodingType.Base64 });
             const html = generateReaderHtml(book.title, book.author, base64, 'pdf', readerConfigRef.current, true);
             setHtmlContent(html);
           } else {
-            // EPUB/MOBI - show placeholder
             const html = generateReaderHtml(book.title, book.author, '', book.fileType, readerConfigRef.current);
             setHtmlContent(html);
           }
@@ -369,20 +494,40 @@ export function ReaderScreen() {
 
       // Fetch from server
       const apiClient = getApiClient();
-      const arrayBuffer = await apiClient.downloadBookFile(book.id);
-
       if (book.fileType === 'txt') {
-        const text = decodeText(arrayBuffer);
-        const html = generateReaderHtml(book.title, book.author, text, book.fileType, readerConfigRef.current);
-        setHtmlContent(html);
-      } else if (book.fileType === 'pdf') {
-        const base64 = arrayBufferToBase64(arrayBuffer);
-        const html = generateReaderHtml(book.title, book.author, base64, 'pdf', readerConfigRef.current, true);
-        setHtmlContent(html);
+        const chaptersRes = await apiClient.getChapters(book.id);
+        if (chaptersRes.success && chaptersRes.data) {
+          const chs = chaptersRes.data.map(ch => ({ index: ch.index, title: ch.title }));
+          setChapters(chs);
+
+          const contentRes = await apiClient.getChapterContent(book.id, initialChapter);
+          if (contentRes.success && contentRes.data) {
+            const html = generateReaderHtml(book.title, book.author, contentRes.data.content, book.fileType, readerConfigRef.current);
+            setHtmlContent(html);
+            
+            const overallPct = chs.length > 0 ? Math.round(((initialChapter + 1) / chs.length) * 100) : 0;
+            setReadingProgress(overallPct);
+            latestPositionRef.current = {
+              percentage: overallPct,
+              currentPage: initialChapter,
+              scrollOffset: initialScrollOffset,
+            };
+          } else {
+            throw new Error(contentRes.error || '加载章节内容失败');
+          }
+        } else {
+          throw new Error(chaptersRes.error || '获取章节目录失败');
+        }
       } else {
-        // EPUB / MOBI - show placeholder with real file loaded message
-        const html = generateReaderHtml(book.title, book.author, '', book.fileType, readerConfigRef.current);
-        setHtmlContent(html);
+        const arrayBuffer = await apiClient.downloadBookFile(book.id);
+        if (book.fileType === 'pdf') {
+          const base64 = arrayBufferToBase64(arrayBuffer);
+          const html = generateReaderHtml(book.title, book.author, base64, 'pdf', readerConfigRef.current, true);
+          setHtmlContent(html);
+        } else {
+          const html = generateReaderHtml(book.title, book.author, '', book.fileType, readerConfigRef.current);
+          setHtmlContent(html);
+        }
       }
     } catch (err) {
       console.error('Failed to load book:', err);
@@ -402,7 +547,19 @@ export function ReaderScreen() {
       if (data.type === 'scroll') {
         const progress = data.progress || 0;
         const scrollOffset = data.scrollOffset || 0;
-        latestPositionRef.current = { percentage: progress, currentPage: 0, scrollOffset };
+        
+        // Calculate overall progress based on chapter index
+        const overallPercentage = chapters.length > 0
+          ? Math.max(0, Math.min(100, Math.round(((currentChapter + (progress / 100)) / chapters.length) * 100)))
+          : 0;
+
+        latestPositionRef.current = {
+          percentage: overallPercentage,
+          currentPage: currentChapter,
+          scrollOffset,
+        };
+        setReadingProgress(overallPercentage);
+        
         if (book.id && readerStore.autoSaveProgress) {
           libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
         }
@@ -425,7 +582,7 @@ export function ReaderScreen() {
     } catch {
       // Ignore parse errors
     }
-  }, [book.id, readerStore.autoSaveProgress, libraryStore, animateBars, showBars]);
+  }, [book.id, readerStore.autoSaveProgress, libraryStore, animateBars, showBars, chapters.length, currentChapter]);
 
   const requestCurrentPositionSave = useCallback(() => {
     webViewRef.current?.injectJavaScript(`
@@ -576,33 +733,30 @@ export function ReaderScreen() {
     // This is kept as fallback but does nothing to avoid conflict
   }, []);
 
-  const handleOpenChapters = useCallback(async () => {
-    try {
-      const apiClient = getApiClient();
-      const response = await apiClient.getChapters(book.id);
-      if (response.success && response.data) {
-        setChapters(response.data.map((ch) => ({ index: ch.index, title: ch.title })));
-        setShowChapters(true);
-      } else {
-        Alert.alert('提示', '暂无章节信息');
-      }
-    } catch {
-      Alert.alert('错误', '加载章节列表失败');
+  const handleOpenChapters = useCallback(() => {
+    if (chapters.length > 0) {
+      setShowChapters(true);
+    } else {
+      Alert.alert('提示', '暂无章节信息');
     }
-  }, [book.id]);
+  }, [chapters]);
 
   const handleChapterPress = useCallback((chapterIndex: number) => {
     setShowChapters(false);
-    webViewRef.current?.injectJavaScript(`
-      (function() {
-        const headings = document.querySelectorAll('h1, h2, h3');
-        if (headings[${chapterIndex}]) {
-          headings[${chapterIndex}].scrollIntoView({ behavior: 'smooth' });
-        }
-      })();
-      true;
-    `);
-  }, []);
+    if (book.fileType === 'txt') {
+      loadChapter(chapterIndex, 0);
+    } else {
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          const headings = document.querySelectorAll('h1, h2, h3');
+          if (headings[${chapterIndex}]) {
+            headings[${chapterIndex}].scrollIntoView({ behavior: 'smooth' });
+          }
+        })();
+        true;
+      `);
+    }
+  }, [book.fileType, loadChapter]);
 
   const handleBookmark = useCallback(() => {
     requestCurrentPositionSave();
@@ -610,22 +764,38 @@ export function ReaderScreen() {
   }, [requestCurrentPositionSave]);
 
   const handlePrevPage = useCallback(() => {
-    webViewRef.current?.injectJavaScript(`
-      (function() {
-        window.scrollBy({ top: -window.innerHeight * 0.9, behavior: 'smooth' });
-      })();
-      true;
-    `);
-  }, []);
+    if (book.fileType === 'txt') {
+      if (currentChapter > 0) {
+        loadChapter(currentChapter - 1, 0);
+      } else {
+        Alert.alert('提示', '已经是第一章了');
+      }
+    } else {
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          window.scrollBy({ top: -window.innerHeight * 0.9, behavior: 'smooth' });
+        })();
+        true;
+      `);
+    }
+  }, [book.fileType, currentChapter, loadChapter]);
 
   const handleNextPage = useCallback(() => {
-    webViewRef.current?.injectJavaScript(`
-      (function() {
-        window.scrollBy({ top: window.innerHeight * 0.9, behavior: 'smooth' });
-      })();
-      true;
-    `);
-  }, []);
+    if (book.fileType === 'txt') {
+      if (currentChapter < chapters.length - 1) {
+        loadChapter(currentChapter + 1, 0);
+      } else {
+        Alert.alert('提示', '已经是最后一章了');
+      }
+    } else {
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          window.scrollBy({ top: window.innerHeight * 0.9, behavior: 'smooth' });
+        })();
+        true;
+      `);
+    }
+  }, [book.fileType, currentChapter, chapters.length, loadChapter]);
 
   const handleTTS = useCallback(() => {
     navigation.navigate('TTSScreen', { book });
@@ -766,7 +936,7 @@ export function ReaderScreen() {
         </TouchableOpacity>
         <View style={styles.progressContainer}>
           <Text style={[styles.progressText, { color: readerTheme.barText }]}>
-            {Math.round(book.readingProgress ?? 0)}%
+            {Math.round(readingProgress)}%
           </Text>
         </View>
         <TouchableOpacity style={styles.barButton} onPress={handlePrevPage}>

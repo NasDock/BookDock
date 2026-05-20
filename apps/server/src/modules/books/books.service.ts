@@ -3,6 +3,7 @@ import {
   Inject,
   NotFoundException,
   ForbiddenException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { PrismaClient, Book } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
@@ -22,7 +23,7 @@ import {
 } from './dto/books.dto';
 
 @Injectable()
-export class BooksService {
+export class BooksService implements OnModuleInit {
   private readonly nasEbookPath: string;
   private readonly apiBaseUrl: string;
 
@@ -32,6 +33,12 @@ export class BooksService {
   ) {
     this.nasEbookPath = this.configService.get<string>('app.nasEbookPath') || '/data/ebooks';
     this.apiBaseUrl = this.configService.get<string>('app.apiBaseUrl') || 'http://localhost:3000';
+  }
+
+  onModuleInit() {
+    this.scanLocalBooks().catch(() => {
+      // ignore scan errors on startup
+    });
   }
 
   async create(dto: CreateBookDto): Promise<BookResponseDto> {
