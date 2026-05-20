@@ -157,7 +157,7 @@ export const useAuthStore = create<AuthState>()(
           }
           const res = await plusGetMe(parsed.id);
           if (res.code === 0 && res.data) {
-            const me = res.data;
+            const me: any = res.data;
             const currentTier = me?.vipTier;
             const isVipNow = currentTier === 'BASIC' || currentTier === 'LIFETIME';
             const updatedUser = {

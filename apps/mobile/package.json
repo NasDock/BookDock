@@ -17,6 +17,7 @@
     "@bookdock/auth": "workspace:*",
     "@bookdock/tts": "workspace:*",
     "@bookdock/ui": "workspace:*",
+    "@uiw/react-native-alipay": "^5.0.2",
     "@expo/metro-runtime": "~4.0.0",
     "@expo/vector-icons": "^14.0.4",
     "@react-native-async-storage/async-storage": "1.23.1",

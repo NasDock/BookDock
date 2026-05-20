@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput,
-  ActivityIndicator, Alert, RefreshControl, Linking,
+  ActivityIndicator, Alert, RefreshControl, Linking, NativeModules, AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const WeChat = NativeModules.WeChat || NativeModules.RCTWeChat;
 import { plusCreateVipPayment, plusGetMe, plusGetCurrentLowestPrice, plusGetMyCoupons, plusVerifyCoupon, plusQueryPaymentStatus, plusCancelOrder } from '../services/plus';
 
 const STATIC_PRODUCTS: VipProduct[] = [
@@ -40,10 +42,62 @@ export function MemberBenefitsScreen({ navigation }: any) {
   const [paymentOverlay, setPaymentOverlay] = useState<PaymentOverlay | null>(null);
   const [isPolling, setIsPolling] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const appState = useRef(AppState.currentState);
+  const activeOrderRef = useRef<{ orderId: string; userId: string; tier: string } | null>(null);
+
+  const checkOrderStatusImmediately = async (orderId: string, userId: string, tier: string) => {
+    try {
+      const res = await plusQueryPaymentStatus(orderId);
+      if (res.code === 0 && res.data) {
+        const status = res.data.status;
+        if (status === 'paid') {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setIsPolling(false);
+          activeOrderRef.current = null;
+          
+          const meRes = await plusGetMe(userId);
+          const me: any = meRes.data;
+          const currentTier = me?.vipTier;
+          const isVipNow = currentTier === 'BASIC' || currentTier === 'LIFETIME';
+          const currentVipUser = useAuthStore.getState().plusUser;
+          const updatedUser = { 
+            ...currentVipUser, 
+            level: currentTier === 'LIFETIME' ? 'lifetime' : currentTier === 'BASIC' ? 'year' : 'free', 
+            isVip: isVipNow, 
+            expiredAt: me?.vipExpiresAt ?? null 
+          };
+          await AsyncStorage.setItem('bookdock_plus_user', JSON.stringify(updatedUser));
+          setPlusUser(updatedUser);
+          setPaymentOverlay(null);
+          navigation.replace('MemberPaymentSuccess');
+        }
+      }
+    } catch (err) {
+      console.warn('Error checking order status on foreground:', err);
+    }
+  };
 
   useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (
+        appState.current.match(/inactive|background/) &&
+        nextAppState === 'active'
+      ) {
+        console.log('App came to foreground, checking order status...');
+        if (activeOrderRef.current) {
+          checkOrderStatusImmediately(
+            activeOrderRef.current.orderId,
+            activeOrderRef.current.userId,
+            activeOrderRef.current.tier
+          );
+        }
+      }
+      appState.current = nextAppState;
+    });
+
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      subscription.remove();
     };
   }, []);
 
@@ -61,8 +115,8 @@ export function MemberBenefitsScreen({ navigation }: any) {
       if (priceRes.code === 0 && priceRes.data) {
         const annualRaw = priceRes.data.annual ?? priceRes.data.annualPrice;
         const lifetimeRaw = priceRes.data.lifetime ?? priceRes.data.lifetimePrice;
-        const annual = typeof annualRaw === 'object' && annualRaw !== null ? annualRaw.currentPrice : annualRaw;
-        const lifetime = typeof lifetimeRaw === 'object' && lifetimeRaw !== null ? lifetimeRaw.currentPrice : lifetimeRaw;
+        const annual = typeof annualRaw === 'object' && annualRaw !== null ? (annualRaw as any).currentPrice : annualRaw;
+        const lifetime = typeof lifetimeRaw === 'object' && lifetimeRaw !== null ? (lifetimeRaw as any).currentPrice : lifetimeRaw;
         setLowestPrice({
           annual: annual !== undefined ? Number(annual) : undefined,
           lifetime: lifetime !== undefined ? Number(lifetime) : undefined,
@@ -76,6 +130,7 @@ export function MemberBenefitsScreen({ navigation }: any) {
   };
 
   const startPolling = useCallback((orderId: string, userId: string, tier: string) => {
+    activeOrderRef.current = { orderId, userId, tier };
     let attempts = 0;
     const maxAttempts = 60;
     const timer = setInterval(async () => {
@@ -84,8 +139,14 @@ export function MemberBenefitsScreen({ navigation }: any) {
         clearInterval(timer);
         Alert.alert('支付超时', '请刷新页面重试');
         setIsPolling(false);
+        activeOrderRef.current = null;
         return;
       }
+
+      if (AppState.currentState !== 'active') {
+        return;
+      }
+
       try {
         const res = await plusQueryPaymentStatus(orderId);
         if (res.code === 0 && res.data) {
@@ -93,11 +154,18 @@ export function MemberBenefitsScreen({ navigation }: any) {
           if (status === 'paid') {
             clearInterval(timer);
             setIsPolling(false);
+            activeOrderRef.current = null;
             const meRes = await plusGetMe(userId);
-            const me = meRes.data;
+            const me: any = meRes.data;
             const currentTier = me?.vipTier;
             const isVipNow = currentTier === 'BASIC' || currentTier === 'LIFETIME';
-            const updatedUser = { ...vipUser, level: currentTier === 'LIFETIME' ? 'lifetime' : currentTier === 'BASIC' ? 'year' : 'free', isVip: isVipNow, expiredAt: me?.vipExpiresAt ?? null };
+            const currentVipUser = useAuthStore.getState().plusUser;
+            const updatedUser = { 
+              ...currentVipUser, 
+              level: currentTier === 'LIFETIME' ? 'lifetime' : currentTier === 'BASIC' ? 'year' : 'free', 
+              isVip: isVipNow, 
+              expiredAt: me?.vipExpiresAt ?? null 
+            };
             await AsyncStorage.setItem('bookdock_plus_user', JSON.stringify(updatedUser));
             setPlusUser(updatedUser);
             setPaymentOverlay(null);
@@ -105,6 +173,7 @@ export function MemberBenefitsScreen({ navigation }: any) {
           } else if (status === 'failed' || status === 'cancelled') {
             clearInterval(timer);
             setIsPolling(false);
+            activeOrderRef.current = null;
             Alert.alert('支付失败', '支付失败或已取消');
           }
         }
@@ -114,7 +183,7 @@ export function MemberBenefitsScreen({ navigation }: any) {
     }, 3000);
     pollRef.current = timer;
     setIsPolling(true);
-  }, [vipUser, navigation]);
+  }, [navigation, setPlusUser]);
 
   const handleBuy = async (productId: string, method: 'WECHAT' | 'ALIPAY') => {
     const token = await AsyncStorage.getItem('bookdock_plus_token');
@@ -140,15 +209,79 @@ export function MemberBenefitsScreen({ navigation }: any) {
         Alert.alert('错误', '创建订单失败，未返回数据');
         return;
       }
-      if (method === 'WECHAT' && result.qrCode) {
-        const canOpen = await Linking.canOpenURL(result.qrCode);
-        if (canOpen) await Linking.openURL(result.qrCode);
-      } else if (method === 'ALIPAY' && result.paymentUrl) {
-        const canOpen = await Linking.canOpenURL(result.paymentUrl);
-        if (canOpen) await Linking.openURL(result.paymentUrl);
-      }
+
       setPaymentOverlay({ productId, method, orderId: result.orderId, amount: result.finalAmount || amount });
       startPolling(result.orderId, userId, vipTier);
+
+      if (method === 'WECHAT') {
+        const wechatPay = result.wechatPay;
+        if (!wechatPay) {
+          Alert.alert('错误', '未返回微信支付参数');
+          return;
+        }
+        if (!WeChat) {
+          Alert.alert('错误', '微信模块未加载，请确认是否在真机/打包环境下运行');
+          return;
+        }
+        
+        const appId = wechatPay.appId || wechatPay.appid;
+        if (!appId) {
+          Alert.alert('错误', '微信支付参数中缺少 appId');
+          return;
+        }
+        
+        try {
+          await WeChat.registerApp(appId);
+        } catch (regErr) {
+          console.warn('WeChat registerApp failed:', regErr);
+        }
+        
+        try {
+          const payParams = {
+            partnerId: wechatPay.partnerId || wechatPay.partnerid,
+            prepayId: wechatPay.prepayId || wechatPay.prepayid,
+            nonceStr: wechatPay.nonceStr || wechatPay.noncestr,
+            timeStamp: String(wechatPay.timeStamp || wechatPay.timestamp),
+            package: wechatPay.package || wechatPay.packageValue || 'Sign=WXPay',
+            sign: wechatPay.sign,
+          };
+          await WeChat.pay(payParams);
+        } catch (payErr: any) {
+          Alert.alert('支付失败', payErr?.message || '微信支付唤起失败');
+        }
+      } else if (method === 'ALIPAY') {
+        const orderString = result.alipayPay?.orderString || result.alipayPay;
+        let alipaySuccess = false;
+        
+        if (orderString) {
+          try {
+            const Alipay = require('@uiw/react-native-alipay').default;
+            const alipayResult = await Alipay.alipay(orderString);
+            console.log('Alipay result:', alipayResult);
+            const resultStatus = typeof alipayResult === 'object' ? alipayResult?.resultStatus : (alipayResult?.match(/resultStatus=\{(\d+)\}/)?.[1] || alipayResult);
+            if (resultStatus === '9000') {
+              alipaySuccess = true;
+            }
+          } catch (alipayErr) {
+            console.warn('Alipay native call failed:', alipayErr);
+          }
+        }
+        
+        if (!alipaySuccess) {
+          const paymentUrl = result.paymentUrl;
+          if (paymentUrl) {
+            try {
+              const WebBrowser = require('expo-web-browser');
+              await WebBrowser.openBrowserAsync(paymentUrl);
+            } catch (browserErr) {
+              const canOpen = await Linking.canOpenURL(paymentUrl);
+              if (canOpen) await Linking.openURL(paymentUrl);
+            }
+          } else {
+            Alert.alert('错误', '未返回支付宝支付参数或网页支付链接');
+          }
+        }
+      }
     } catch {
       Alert.alert('错误', '网络错误，请重试');
     } finally {
@@ -158,6 +291,7 @@ export function MemberBenefitsScreen({ navigation }: any) {
 
   const closeOverlay = async () => {
     if (pollRef.current) clearInterval(pollRef.current);
+    activeOrderRef.current = null;
     if (paymentOverlay?.orderId) {
       try {
         await plusCancelOrder(paymentOverlay.orderId);
