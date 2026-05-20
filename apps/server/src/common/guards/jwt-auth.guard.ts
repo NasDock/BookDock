@@ -42,3 +42,37 @@ export class JwtAuthGuard implements CanActivate {
     return type === 'Bearer' ? token : undefined;
   }
 }
+
+@Injectable()
+export class OptionalJwtAuthGuard implements CanActivate {
+  constructor(
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
+  ) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest<Request>();
+    const token = this.extractTokenFromHeader(request);
+
+    if (token) {
+      try {
+        const payload = await this.jwtService.verifyAsync(token, {
+          secret: this.configService.get<string>('app.jwtSecret'),
+        });
+        (request as Request & { user: unknown }).user = payload;
+      } catch {
+        // Ignore validation errors for optional JWT auth
+      }
+    }
+
+    return true;
+  }
+
+  private extractTokenFromHeader(request: Request): string | undefined {
+    const authHeader = request.headers.authorization;
+    if (!authHeader) return undefined;
+    const [type, token] = authHeader.split(' ');
+    return type === 'Bearer' ? token : undefined;
+  }
+}
+

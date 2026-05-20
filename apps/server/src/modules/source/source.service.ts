@@ -306,6 +306,25 @@ export class SourceService {
         }
     }
 
+    private async listAllFilesRecursive(id: string, relativePath: string = '/'): Promise<SourceFileItemDto[]> {
+        const items = await this.listFiles(id, relativePath);
+        const results: SourceFileItemDto[] = [];
+        for (const item of items) {
+            if (item.isDirectory) {
+                const nextRelativePath = this.joinPath(relativePath, item.name);
+                try {
+                    const subItems = await this.listAllFilesRecursive(id, nextRelativePath);
+                    results.push(...subItems);
+                } catch (err) {
+                    Logger.error(`Failed to list directory recursively: ${nextRelativePath}`, err);
+                }
+            } else {
+                results.push(item);
+            }
+        }
+        return results;
+    }
+
     async downloadFile(id: string, filePath: string): Promise<Buffer> {
         const sources = this.loadSources();
         const source = sources.find((s) => s.id === id);
@@ -370,8 +389,7 @@ export class SourceService {
         };
 
         try {
-            const basePath = this.getBasePath(source);
-            const files = await this.listFiles(id, basePath);
+            const files = await this.listAllFilesRecursive(id, '/');
 
             // Filter to only ebook files
             const ebookFiles = files.filter((f) => {

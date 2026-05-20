@@ -311,7 +311,7 @@ export class BooksService {
     };
   }
 
-  async findAll(query: BookQueryDto): Promise<PaginatedBooksDto> {
+  async findAll(query: BookQueryDto, userId?: string): Promise<PaginatedBooksDto> {
     const { page = 1, limit = 20, search, format, author, language, sortBy = 'createdAt', order = 'desc' } = query;
     const skip = (page - 1) * limit;
 
@@ -342,8 +342,16 @@ export class BooksService {
       this.prisma.book.count({ where }),
     ]);
 
+    const bookIds = books.map((b) => b.id);
+    const progresses = userId && bookIds.length > 0
+      ? await this.prisma.readingProgress.findMany({
+          where: { userId, bookId: { in: bookIds } },
+        })
+      : [];
+    const progressMap = new Map(progresses.map((p) => [p.bookId, p]));
+
     return {
-      books: books.map((b) => this.toBookResponse(b)),
+      books: books.map((b) => this.toBookResponse(b, progressMap.get(b.id))),
       total,
       page,
       limit,
@@ -351,7 +359,7 @@ export class BooksService {
     };
   }
 
-  async findOne(id: string): Promise<BookResponseDto> {
+  async findOne(id: string, userId?: string): Promise<BookResponseDto> {
     const book = await this.prisma.book.findUnique({
       where: { id, isDeleted: false },
       include: {
@@ -363,7 +371,13 @@ export class BooksService {
       throw new NotFoundException(`Book with id ${id} not found`);
     }
 
-    return this.toBookResponse(book);
+    const progress = userId
+      ? await this.prisma.readingProgress.findUnique({
+          where: { userId_bookId: { userId, bookId: id } },
+        })
+      : null;
+
+    return this.toBookResponse(book, progress);
   }
 
   async update(id: string, dto: UpdateBookDto): Promise<BookResponseDto> {
@@ -451,7 +465,7 @@ export class BooksService {
     };
   }
 
-  async search(query: string, limit = 50): Promise<BookResponseDto[]> {
+  async search(query: string, limit = 50, userId?: string): Promise<BookResponseDto[]> {
     const books = await this.prisma.$queryRaw<
       Array<{
         id: string; title: string; author: string | null; description: string | null;
@@ -467,21 +481,35 @@ export class BooksService {
       LIMIT ${limit}
     `;
 
-    return books.map((b) => ({
-      id: b.id,
-      title: b.title,
-      author: b.author || undefined,
-      description: b.description || undefined,
-      coverUrl: b.cover_url || undefined,
-      format: b.format as BookFormat,
-      language: b.language,
-      filePath: '',
-      metadata: {},
-      readCount: 0,
-      downloadCount: 0,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }));
+    const bookIds = books.map((b) => b.id);
+    const progresses = userId && bookIds.length > 0
+      ? await this.prisma.readingProgress.findMany({
+          where: { userId, bookId: { in: bookIds } },
+        })
+      : [];
+    const progressMap = new Map(progresses.map((p) => [p.bookId, p]));
+
+    return books.map((b) => {
+      const p = progressMap.get(b.id);
+      return {
+        id: b.id,
+        title: b.title,
+        author: b.author || undefined,
+        description: b.description || undefined,
+        coverUrl: b.cover_url || undefined,
+        format: b.format as BookFormat,
+        language: b.language,
+        filePath: '',
+        metadata: {},
+        readCount: 0,
+        downloadCount: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        readingProgress: p ? p.progressPct : undefined,
+        currentPage: p ? p.currentChapter : undefined,
+        lastReadAt: p ? p.lastReadAt : undefined,
+      };
+    });
   }
 
   async getStats(): Promise<BookStatsDto> {
@@ -544,7 +572,7 @@ export class BooksService {
     return this.findOne(bookId);
   }
 
-  private toBookResponse(book: any): BookResponseDto & { fileType: string; addedAt: Date } {
+  private toBookResponse(book: any, progress?: any): BookResponseDto & { fileType: string; addedAt: Date } {
     return {
       id: book.id,
       title: book.title,
@@ -568,6 +596,9 @@ export class BooksService {
       addedAt: book.createdAt,
       updatedAt: book.updatedAt,
       tags: book.bookTags?.map((bt: any) => bt.tag.name) || [],
+      readingProgress: progress ? progress.progressPct : undefined,
+      currentPage: progress ? progress.currentChapter : undefined,
+      lastReadAt: progress ? progress.lastReadAt : undefined,
     } as any;
   }
 

@@ -27,12 +27,21 @@ export class ReadingProgressService {
     const book = await this.prisma.book.findUnique({ where: { id: bookId, isDeleted: false } });
     if (!book) throw new NotFoundException(`Book ${bookId} not found`);
 
+    let status = dto.status;
+    if (!status) {
+      if (dto.progressPct !== undefined) {
+        status = dto.progressPct >= 100 ? 'completed' : dto.progressPct > 0 ? 'reading' : 'unread';
+      } else {
+        status = 'reading';
+      }
+    }
+
     const progress = await this.prisma.readingProgress.upsert({
       where: { userId_bookId: { userId, bookId } },
       create: {
         userId,
         bookId,
-        status: dto.status || 'reading',
+        status,
         epubCfi: dto.epubCfi,
         pdfPage: dto.pdfPage,
         mobiLocation: dto.mobiLocation,
@@ -43,7 +52,7 @@ export class ReadingProgressService {
         lastReadAt: new Date(),
       },
       update: {
-        ...(dto.status && { status: dto.status }),
+        status,
         ...(dto.epubCfi !== undefined && { epubCfi: dto.epubCfi }),
         ...(dto.pdfPage !== undefined && { pdfPage: dto.pdfPage }),
         ...(dto.mobiLocation !== undefined && { mobiLocation: dto.mobiLocation }),

@@ -30,7 +30,7 @@ import {
   UploadBookDto,
   AddTagDto,
 } from './dto/books.dto';
-import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { JwtAuthGuard, OptionalJwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -71,17 +71,26 @@ export class BooksController {
   }
 
   @Get()
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'List all books with pagination and filters' })
   @ApiResponse({ status: 200, type: PaginatedBooksDto })
-  async findAll(@Query() query: BookQueryDto) {
-    return this.booksService.findAll(query);
+  async findAll(
+    @Query() query: BookQueryDto,
+    @CurrentUser('sub') userId?: string,
+  ) {
+    return this.booksService.findAll(query, userId);
   }
 
   @Get('search')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Full-text search across books' })
   @ApiResponse({ status: 200, type: [BookResponseDto] })
-  async search(@Query('q') query: string, @Query('limit') limit = 50) {
-    return this.booksService.search(query, limit);
+  async search(
+    @Query('q') query: string,
+    @Query('limit') limit = 50,
+    @CurrentUser('sub') userId?: string,
+  ) {
+    return this.booksService.search(query, limit, userId);
   }
 
   @Get('stats')
@@ -92,10 +101,14 @@ export class BooksController {
   }
 
   @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
   @ApiOperation({ summary: 'Get a single book by ID' })
   @ApiResponse({ status: 200, type: BookResponseDto })
-  async findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.booksService.findOne(id);
+  async findOne(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('sub') userId?: string,
+  ) {
+    return this.booksService.findOne(id, userId);
   }
 
   @Put(':id')

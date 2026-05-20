@@ -208,7 +208,6 @@ function generateReaderHtml(
       padding-top: ${config.margin + 8}px;
       text-align: justify;
       word-wrap: break-word;
-      transition: all 0.3s ease;
     }
     h1 { font-size: ${config.fontSize * 1.5}px; margin-bottom: 0.5em; color: ${textColor}; }
     h2 { font-size: ${config.fontSize * 1.3}px; margin-bottom: 0.5em; color: ${textColor}; }
@@ -270,6 +269,7 @@ export function ReaderScreen() {
   const theme = getTheme(actualTheme === 'dark');
   const readerStore = useReaderStore();
   const libraryStore = useLibraryStore();
+  const insets = useSafeAreaInsets();
 
   const [htmlContent, setHtmlContent] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
@@ -298,6 +298,11 @@ export function ReaderScreen() {
     theme: readerStore.mode,
     fontFamily: readerStore.fontFamily,
   }), [readerStore.fontSize, readerStore.lineHeight, readerStore.margin, readerStore.mode, readerStore.fontFamily]);
+
+  const readerConfigRef = useRef<ReaderConfig>(readerConfig);
+  useEffect(() => {
+    readerConfigRef.current = readerConfig;
+  }, [readerConfig]);
 
   // Animate bars visibility
   const animateBars = useCallback((show: boolean) => {
@@ -346,15 +351,15 @@ export function ReaderScreen() {
             const fileBuffer = await FileSystem.readAsStringAsync(localPath, { encoding: FileSystem.EncodingType.Base64 });
             const binary = base64ToArrayBuffer(fileBuffer);
             const text = decodeText(binary);
-            const html = generateReaderHtml(book.title, book.author, text, book.fileType, readerConfig);
+            const html = generateReaderHtml(book.title, book.author, text, book.fileType, readerConfigRef.current);
             setHtmlContent(html);
           } else if (book.fileType === 'pdf') {
             const base64 = await FileSystem.readAsStringAsync(localPath, { encoding: FileSystem.EncodingType.Base64 });
-            const html = generateReaderHtml(book.title, book.author, base64, 'pdf', readerConfig, true);
+            const html = generateReaderHtml(book.title, book.author, base64, 'pdf', readerConfigRef.current, true);
             setHtmlContent(html);
           } else {
             // EPUB/MOBI - show placeholder
-            const html = generateReaderHtml(book.title, book.author, '', book.fileType, readerConfig);
+            const html = generateReaderHtml(book.title, book.author, '', book.fileType, readerConfigRef.current);
             setHtmlContent(html);
           }
           setIsLoading(false);
@@ -368,15 +373,15 @@ export function ReaderScreen() {
 
       if (book.fileType === 'txt') {
         const text = decodeText(arrayBuffer);
-        const html = generateReaderHtml(book.title, book.author, text, book.fileType, readerConfig);
+        const html = generateReaderHtml(book.title, book.author, text, book.fileType, readerConfigRef.current);
         setHtmlContent(html);
       } else if (book.fileType === 'pdf') {
         const base64 = arrayBufferToBase64(arrayBuffer);
-        const html = generateReaderHtml(book.title, book.author, base64, 'pdf', readerConfig, true);
+        const html = generateReaderHtml(book.title, book.author, base64, 'pdf', readerConfigRef.current, true);
         setHtmlContent(html);
       } else {
         // EPUB / MOBI - show placeholder with real file loaded message
-        const html = generateReaderHtml(book.title, book.author, '', book.fileType, readerConfig);
+        const html = generateReaderHtml(book.title, book.author, '', book.fileType, readerConfigRef.current);
         setHtmlContent(html);
       }
     } catch (err) {
@@ -385,7 +390,7 @@ export function ReaderScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [book, libraryStore, readerConfig]);
+  }, [book, libraryStore]);
 
   useEffect(() => {
     loadBookContent();
@@ -403,11 +408,10 @@ export function ReaderScreen() {
         }
       } else if (data.type === 'scrollDirection') {
         const direction = data.direction;
-        if (direction === 'down') {
-          // Scrolling down (reading) -> hide bars
+        if (direction === 'down' || direction === 'up') {
+          // Scrolling in either direction (reading) -> hide bars
           animateBars(false);
         }
-        // Scrolling up no longer auto-shows bars; only click does
       } else if (data.type === 'click') {
         const { x, y } = data;
         const screenHeight = Dimensions.get('window').height;
@@ -499,13 +503,10 @@ export function ReaderScreen() {
         if (direction !== lastScrollDirection && delta > 80) {
           lastScrollDirection = direction;
           directionAnchor = scrollTop;
-          // Only report 'down' direction; 'up' is ignored (bars stay hidden)
-          if (direction === 'down') {
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'scrollDirection',
-              direction: direction
-            }));
-          }
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'scrollDirection',
+            direction: direction
+          }));
         }
       };
 
@@ -525,6 +526,9 @@ export function ReaderScreen() {
       }, { passive: true });
 
       document.addEventListener('click', function(e) {
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+        directionAnchor = scrollTop;
+        lastScrollDirection = '';
         window.ReactNativeWebView.postMessage(JSON.stringify({
           type: 'click',
           x: e.clientX,
@@ -670,20 +674,32 @@ export function ReaderScreen() {
 
   const topBarTranslate = topBarAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [-60, 0],
+    outputRange: [-150, 0],
   });
 
   const bottomBarTranslate = bottomBarAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: [60, 0],
+    outputRange: [150, 0],
   });
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: readerTheme.barBg }]}>
-      <StatusBar barStyle={readerStore.mode === 'dark' ? 'light-content' : 'dark-content'} />
+    <View style={[styles.container, { backgroundColor: readerTheme.bg }]}>
+      <StatusBar
+        barStyle={readerStore.mode === 'dark' ? 'light-content' : 'dark-content'}
+        hidden={!showBars}
+        animated={true}
+      />
 
       {/* Top Toolbar */}
-      <Animated.View style={[styles.topBar, { borderBottomColor: readerTheme.border, backgroundColor: readerTheme.barBg, transform: [{ translateY: topBarTranslate }] }]}>
+      <Animated.View style={[
+        styles.topBar,
+        {
+          borderBottomColor: readerTheme.border,
+          backgroundColor: readerTheme.barBg,
+          transform: [{ translateY: topBarTranslate }],
+          paddingTop: Math.max(insets.top, spacing.sm),
+        }
+      ]}>
         <TouchableOpacity onPress={handleGoBack} style={styles.barButton}>
           <Ionicons name="arrow-back" size={22} color={readerTheme.barText} />
         </TouchableOpacity>
@@ -733,7 +749,15 @@ export function ReaderScreen() {
       )}
 
       {/* Bottom Toolbar */}
-      <Animated.View style={[styles.bottomBar, { borderTopColor: readerTheme.border, backgroundColor: readerTheme.barBg, transform: [{ translateY: bottomBarTranslate }] }]}>
+      <Animated.View style={[
+        styles.bottomBar,
+        {
+          borderTopColor: readerTheme.border,
+          backgroundColor: readerTheme.barBg,
+          transform: [{ translateY: bottomBarTranslate }],
+          paddingBottom: Math.max(insets.bottom, spacing.sm),
+        }
+      ]}>
         <TouchableOpacity style={styles.barButton} onPress={handleOpenChapters}>
           <Ionicons name="book-outline" size={22} color={readerTheme.barText} />
         </TouchableOpacity>
@@ -926,7 +950,7 @@ export function ReaderScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 

@@ -245,6 +245,13 @@ export function LibraryScreen() {
               />
             )}
           </TouchableOpacity>
+
+          {/* Progress bar at the bottom of cover if in progress */}
+          {progress > 0 && progress < 100 && (
+            <View style={styles.coverProgressBarContainer}>
+              <View style={[styles.coverProgressBar, { width: `${progress}%` }]} />
+            </View>
+          )}
         </View>
 
         {/* Info */}
@@ -498,6 +505,19 @@ function createStyles(theme: ReturnType<typeof getTheme>, itemWidth: number) {
       minHeight: 24,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    coverProgressBarContainer: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      height: 4,
+      backgroundColor: 'rgba(255, 255, 255, 0.3)',
+      overflow: 'hidden',
+    },
+    coverProgressBar: {
+      height: '100%',
+      backgroundColor: theme.colors.primary,
     },
     bookTitle: {
       fontSize: fontSizes.sm,
