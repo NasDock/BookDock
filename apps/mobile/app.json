@@ -3,7 +3,7 @@
     "name": "BookDock",
     "slug": "bookdock",
     "version": "0.0.28",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/logo.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,

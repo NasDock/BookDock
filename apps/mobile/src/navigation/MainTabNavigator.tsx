@@ -13,6 +13,21 @@ import { useNavigation } from '@react-navigation/native';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
+function ProfileHeaderLeft() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const actualTheme = useThemeStore((state) => state.actualTheme);
+  const theme = getTheme(actualTheme === 'dark');
+
+  return (
+    <TouchableOpacity
+      style={{ marginLeft: 16, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
+      onPress={() => navigation.navigate('MemberLogin', { initialMode: 'scan' })}
+    >
+      <Ionicons name="scan-outline" size={24} color={theme.colors.text} />
+    </TouchableOpacity>
+  );
+}
+
 function ProfileHeaderRight() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const actualTheme = useThemeStore((state) => state.actualTheme);
@@ -70,6 +85,7 @@ export function MainTabNavigator() {
             <Ionicons name="person" size={size} color={color} />
           ),
           headerTitle: '',
+          headerLeft: () => <ProfileHeaderLeft />,
           headerRight: () => <ProfileHeaderRight />,
         }}
       />
