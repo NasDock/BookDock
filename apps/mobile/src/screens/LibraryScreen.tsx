@@ -7,7 +7,6 @@ import {
   StyleSheet,
   TextInput,
   RefreshControl,
-  Dimensions,
   Pressable,
   Alert,
   ActivityIndicator,
@@ -19,11 +18,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useLibraryStore, useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
+import { useOrientation } from '../hooks/useOrientation';
 import type { Book } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
 
 // Adaptive grid: phone = 2 columns, tablet = 3-4 columns based on width
-const { width } = Dimensions.get('window');
 const GAP = 12;
 
 function getGridColumns(screenWidth: number): number {
@@ -87,16 +86,9 @@ export function LibraryScreen() {
   const [filterFormat, setFilterFormat] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
-  const [screenWidth, setScreenWidth] = useState(width);
-  const gridColumns = useMemo(() => getGridColumns(screenWidth), [screenWidth]);
-  const itemWidth = useMemo(() => getItemWidth(screenWidth), [screenWidth]);
-
-  useEffect(() => {
-    const subscription = Dimensions.addEventListener('change', ({ window }) => {
-      setScreenWidth(window.width);
-    });
-    return () => subscription?.remove();
-  }, []);
+  const orientation = useOrientation();
+  const gridColumns = useMemo(() => getGridColumns(orientation.width), [orientation.width]);
+  const itemWidth = useMemo(() => getItemWidth(orientation.width), [orientation.width]);
 
   const styles = useMemo(() => createStyles(theme, itemWidth), [theme, itemWidth]);
 

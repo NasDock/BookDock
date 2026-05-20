@@ -11,6 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTTSStore, useThemeStore, useLibraryStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
+import { useOrientation } from '../hooks/useOrientation';
 import type { Book } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -22,8 +23,9 @@ export function TTSTabScreen() {
   const theme = getTheme(actualTheme === 'dark');
   const { books } = useLibraryStore();
   const ttsState = useTTSStore();
+  const orientation = useOrientation();
 
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme, orientation), [theme, orientation]);
 
   const handleBookPress = useCallback((book: Book) => {
     navigation.navigate('TTSScreen', { book });
@@ -145,7 +147,10 @@ export function TTSTabScreen() {
   );
 }
 
-function createStyles(theme: ReturnType<typeof getTheme>) {
+function createStyles(theme: ReturnType<typeof getTheme>, orientation: ReturnType<typeof useOrientation>) {
+  const isLargeScreen = orientation.screenSize === 'large' || orientation.screenSize === 'xlarge';
+  const bookCardWidth = isLargeScreen ? '31%' : '48%';
+
   return StyleSheet.create({
     container: {
       flex: 1,
@@ -212,7 +217,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       gap: spacing.sm,
     },
     bookCard: {
-      width: '48%',
+      width: bookCardWidth,
       padding: spacing.md,
       borderRadius: borderRadius.lg,
       alignItems: 'center',

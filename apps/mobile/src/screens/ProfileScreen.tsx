@@ -46,6 +46,14 @@ export function ProfileScreen() {
     Alert.alert('即将上线', '编辑资料功能将在后续版本开放');
   }, []);
 
+  const handleScanLogin = useCallback(() => {
+    navigation.navigate('MemberLogin', { initialMode: 'scan' });
+  }, [navigation]);
+
+  const handleSettings = useCallback(() => {
+    navigation.navigate('Settings');
+  }, [navigation]);
+
   const handleManageSubscription = useCallback(() => {
     // @ts-ignore
     navigation.navigate('MemberLogin');
@@ -77,6 +85,16 @@ export function ProfileScreen() {
       style={[styles.container, { backgroundColor: theme.colors.background }]}
       contentContainerStyle={styles.content}
     >
+      {/* Top Header */}
+      <View style={styles.topHeader}>
+        <TouchableOpacity style={styles.topHeaderButton} onPress={handleScanLogin}>
+          <Ionicons name="scan-outline" size={22} color={theme.colors.text} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.topHeaderButton} onPress={handleSettings}>
+          <Ionicons name="settings-outline" size={22} color={theme.colors.text} />
+        </TouchableOpacity>
+      </View>
+
       {/* Profile Header */}
       <View style={[styles.profileHeader, { backgroundColor: theme.colors.surface }]}>
         <View style={styles.avatarContainer}>
@@ -161,6 +179,19 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     content: {
       padding: spacing.md,
       gap: spacing.md,
+    },
+    topHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.xs,
+    },
+    topHeaderButton: {
+      width: 40,
+      height: 40,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     profileHeader: {
       alignItems: 'center',

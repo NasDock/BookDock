@@ -245,7 +245,7 @@ function generateReaderHtml(
       background: ${bgColor};
       margin: 0;
       padding: ${config.margin}px;
-      padding-top: ${config.margin + 8}px;
+      padding-top: ${config.margin + 56}px;
       text-align: justify;
       word-wrap: break-word;
     }
@@ -821,7 +821,7 @@ export function ReaderScreen() {
           body.style.color = '${t.text}';
           body.style.background = '${t.bg}';
           body.style.padding = '${margin}px';
-          body.style.paddingTop = '${margin + 8}px';
+          body.style.paddingTop = '${margin + 56}px';
         }
         const headings = document.querySelectorAll('h1, h2');
         headings.forEach(h => {
@@ -875,7 +875,7 @@ export function ReaderScreen() {
         </TouchableOpacity>
         <View style={styles.barTitle}>
           <Text style={[styles.barTitleText, { color: readerTheme.barText }]} numberOfLines={1}>
-            {book.title}
+            {chapters[currentChapter]?.title || book.title}
           </Text>
         </View>
         <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.barButton}>
@@ -1096,32 +1096,110 @@ export function ReaderScreen() {
                 <Text style={{ color: theme.colors.textSecondary }}>暂无章节信息</Text>
               </View>
             ) : (
-              <ScrollView style={styles.chaptersList}>
-                {chapters.map((chapter, index) => (
-                  <TouchableOpacity
-                    key={chapter.index}
-                    style={[
-                      styles.chapterItem,
-                      { borderBottomColor: theme.colors.border },
-                    ]}
-                    onPress={() => handleChapterPress(chapter.index)}
-                  >
-                    <Text style={[styles.chapterNumber, { color: theme.colors.textSecondary }]}>
-                      {index + 1}
-                    </Text>
-                    <Text style={[styles.chapterName, { color: theme.colors.text }]} numberOfLines={1}>
-                      {chapter.title}
-                    </Text>
-                    <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+              <ChapterList
+                chapters={chapters}
+                currentChapter={currentChapter}
+                theme={theme}
+                onChapterPress={handleChapterPress}
+              />
             )}
           </View>
         </View>
       </Modal>
     </View>
   );
+}
+
+interface ChapterListProps {
+  chapters: Array<{ index: number; title: string }>;
+  currentChapter: number;
+  theme: ReturnType<typeof getTheme>;
+  onChapterPress: (index: number) => void;
+}
+
+function ChapterList({ chapters, currentChapter, theme, onChapterPress }: ChapterListProps) {
+  const scrollViewRef = useRef<ScrollView>(null);
+  const itemRefs = useRef<(View | null)[]>([]);
+  const listStyles = useMemo(() => createChapterListStyles(theme), [theme]);
+
+  useEffect(() => {
+    const targetIndex = chapters.findIndex((ch) => ch.index === currentChapter);
+    if (targetIndex >= 0 && itemRefs.current[targetIndex]) {
+      setTimeout(() => {
+        itemRefs.current[targetIndex]?.measureLayout(
+          scrollViewRef.current as any,
+          (x, y) => {
+            scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: false });
+          },
+          () => {}
+        );
+      }, 100);
+    }
+  }, [chapters, currentChapter]);
+
+  return (
+    <ScrollView ref={scrollViewRef} style={listStyles.chaptersList}>
+      {chapters.map((chapter, index) => {
+        const isCurrent = chapter.index === currentChapter;
+        const isRead = chapter.index < currentChapter;
+        const textColor = isCurrent
+          ? theme.colors.text
+          : isRead
+            ? theme.colors.textSecondary + '80'
+            : theme.colors.textSecondary;
+        const fontWeight = isCurrent ? '700' : '400';
+
+        return (
+          <TouchableOpacity
+            key={chapter.index}
+            style={[listStyles.chapterItem, { borderBottomColor: theme.colors.border }]}
+            onPress={() => onChapterPress(chapter.index)}
+          >
+            <View
+              ref={(ref) => { itemRefs.current[index] = ref; }}
+              style={listStyles.chapterItemInner}
+            >
+              <Text style={[listStyles.chapterNumber, { color: textColor, fontWeight }]}>
+                {index + 1}
+              </Text>
+              <Text style={[listStyles.chapterName, { color: textColor, fontWeight }]} numberOfLines={1}>
+                {chapter.title}
+              </Text>
+              {isCurrent && (
+                <Ionicons name="book" size={16} color={theme.colors.primary} />
+              )}
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+function createChapterListStyles(theme: ReturnType<typeof getTheme>) {
+  return StyleSheet.create({
+    chaptersList: {
+      maxHeight: 400,
+    },
+    chapterItem: {
+      borderBottomWidth: 1,
+    },
+    chapterItemInner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: spacing.md,
+      gap: spacing.sm,
+    },
+    chapterNumber: {
+      fontSize: fontSizes.sm,
+      width: 36,
+      textAlign: 'center',
+    },
+    chapterName: {
+      flex: 1,
+      fontSize: fontSizes.md,
+    },
+  });
 }
 
 function createStyles(theme: ReturnType<typeof getTheme>) {
@@ -1311,10 +1389,12 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       alignItems: 'center',
     },
     chapterItem: {
+      borderBottomWidth: 1,
+    },
+    chapterItemInner: {
       flexDirection: 'row',
       alignItems: 'center',
       paddingVertical: spacing.md,
-      borderBottomWidth: 1,
       gap: spacing.sm,
     },
     chapterNumber: {

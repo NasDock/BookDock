@@ -153,8 +153,6 @@ export function SettingsScreen() {
         <>
           {renderRow('person-outline', '用户名', <Text style={styles.rowValueText}>{user?.username || '-'}</Text>)}
           <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
-          {renderRow('mail-outline', '邮箱', <Text style={styles.rowValueText}>{user?.email || '-'}</Text>)}
-          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
           {renderRow('crown-outline', '会员类型',
             <View style={styles.rowValueRow}>
               <Text style={styles.rowValueText}>{isPremium ? '高级会员' : '免费用户'}</Text>

@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
+import { useOrientation } from '../hooks/useOrientation';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const WeChat = NativeModules.WeChat || NativeModules.RCTWeChat;
@@ -30,6 +31,8 @@ interface PaymentOverlay {
 export function MemberBenefitsScreen({ navigation }: any) {
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
+  const orientation = useOrientation();
+  const isLargeScreen = orientation.screenSize === 'large' || orientation.screenSize === 'xlarge';
   const [products, setProducts] = useState<VipProduct[]>(STATIC_PRODUCTS);
   const [isLoading, setIsLoading] = useState(false);
   const { plusUser: vipUser, setPlusUser, refreshVipStatus } = useAuthStore();
@@ -319,9 +322,9 @@ export function MemberBenefitsScreen({ navigation }: any) {
         {/* Banner */}
         <View style={[styles.banner, { backgroundColor: '#f59e0b' }]}>
           <Text style={styles.bannerTitle}>✨ 会员专属特权</Text>
-          <View style={styles.benefitGrid}>
+          <View style={[styles.benefitGrid, isLargeScreen && styles.benefitGridLarge]}>
             {benefitItems.map((item) => (
-              <Text key={item} style={styles.benefitItem}>{item}</Text>
+              <Text key={item} style={[styles.benefitItem, isLargeScreen && styles.benefitItemLarge]}>{item}</Text>
             ))}
           </View>
         </View>
@@ -448,7 +451,9 @@ const styles = StyleSheet.create({
   banner: { borderRadius: borderRadius.xl, padding: spacing.lg, marginBottom: spacing.lg },
   bannerTitle: { color: '#fff', fontWeight: 'bold', fontSize: fontSizes.lg, marginBottom: spacing.md },
   benefitGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  benefitGridLarge: { justifyContent: 'space-between' },
   benefitItem: { width: '50%', color: '#fff', fontSize: fontSizes.sm, marginBottom: spacing.xs },
+  benefitItemLarge: { width: '31%', textAlign: 'center' },
   productCard: { borderRadius: borderRadius.xl, padding: spacing.lg, marginBottom: spacing.md, position: 'relative' },
   recommendedBadge: { position: 'absolute', top: spacing.md, right: spacing.md, backgroundColor: '#a855f7', borderRadius: borderRadius.full, paddingHorizontal: spacing.sm, paddingVertical: 2 },
   recommendedText: { color: '#fff', fontSize: fontSizes.xs, fontWeight: 'bold' },

@@ -38,9 +38,10 @@ const { width: screenWidth } = Dimensions.get('window');
 
 interface MemberLoginScreenProps {
   navigation: any;
+  route: any;
 }
 
-export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
+export function MemberLoginScreen({ navigation, route }: MemberLoginScreenProps) {
   const actualTheme = useThemeStore((s) => s.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
 
@@ -67,6 +68,13 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
     }
     return () => clearInterval(timer);
   }, [countdown]);
+
+  // Auto-open scanner when navigated from profile
+  useEffect(() => {
+    if (route.params?.initialMode === 'scan') {
+      requestCameraPermission();
+    }
+  }, [route.params?.initialMode]);
 
   // Send verification code
   const handleSendCode = useCallback(async () => {
@@ -378,24 +386,6 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
             )}
           </TouchableOpacity>
         </View>
-
-        {/* Scan login option */}
-        <View style={styles.divider}>
-          <View style={[styles.dividerLine, { backgroundColor: theme.colors.border }]} />
-          <Text style={[styles.dividerText, { color: theme.colors.textSecondary }]}>或</Text>
-          <View style={[styles.dividerLine, { backgroundColor: theme.colors.border }]} />
-        </View>
-
-        <TouchableOpacity
-          style={[styles.scanBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}
-          onPress={requestCameraPermission}
-          disabled={scanBusy}
-        >
-          <Ionicons name="scan-outline" size={20} color={theme.colors.primary} />
-          <Text style={[styles.scanBtnText, { color: theme.colors.primary }]}>
-            {scanBusy ? '处理中...' : '扫码登录'}
-          </Text>
-        </TouchableOpacity>
 
         {/* Footer */}
         <View style={styles.footer}>

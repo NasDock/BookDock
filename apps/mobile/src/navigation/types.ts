@@ -9,7 +9,7 @@ export type RootStackParamList = {
   TTSReader: { book: Book };
   BookDetails: { book: Book };
   Login: undefined;
-  MemberLogin: undefined;
+  MemberLogin: { initialMode?: 'scan' } | undefined;
   MemberBenefits: undefined;
   MemberDetail: undefined;
   MemberPaymentSuccess: undefined;
