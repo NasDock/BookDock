@@ -10,12 +10,16 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useThemeStore, useAuthStore, useReaderStore, useTTSStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { notificationService, fileSystemService } from '../services';
 import { getApiClient } from '@bookdock/api-client';
+import type { RootStackParamList } from '../navigation/types';
 
 export function SettingsScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const themeMode = useThemeStore((state) => state.theme);
   const setThemeMode = useThemeStore((state) => state.setTheme);
@@ -142,6 +146,17 @@ export function SettingsScreen() {
 
   const user = authStore.user;
   const isPremium = user?.membership === 'premium';
+  const handleMembershipPress = useCallback(() => {
+    if (!user) {
+      navigation.navigate('MemberLogin');
+      return;
+    }
+    if (isPremium) {
+      navigation.navigate('MemberDetail');
+      return;
+    }
+    navigation.navigate('MemberBenefits');
+  }, [isPremium, navigation, user]);
 
   return (
     <ScrollView
@@ -158,12 +173,12 @@ export function SettingsScreen() {
               <Text style={styles.rowValueText}>{isPremium ? '高级会员' : '免费用户'}</Text>
               <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
             </View>,
-            () => {}
+            handleMembershipPress
           )}
           <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
           {renderRow('star-outline', '升级到 Premium',
             <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />,
-            () => {}
+            handleMembershipPress
           )}
         </>
       )}
