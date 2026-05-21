@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth, PremiumBadge } from '@bookdock/auth';
 import { initApiClient } from '@bookdock/api-client';
@@ -11,6 +11,8 @@ import {
   Sun,
   Moon,
   ArrowLeft,
+  RefreshCw,
+  Plus,
 } from 'lucide-react';
 
 // Pages
@@ -97,12 +99,42 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { theme, toggleTheme } = useThemeStore();
   const { isVip: isPlusVip, refreshVipStatus } = useAuthStore();
+  const [syncMenuOpen, setSyncMenuOpen] = useState(false);
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const syncMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     refreshVipStatus();
     const interval = setInterval(refreshVipStatus, 30000);
     return () => clearInterval(interval);
   }, [refreshVipStatus]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (syncMenuRef.current && !syncMenuRef.current.contains(event.target as Node)) {
+        setSyncMenuOpen(false);
+      }
+    }
+    if (syncMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [syncMenuOpen]);
+
+  const handleSync = async (type: 'full' | 'incremental') => {
+    setSyncing(type);
+    try {
+      const { getApiClient } = await import('@bookdock/api-client');
+      const api = getApiClient();
+      const res = await api.post(`/books/sync/${type}`);
+      alert(res.data?.message || '同步完成');
+    } catch (e: any) {
+      alert(e?.response?.data?.message || '同步失败');
+    } finally {
+      setSyncing(null);
+      setSyncMenuOpen(false);
+    }
+  };
 
   if (!isAuthenticated) {
     return <>{children}</>;
@@ -170,6 +202,39 @@ function AppLayout({ children }: { children: React.ReactNode }) {
                   <Moon className="w-5 h-5" />
                 )}
               </button>
+
+              {/* Sync dropdown */}
+              {user?.role === 'admin' && (
+                <div className="relative" ref={syncMenuRef}>
+                  <button
+                    onClick={() => setSyncMenuOpen(!syncMenuOpen)}
+                    className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    aria-label="Sync books"
+                  >
+                    <RefreshCw className={`w-5 h-5 ${syncing ? 'animate-spin' : ''}`} />
+                  </button>
+                  {syncMenuOpen && (
+                    <div className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 z-50 py-1">
+                      <button
+                        onClick={() => handleSync('incremental')}
+                        disabled={!!syncing}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>增量更新</span>
+                      </button>
+                      <button
+                        onClick={() => handleSync('full')}
+                        disabled={!!syncing}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        <span>全量更新</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* User dropdown */}
               <div className="relative group">

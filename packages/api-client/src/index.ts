@@ -268,6 +268,11 @@ class ApiClient {
     return data;
   }
 
+  async syncBooks(type: 'full' | 'incremental'): Promise<ApiResponse<{ message: string; added?: number; removed?: number; updated?: number }>> {
+    const { data } = await this.client.post(`/books/sync/${type}`);
+    return data;
+  }
+
   // Storage info
   async getStorageInfo(): Promise<ApiResponse<{ used: number; limit: number }>> {
     const { data } = await this.client.get('/storage/info');

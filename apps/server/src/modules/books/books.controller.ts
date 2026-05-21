@@ -204,4 +204,24 @@ export class BooksController {
   ) {
     return this.booksService.removeTag(id, tagName);
   }
+
+  @Post('sync/full')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Full sync: scan all local books, add new, remove missing, refresh metadata' })
+  async fullSync() {
+    const result = await this.booksService.fullSync();
+    return { message: 'Full sync completed', ...result };
+  }
+
+  @Post('sync/incremental')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Incremental sync: only add new books found on disk' })
+  async incrementalSync() {
+    const result = await this.booksService.incrementalSync();
+    return { message: 'Incremental sync completed', ...result };
+  }
 }

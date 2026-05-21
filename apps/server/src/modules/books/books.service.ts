@@ -435,6 +435,127 @@ export class BooksService implements OnModuleInit {
     });
   }
 
+  /**
+   * Full sync: scan all local books, add new ones, mark missing ones as deleted.
+   * Also re-fetches metadata for all existing books.
+   */
+  async fullSync(): Promise<{ added: number; removed: number; updated: number }> {
+    const ebookExts = ['txt', 'epub', 'pdf', 'mobi', 'azw3', 'fb2', 'djvu'];
+    let added = 0;
+    let removed = 0;
+    let updated = 0;
+
+    try {
+      // 1. Collect all files on disk
+      const entries = await this.collectEbookFilesRecursively(this.nasEbookPath, ebookExts);
+      const filePathsOnDisk = new Set(entries);
+
+      // 2. Get all existing books from DB
+      const existingBooks = await this.prisma.book.findMany({
+        where: { isDeleted: false },
+        select: { id: true, filePath: true, title: true },
+      });
+      const existingPaths = new Map(existingBooks.map((b) => [b.filePath, b]));
+
+      // 3. Add new books
+      for (const filePath of entries) {
+        if (existingPaths.has(filePath)) continue;
+
+        const ext = filePath.split('.').pop()?.toLowerCase() || '';
+        const fullPath = join(this.nasEbookPath, filePath);
+        const fileStat = await stat(fullPath);
+        const fileName = filePath.split(/[\\/]/).pop() || filePath;
+        const title = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+
+        const createdBook = await this.prisma.book.create({
+          data: {
+            title,
+            author: 'Unknown',
+            format: ext,
+            filePath,
+            fileSize: BigInt(fileStat.size),
+            language: 'zh',
+            metadata: '{}',
+          },
+        });
+
+        if (this.metadataService) {
+          this.metadataService.fetchAndUpdateBook(createdBook.id, createdBook.title).catch(() => {});
+        }
+        added++;
+      }
+
+      // 4. Mark missing books as deleted
+      for (const book of existingBooks) {
+        if (!filePathsOnDisk.has(book.filePath)) {
+          await this.prisma.book.update({
+            where: { id: book.id },
+            data: { isDeleted: true },
+          });
+          removed++;
+        }
+      }
+
+      // 5. Re-fetch metadata for all existing books
+      for (const book of existingBooks) {
+        if (filePathsOnDisk.has(book.filePath) && this.metadataService) {
+          this.metadataService.fetchAndUpdateBook(book.id, book.title).catch(() => {});
+          updated++;
+        }
+      }
+    } catch {
+      // ignore errors
+    }
+
+    return { added, removed, updated };
+  }
+
+  /**
+   * Incremental sync: only add new books found on disk, no removal or metadata refresh.
+   */
+  async incrementalSync(): Promise<{ added: number }> {
+    const ebookExts = ['txt', 'epub', 'pdf', 'mobi', 'azw3', 'fb2', 'djvu'];
+    let added = 0;
+
+    try {
+      const entries = await this.collectEbookFilesRecursively(this.nasEbookPath, ebookExts);
+
+      for (const filePath of entries) {
+        const existing = await this.prisma.book.findFirst({
+          where: { filePath, isDeleted: false },
+        });
+        if (existing) continue;
+
+        const ext = filePath.split('.').pop()?.toLowerCase() || '';
+        const fullPath = join(this.nasEbookPath, filePath);
+        const fileStat = await stat(fullPath);
+        const fileName = filePath.split(/[\\/]/).pop() || filePath;
+        const title = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+
+        const createdBook = await this.prisma.book.create({
+          data: {
+            title,
+            author: 'Unknown',
+            format: ext,
+            filePath,
+            fileSize: BigInt(fileStat.size),
+            language: 'zh',
+            metadata: '{}',
+          },
+        });
+
+        if (this.metadataService) {
+          this.metadataService.fetchAndUpdateBook(createdBook.id, createdBook.title).catch(() => {});
+        }
+        added++;
+      }
+    } catch {
+      // ignore errors
+    }
+
+    return { added };
+  }
+
   async getCover(id: string): Promise<{ stream: unknown; contentType: string }> {
     const book = await this.prisma.book.findUnique({
       where: { id, isDeleted: false },
