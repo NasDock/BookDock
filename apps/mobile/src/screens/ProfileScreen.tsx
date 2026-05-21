@@ -85,24 +85,8 @@ export function ProfileScreen() {
               {user?.username?.charAt(0).toUpperCase() || 'U'}
             </Text>
           </View>
-          {(user?.membership === 'premium' || isVip) && (
-            <View style={styles.premiumBadge}>
-              <Ionicons name="star" size={12} color="#FFD700" />
-            </View>
-          )}
         </View>
         <Text style={styles.username}>{user?.username || '用户'}</Text>
-        <View style={styles.roleContainer}>
-          <View style={[styles.roleBadge, { backgroundColor: theme.colors.primary + '20' }]}>
-            <Text style={[styles.roleText, { color: theme.colors.primary }]}>
-              {user?.role === 'admin' ? '管理员' : isVip ? (vipTier === 'LIFETIME' ? '永久会员' : '年卡会员') : user?.membership === 'premium' ? '高级会员' : '免费用户'}
-            </Text>
-          </View>
-        </View>
-        <TouchableOpacity style={styles.editButton} onPress={handleEditProfile}>
-          <Ionicons name="create-outline" size={16} color={theme.colors.primary} />
-          <Text style={styles.editButtonText}>Edit Profile</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Stats */}

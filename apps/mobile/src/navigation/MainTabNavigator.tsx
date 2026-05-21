@@ -69,18 +69,18 @@ export function MainTabNavigator() {
         name="Library"
         component={LibraryScreen}
         options={{
-          title: '书库',
+          title: '书仓',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="library" size={size} color={color} />
           ),
-          headerTitle: '我的书库',
+          headerTitle: '我的书仓',
         }}
       />
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{
-          title: '个人',
+          title: '我的',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person" size={size} color={color} />
           ),

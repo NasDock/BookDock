@@ -289,8 +289,6 @@ export function MemberLoginScreen({ navigation, route }: MemberLoginScreenProps)
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: theme.colors.text }]}>用户登录</Text>
-          <View style={{ width: 40 }} />
         </View>
 
         {/* Logo */}
@@ -412,8 +410,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: spacing.md,
+    paddingTop: spacing.xl,
     paddingBottom: spacing.sm,
   },
   backBtn: {

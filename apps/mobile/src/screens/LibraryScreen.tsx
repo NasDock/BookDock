@@ -137,7 +137,8 @@ export function LibraryScreen() {
       const p = b.readingProgress ?? 0;
       return p > 0 && p < 100;
     }).length;
-    return { total, completed, reading };
+    const unread = total - completed - reading;
+    return { total, completed, reading, unread };
   }, [books]);
 
   const handleBookPress = useCallback((book: Book) => {
@@ -326,7 +327,7 @@ export function LibraryScreen() {
       <View style={styles.countRow}>
         <Text style={styles.countText}>共 {filteredBooks.length} 本书</Text>
         <Text style={styles.statsText}>
-          {stats.total} 本 · {stats.completed} 已读完 · <Text style={{ color: theme.colors.primary }}>{stats.reading} 在读</Text>
+          {stats.unread} 未读 · {stats.completed} 已读完 · <Text style={{ color: theme.colors.primary }}>{stats.reading} 在读</Text>
         </Text>
       </View>
     </View>
