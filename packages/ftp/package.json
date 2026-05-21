@@ -1,6 +1,6 @@
 {
   "name": "@bookdock/ftp",
-  "version": "0.0.30",
+  "version": "0.0.31",
   "private": true,
   "type": "commonjs",
   "main": "./dist/index.js",
