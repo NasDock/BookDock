@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { BookMetadataModule } from './modules/book-metadata/book-metadata.module';
 import { AppConfig } from './config/app.config';
 import { DatabaseModule } from './config/database.module';
 import { AdminModule } from './modules/admin/admin.module';
@@ -30,6 +31,7 @@ import { HealthController } from './health.controller';
     DatabaseModule,
     AuthModule,
     BooksModule,
+    BookMetadataModule,
     ReadingProgressModule,
     TtsModule,
     AdminModule,
@@ -40,4 +42,5 @@ import { HealthController } from './health.controller';
   ],
   controllers: [HealthController],
 })
+// T8 completed
 export class AppModule {}

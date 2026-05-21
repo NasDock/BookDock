@@ -40,7 +40,9 @@
     "reflect-metadata": "^0.2.1",
     "rxjs": "^7.8.1",
     "sharp": "^0.33.3",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "cheerio": "^1.0.0-rc.12",
+    "wikipedia": "^2.1.2"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.3.2",

@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { PrismaClient, Book } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
+import { BookMetadataService } from '../book-metadata/book-metadata.service';
+
 import { createReadStream, statSync, existsSync } from 'fs';
 import { readdir, stat, readFile, rename } from 'fs/promises';
 import { join } from 'path';
@@ -30,6 +32,7 @@ export class BooksService implements OnModuleInit {
   constructor(
     @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
     private readonly configService: ConfigService,
+    private readonly metadataService?: BookMetadataService, // T7: optional metadata service
   ) {
     this.nasEbookPath = this.configService.get<string>('app.nasEbookPath') || '/data/ebooks';
     this.apiBaseUrl = this.configService.get<string>('app.apiBaseUrl') || 'http://localhost:3000';
@@ -150,6 +153,13 @@ export class BooksService implements OnModuleInit {
       },
     });
 
+    // T7: auto metadata fetch
+    if (this.metadataService) {
+      this.metadataService.fetchAndUpdateBook(book.id, book.title).catch(() => {
+        // ignore metadata fetch errors
+      });
+    }
+
     return this.toBookResponse(book);
   }
 
@@ -171,7 +181,7 @@ export class BooksService implements OnModuleInit {
         const fileName = filePath.split(/[\\/]/).pop() || filePath;
         const title = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
 
-        await this.prisma.book.create({
+        const createdBook = await this.prisma.book.create({
           data: {
             title,
             author: 'Unknown',
@@ -182,6 +192,13 @@ export class BooksService implements OnModuleInit {
             metadata: '{}',
           },
         });
+
+        // T7: auto metadata fetch
+        if (this.metadataService) {
+          this.metadataService.fetchAndUpdateBook(createdBook.id, createdBook.title).catch(() => {
+            // ignore
+          });
+        }
         added++;
       }
     } catch {
@@ -620,3 +637,4 @@ export class BooksService implements OnModuleInit {
     </svg>`;
   }
 }
+// T7 completed
