@@ -901,7 +901,7 @@ export function ReaderScreen() {
         <WebView
           ref={webViewRef}
           source={{ html: htmlContent }}
-          style={[styles.webview, { marginLeft: insets.left, marginRight: insets.right }]}
+          style={styles.webview}
           injectedJavaScript={injectedJS}
           onMessage={handleMessage}
           scrollEnabled={true}
