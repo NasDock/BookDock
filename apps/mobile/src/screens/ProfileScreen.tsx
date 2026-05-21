@@ -47,9 +47,16 @@ export function ProfileScreen() {
   }, []);
 
   const handleManageSubscription = useCallback(() => {
-    // @ts-ignore
-    navigation.navigate('MemberLogin');
-  }, [navigation]);
+    if (!user) {
+      navigation.navigate('MemberLogin');
+      return;
+    }
+    if (isVip) {
+      navigation.navigate('MemberDetail');
+      return;
+    }
+    navigation.navigate('MemberBenefits');
+  }, [navigation, user, isVip]);
 
   const handleLogout = useCallback(() => {
     Alert.alert('确认', '确定要退出登录吗？', [
