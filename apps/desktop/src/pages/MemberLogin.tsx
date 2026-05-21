@@ -193,7 +193,7 @@ export default function MemberLogin() {
         setIsLoading(false);
         console.log("Login response:", res);
 
-        if (res.code === 0 || res.code === 201) {
+        if (res.code === 200 || res.code === 201) {
           const { token, userId } = res.data!;
           localStorage.setItem("bookdock_plus_token", token);
           localStorage.setItem("bookdock_plus_user_id", JSON.stringify(userId));

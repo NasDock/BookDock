@@ -164,10 +164,6 @@ async function plusFetch<T>(endpoint: string, options: RequestInit = {}): Promis
   });
 
   const data = await response.json();
-  // Normalize success code: some APIs return 200 instead of 0
-  if (data && data.code === 200) {
-    data.code = 0;
-  }
   return data;
 }
 
