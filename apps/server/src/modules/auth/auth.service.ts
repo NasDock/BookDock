@@ -38,12 +38,16 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(dto.password, 12);
     const email = `${dto.username}@bookdock.local`;
 
+    // First registered user becomes admin
+    const userCount = await this.prisma.user.count();
+    const role = userCount === 0 ? 'admin' : 'user';
+
     const user = await this.prisma.user.create({
       data: {
         email,
         username: dto.username,
         passwordHash,
-        role: 'user',
+        role,
       },
     });
 
@@ -51,21 +55,17 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, userAgent?: string, ipAddress?: string): Promise<AuthResponseDto> {
-    let user = await this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { username: dto.username },
     });
 
-    // Auto-create user if not exists (dev-friendly login)
     if (!user) {
-      const passwordHash = await bcrypt.hash(dto.password, 12);
-      user = await this.prisma.user.create({
-        data: {
-          username: dto.username,
-          email: `${dto.username}@local.dev`,
-          passwordHash,
-          role: 'user',
-        },
-      });
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!passwordValid) {
+      throw new UnauthorizedException('Invalid credentials');
     }
 
     if (!user.isActive) {
