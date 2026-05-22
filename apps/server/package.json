@@ -1,6 +1,6 @@
 {
   "name": "@bookdock/server",
-  "version": "0.0.36",
+  "version": "0.0.37",
   "description": "BookDock NestJS API Server",
   "private": true,
   "scripts": {
@@ -42,6 +42,7 @@
     "sharp": "^0.33.3",
     "uuid": "^9.0.1",
     "cheerio": "^1.0.0-rc.12",
+    "domhandler": "^5.0.3",
     "wikipedia": "^2.1.2"
   },
   "devDependencies": {
