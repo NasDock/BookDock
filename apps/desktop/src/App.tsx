@@ -144,7 +144,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
     try {
       const { getApiClient } = await import("@bookdock/api-client");
       const api = getApiClient();
-      const res = await api.post(`/books/sync/${type}`);
+      const res = await api.syncBooks(type);
       alert(res.data?.message || `${type === "full" ? "全量" : "增量"}更新成功`);
     } catch (e: any) {
       alert(e?.response?.data?.message || "同步失败");
