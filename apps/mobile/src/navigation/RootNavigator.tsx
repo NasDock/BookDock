@@ -7,6 +7,7 @@ import { TTSScreen } from '../screens/TTSScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { MemberLoginScreen } from '../screens/MemberLoginScreen';
+import { ScanLoginScreen } from '../screens/ScanLoginScreen';
 import { useAuthStore, useThemeStore } from '../stores';
 import { getTheme } from '../utils/theme';
 import type { RootStackParamList } from './types';
@@ -86,6 +87,11 @@ export function RootNavigator() {
         <Stack.Screen
           name="MemberLogin"
           component={MemberLoginScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="ScanLogin"
+          component={ScanLoginScreen}
           options={{ headerShown: false }}
         />
       </Stack.Navigator>

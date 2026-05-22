@@ -10,10 +10,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Dimensions,
   Image,
 } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore } from '../stores';
@@ -21,27 +19,14 @@ import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import {
   plusLogin,
   plusSendCode,
-  createScanLoginSession,
-  getScanLoginSession,
-  claimScanLoginSession,
-  subscribeScanLoginSession,
-  consumeScanLoginSession,
-  reportScanLoginResult,
-  reportScanLoginResultViaSocket,
   setPlusToken,
-  type ScanLoginSession,
-  type ScanLoginSessionStatus,
 } from '../services/plus';
-import { applyMobileScanLoginResult, collectMobileScanLoginPayload } from '../utils/scanLogin';
-
-const { width: screenWidth } = Dimensions.get('window');
 
 interface MemberLoginScreenProps {
   navigation: any;
-  route: any;
 }
 
-export function MemberLoginScreen({ navigation, route }: MemberLoginScreenProps) {
+export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
   const actualTheme = useThemeStore((s) => s.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
 
@@ -53,13 +38,6 @@ export function MemberLoginScreen({ navigation, route }: MemberLoginScreenProps)
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Scan login state
-  const [showScanner, setShowScanner] = useState(false);
-  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
-  const [scanSession, setScanSession] = useState<ScanLoginSession | null>(null);
-  const [scanStatus, setScanStatus] = useState<ScanLoginSessionStatus | null>(null);
-  const [scanBusy, setScanBusy] = useState(false);
-
   // Countdown timer
   useEffect(() => {
     let timer: ReturnType<typeof setInterval>;
@@ -68,13 +46,6 @@ export function MemberLoginScreen({ navigation, route }: MemberLoginScreenProps)
     }
     return () => clearInterval(timer);
   }, [countdown]);
-
-  // Auto-open scanner when navigated from profile
-  useEffect(() => {
-    if (route.params?.initialMode === 'scan') {
-      requestCameraPermission();
-    }
-  }, [route.params?.initialMode]);
 
   // Send verification code
   const handleSendCode = useCallback(async () => {
@@ -125,154 +96,6 @@ export function MemberLoginScreen({ navigation, route }: MemberLoginScreenProps)
       setIsLoading(false);
     }
   }, [phone, code, navigation]);
-
-  // Scanner logic
-  const [permission, requestPermission] = useCameraPermissions();
-
-  const requestCameraPermission = async () => {
-    if (!permission) {
-      await requestPermission();
-      return;
-    }
-    if (!permission.granted) {
-      const result = await requestPermission();
-      setHasCameraPermission(result.granted);
-      if (!result.granted) {
-        Alert.alert('需要相机权限', '请在设置中开启相机权限以使用扫码登录');
-      } else {
-        setShowScanner(true);
-      }
-    } else {
-      setHasCameraPermission(true);
-      setShowScanner(true);
-    }
-  };
-
-  const handleBarCodeScanned = async ({ data }: { data: string }) => {
-    setShowScanner(false);
-    try {
-      const parsed = JSON.parse(data);
-      if (parsed.kind !== 'bookdock-scan-login' && parsed.kind !== 'soundx-scan-login') {
-        Alert.alert('无效的二维码');
-        return;
-      }
-
-      // Claim the session with our auth info
-      const { sessionId, secret, role } = parsed;
-      if (role === 'target') {
-        // We are the scanner, claiming the target session
-        const payload = await collectMobileScanLoginPayload();
-        setScanBusy(true);
-
-        const claimRes = await claimScanLoginSession(sessionId, { secret, payload });
-        if (claimRes.code === 200 || claimRes.code === 201) {
-          // Wait for confirm
-          Alert.alert('已发送', '请在目标设备上确认登录');
-        } else {
-          Alert.alert('扫码失败', claimRes.message || '无法认领会话');
-        }
-      }
-    } catch (e: any) {
-      Alert.alert('扫码失败', e.message || '二维码格式错误');
-    } finally {
-      setScanBusy(false);
-    }
-  };
-
-  // For mobile as target (show QR code for desktop to scan)
-  const createTargetSession = useCallback(async () => {
-    try {
-      const res = await createScanLoginSession({ role: 'target', deviceKind: 'mobile' });
-      if (res.data) {
-        setScanSession(res.data);
-      }
-    } catch (err) {
-      console.error('Failed to create scan session', err);
-    }
-  }, []);
-
-  useEffect(() => {
-    createTargetSession();
-  }, [createTargetSession]);
-
-  useEffect(() => {
-    if (!scanSession) return;
-    getScanLoginSession(scanSession.sessionId, scanSession.secret).catch(console.error);
-    const unsubscribe = subscribeScanLoginSession(
-      scanSession.sessionId,
-      scanSession.secret,
-      (status) => setScanStatus(status),
-    );
-    return () => unsubscribe();
-  }, [scanSession]);
-
-  useEffect(() => {
-    if (!scanSession || scanStatus?.status !== 'confirmed') return;
-    const consumeConfirmedScan = async () => {
-      try {
-        setScanBusy(true);
-        const res = await consumeScanLoginSession(scanSession.sessionId, {
-          secret: scanSession.secret,
-        });
-        try {
-          if (!res.data) throw new Error('No data returned');
-          await applyMobileScanLoginResult(res.data);
-        } catch (applyErr: any) {
-          await reportScanLoginResult(scanSession.sessionId, {
-            secret: scanSession.secret,
-            success: false,
-            error: applyErr.message,
-          }).catch(console.error);
-          reportScanLoginResultViaSocket(scanSession.sessionId, scanSession.secret, false, applyErr.message);
-          throw applyErr;
-        }
-        await reportScanLoginResult(scanSession.sessionId, {
-          secret: scanSession.secret,
-          success: true,
-        }).catch(console.error);
-        reportScanLoginResultViaSocket(scanSession.sessionId, scanSession.secret, true);
-        Alert.alert('扫码登录成功');
-        navigation.goBack();
-      } catch (error: any) {
-        Alert.alert('扫码登录失败', error.message || '未知错误');
-        createTargetSession();
-      } finally {
-        setScanBusy(false);
-      }
-    };
-    consumeConfirmedScan();
-  }, [scanSession?.sessionId, scanStatus?.status, navigation, createTargetSession]);
-
-  if (showScanner) {
-    return (
-      <View style={[styles.scannerContainer, { backgroundColor: theme.colors.background }]}>
-        <View style={styles.scannerHeader}>
-          <TouchableOpacity onPress={() => setShowScanner(false)} style={styles.scannerCloseBtn}>
-            <Ionicons name="close" size={28} color={theme.colors.text} />
-          </TouchableOpacity>
-          <Text style={[styles.scannerTitle, { color: theme.colors.text }]}>扫码登录</Text>
-          <View style={{ width: 40 }} />
-        </View>
-        {hasCameraPermission === true ? (
-          <CameraView
-            onBarcodeScanned={scanBusy ? undefined : handleBarCodeScanned}
-            style={StyleSheet.absoluteFillObject}
-            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-          />
-        ) : (
-          <View style={styles.scannerNoPermission}>
-            <Text style={{ color: theme.colors.textSecondary }}>需要相机权限</Text>
-          </View>
-        )}
-        <View style={styles.scannerOverlay}>
-          <View style={styles.scannerFrame} />
-        </View>
-        <Text style={[styles.scannerHint, { color: theme.colors.textSecondary }]}>
-          对准电脑屏幕上的二维码
-        </Text>
-      </View>
-    );
-  }
 
   return (
     <KeyboardAvoidingView
@@ -419,21 +242,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: fontSizes.lg,
-    fontWeight: '600',
-  },
   logoSection: {
     alignItems: 'center',
     marginVertical: spacing.xl,
-  },
-  logoCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: borderRadius.xl,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.md,
   },
   title: {
     fontSize: 24,
@@ -498,32 +309,6 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.md,
     fontWeight: '600',
   },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: spacing.lg,
-    gap: spacing.md,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-  },
-  dividerText: {
-    fontSize: fontSizes.sm,
-  },
-  scanBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 48,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    gap: spacing.sm,
-  },
-  scanBtnText: {
-    fontSize: fontSizes.md,
-    fontWeight: '600',
-  },
   footer: {
     marginTop: spacing.xl,
     alignItems: 'center',
@@ -532,55 +317,5 @@ const styles = StyleSheet.create({
     fontSize: fontSizes.xs,
     textAlign: 'center',
     lineHeight: 20,
-  },
-  // Scanner
-  scannerContainer: {
-    flex: 1,
-  },
-  scannerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    zIndex: 10,
-  },
-  scannerCloseBtn: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scannerTitle: {
-    fontSize: fontSizes.lg,
-    fontWeight: '600',
-  },
-  scannerNoPermission: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scannerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scannerFrame: {
-    width: 240,
-    height: 240,
-    borderWidth: 2,
-    borderColor: '#fff',
-    borderRadius: 16,
-    backgroundColor: 'transparent',
-  },
-  scannerHint: {
-    position: 'absolute',
-    bottom: 100,
-    alignSelf: 'center',
-    fontSize: fontSizes.md,
-    fontWeight: '500',
-    textShadowColor: 'rgba(0,0,0,0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
   },
 });

@@ -10,6 +10,7 @@ export type RootStackParamList = {
   BookDetails: { book: Book };
   Login: undefined;
   MemberLogin: { initialMode?: 'scan' } | undefined;
+  ScanLogin: undefined;
   MemberBenefits: undefined;
   MemberDetail: undefined;
   MemberPaymentSuccess: undefined;
