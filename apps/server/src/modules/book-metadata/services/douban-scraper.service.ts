@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import * as cheerio from 'cheerio';
+import type { AnyNode, Element, Text } from 'domhandler';
 
 export interface DoubanBookInfo {
   title: string;
@@ -117,12 +118,12 @@ export class DoubanScraperService {
       const authors: string[] = [];
       $('#info')
         .contents()
-        .each((_, node) => {
-          if (node.type === 'text' && node.data.includes('作者')) {
+        .each((_index: number, node: AnyNode) => {
+          if (node.type === 'text' && 'data' in node && (node as Text).data.includes('作者')) {
             // 找到作者标签后的兄弟 <a> 标签
             let next = node.next;
             while (next) {
-              if (next.type === 'tag' && next.name === 'a') {
+              if (next.type === 'tag' && (next as Element).name === 'a') {
                 const name = cheerio.load(next).text().trim();
                 if (name) authors.push(name);
               }
@@ -132,7 +133,7 @@ export class DoubanScraperService {
         });
       // 如果上面没取到，再尝试直接从 #info a 中过滤
       if (authors.length === 0) {
-        $('#info a').each((_, el) => {
+        $('#info a').each((_index: number, el: Element) => {
           const t = $(el).text().trim();
           if (t && !t.includes('更多')) authors.push(t);
         });
@@ -153,19 +154,19 @@ export class DoubanScraperService {
 
       // 标签
       const tags: string[] = [];
-      $('.tag_collector .indent a.tag').each((_, el) => {
+      $('.tag_collector .indent a.tag').each((_index: number, el: Element) => {
         const tag = $(el).text().trim();
         if (tag) tags.push(tag);
       });
 
       // 内容简介：#link-report .intro（排除 h2 标题）
       let summary: string | undefined;
-      $('#link-report .intro').each((_, el) => {
+      $('#link-report .intro').each((_index: number, el: Element) => {
         const $el = $(el);
         // 排除 h2 标题本身，取段落文字
         const text = $el
           .find('p')
-          .map((_, p) => $(p).text().trim())
+          .map((_i: number, p: Element) => $(p).text().trim())
           .get()
           .join('\n');
         if (text) {
@@ -185,13 +186,13 @@ export class DoubanScraperService {
 
       // 作者简介：.related_info 中包含"作者简介"的 .indent .intro
       let authorIntro: string | undefined;
-      $('.related_info').each((_, section) => {
+      $('.related_info').each((_index: number, section: Element) => {
         const $section = $(section);
         const heading = $section.find('h2, .hd').text();
         if (heading.includes('作者简介')) {
           const text = $section
             .find('.indent .intro p')
-            .map((_, p) => $(p).text().trim())
+            .map((_i: number, p: Element) => $(p).text().trim())
             .get()
             .join('\n');
           if (text) {

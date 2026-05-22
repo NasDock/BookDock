@@ -155,7 +155,7 @@ export class BooksService implements OnModuleInit {
 
     // T7: auto metadata fetch
     if (this.metadataService) {
-      this.metadataService.fetchAndUpdateBook(book.id, book.title).catch(() => {
+      this.metadataService.fetchAndUpdateBook(book.id).catch(() => {
         // ignore metadata fetch errors
       });
     }
@@ -195,7 +195,7 @@ export class BooksService implements OnModuleInit {
 
         // T7: auto metadata fetch
         if (this.metadataService) {
-          this.metadataService.fetchAndUpdateBook(createdBook.id, createdBook.title).catch(() => {
+          this.metadataService.fetchAndUpdateBook(createdBook.id).catch(() => {
             // ignore
           });
         }
@@ -480,7 +480,7 @@ export class BooksService implements OnModuleInit {
         });
 
         if (this.metadataService) {
-          this.metadataService.fetchAndUpdateBook(createdBook.id, createdBook.title).catch(() => {});
+          this.metadataService.fetchAndUpdateBook(createdBook.id).catch(() => {});
         }
         added++;
       }
@@ -499,7 +499,7 @@ export class BooksService implements OnModuleInit {
       // 5. Re-fetch metadata for all existing books
       for (const book of existingBooks) {
         if (filePathsOnDisk.has(book.filePath) && this.metadataService) {
-          this.metadataService.fetchAndUpdateBook(book.id, book.title).catch(() => {});
+          this.metadataService.fetchAndUpdateBook(book.id).catch(() => {});
           updated++;
         }
       }
@@ -545,7 +545,7 @@ export class BooksService implements OnModuleInit {
         });
 
         if (this.metadataService) {
-          this.metadataService.fetchAndUpdateBook(createdBook.id, createdBook.title).catch(() => {});
+          this.metadataService.fetchAndUpdateBook(createdBook.id).catch(() => {});
         }
         added++;
       }

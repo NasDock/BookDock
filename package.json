@@ -1,11 +1,11 @@
 {
   "name": "bookdock",
-  "version": "0.0.35",
+  "version": "0.0.36",
   "private": true,
   "packageManager": "pnpm@10.33.4",
   "scripts": {
     "dev": "pnpm -r dev",
-    "dev:desktop": "pnpm --filter @bookdock/desktop dev",
+    "dev:desktop": "pnpm --filter @bookdock/desktop dev:desktop",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "release": "node scripts/release.js",
