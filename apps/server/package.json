@@ -1,6 +1,6 @@
 {
   "name": "@bookdock/server",
-  "version": "0.0.39",
+  "version": "0.0.40",
   "description": "BookDock NestJS API Server",
   "private": true,
   "scripts": {
@@ -28,6 +28,7 @@
     "@nestjs/serve-static": "^4.0.2",
     "@nestjs/swagger": "^7.3.0",
     "@prisma/client": "^5.11.0",
+    "express": "^4.18.2",
     "axios": "^1.6.8",
     "bcryptjs": "^2.4.3",
     "class-transformer": "^0.5.1",

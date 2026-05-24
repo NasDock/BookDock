@@ -316,6 +316,9 @@ importers:
       domhandler:
         specifier: ^5.0.3
         version: 5.0.3
+      express:
+        specifier: ^4.18.2
+        version: 4.22.1
       iconv-lite:
         specifier: ^0.4.24
         version: 0.4.24
@@ -11729,7 +11732,7 @@ snapshots:
 
   ecdsa-sig-formatter@1.0.11:
     dependencies:
-      safe-buffer: 5.1.2
+      safe-buffer: 5.2.1
 
   ee-first@1.1.1: {}
 
@@ -13391,23 +13394,23 @@ snapshots:
     dependencies:
       buffer-equal-constant-time: 1.0.1
       ecdsa-sig-formatter: 1.0.11
-      safe-buffer: 5.1.2
+      safe-buffer: 5.2.1
 
   jwa@2.0.1:
     dependencies:
       buffer-equal-constant-time: 1.0.1
       ecdsa-sig-formatter: 1.0.11
-      safe-buffer: 5.1.2
+      safe-buffer: 5.2.1
 
   jws@3.2.3:
     dependencies:
       jwa: 1.4.2
-      safe-buffer: 5.1.2
+      safe-buffer: 5.2.1
 
   jws@4.0.1:
     dependencies:
       jwa: 2.0.1
-      safe-buffer: 5.1.2
+      safe-buffer: 5.2.1
 
   keyv@4.5.4:
     dependencies:
