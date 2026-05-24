@@ -26,7 +26,7 @@ import { HealthController } from './health.controller';
     }),
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'web'),
-      exclude: ['/api/(.*)', '/health'],
+      exclude: ['/api/(.*)', '/health', '/covers/(.*)'],
     }),
     DatabaseModule,
     AuthModule,
@@ -42,5 +42,4 @@ import { HealthController } from './health.controller';
   ],
   controllers: [HealthController],
 })
-// T8 completed
 export class AppModule {}

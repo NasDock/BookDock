@@ -57,6 +57,7 @@ interface SourceData {
 @Injectable()
 export class MetadataAggregatorService {
   private readonly logger = new Logger(MetadataAggregatorService.name);
+  private queue: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly doubanScraper: DoubanScraperService,
@@ -68,21 +69,46 @@ export class MetadataAggregatorService {
       return { success: false, error: 'Title is required' };
     }
 
+    return this.enqueue(() => this.fetchMetadataNow(title.trim()));
+  }
+
+  private async enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const previous = this.queue;
+    let release: () => void = () => undefined;
+    this.queue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    await previous;
+    try {
+      return await task();
+    } finally {
+      release();
+    }
+  }
+
+  private async fetchMetadataNow(title: string): Promise<AggregatedBookMetadata> {
+    const candidates = this.buildTitleCandidates(title);
+
     let doubanResult: DoubanBookInfo | null = null;
     let wikipediaResult: WikipediaBookInfo | null = null;
 
     try {
-      // 同时发起两个查询
-      [doubanResult, wikipediaResult] = await Promise.all([
-        this.doubanScraper.fetchByTitle(title).catch((err) => {
-          this.logger.warn(`Douban fetch failed for "${title}": ${err.message}`);
+      for (const candidate of candidates) {
+        doubanResult = await this.doubanScraper.fetchByTitle(candidate).catch((err) => {
+          this.logger.warn(`Douban fetch failed for "${candidate}": ${err.message}`);
           return null;
-        }),
-        this.wikipediaService.searchBook(title).catch((err) => {
-          this.logger.warn(`Wikipedia fetch failed for "${title}": ${err.message}`);
+        });
+        if (doubanResult) break;
+      }
+
+      for (const candidate of candidates) {
+        wikipediaResult = await this.wikipediaService.searchBook(candidate).catch((err) => {
+          this.logger.warn(`Wikipedia fetch failed for "${candidate}": ${err.message}`);
           return null;
-        }),
-      ]);
+        });
+        if (wikipediaResult) break;
+      }
     } catch (err) {
       this.logger.error(`Aggregate fetch failed for "${title}": ${err.message}`);
       return { success: false, error: `Fetch failed: ${err.message}` };
@@ -137,6 +163,18 @@ export class MetadataAggregatorService {
     }
 
     return { success: true, data: result };
+  }
+
+  private buildTitleCandidates(title: string): string[] {
+    const normalized = title.replace(/\s+/g, ' ').trim();
+    const withoutLeadingYear = normalized
+      .replace(/^(?:19|20)\d{2}[-_：:\s]+/, '')
+      .trim();
+    const withoutBracketSuffix = withoutLeadingYear
+      .replace(/[（(][^（）()]*[)）]\s*$/, '')
+      .trim();
+
+    return Array.from(new Set([normalized, withoutLeadingYear, withoutBracketSuffix].filter(Boolean)));
   }
 
   /**

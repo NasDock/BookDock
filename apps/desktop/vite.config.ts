@@ -58,6 +58,17 @@ export default defineConfig({
             },
           },
           {
+            // Local cover images: always fetch from network first to avoid stale HTML cache
+            urlPattern: /\/covers\/.+\.(?:png|jpg|jpeg|webp)$/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'cover-image-cache',
+              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              networkTimeoutSeconds: 5,
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
             urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/i,
             handler: 'CacheFirst',
             options: {
@@ -111,6 +122,12 @@ export default defineConfig({
     port: 3000,
     host: true,
     strictPort: false,
+    proxy: {
+      '/covers': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     outDir: 'dist',

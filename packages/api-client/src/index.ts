@@ -137,7 +137,7 @@ class ApiClient {
   }
 
   // Book endpoints
-  async getBooks(params?: { page?: number; limit?: number; search?: string }): Promise<ApiResponse<{ books: Book[]; total: number; page: number }>> {
+  async getBooks(params?: { page?: number; limit?: number; search?: string }): Promise<ApiResponse<{ books: Book[]; total: number; page: number; limit: number; totalPages: number }>> {
     const { data } = await this.client.get('/books', { params });
     return data;
   }

@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Book, getApiClient } from '@bookdock/api-client';
 
+const BOOKS_PAGE_SIZE = 100;
+
 interface LibraryState {
   books: Book[];
   isLoading: boolean;
@@ -39,17 +41,42 @@ export const useLibraryStore = create<LibraryState>()(
         try {
           const apiClient = getApiClient();
           const { searchQuery, currentPage: page } = get();
-          const response = await apiClient.getBooks({
+          const request = {
             page: params?.page ?? page,
-            limit: 20,
+            limit: params?.limit ?? BOOKS_PAGE_SIZE,
             search: params?.search ?? searchQuery,
-          });
+          };
+          const response = await apiClient.getBooks(request);
 
           if (response.success && response.data) {
+            const firstPage = response.data;
+            let books = firstPage.books;
+
+            if (!params?.page && firstPage.totalPages > firstPage.page) {
+              const remainingPages = Array.from(
+                { length: firstPage.totalPages - firstPage.page },
+                (_, index) => firstPage.page + index + 1,
+              );
+              const pageResponses = await Promise.all(
+                remainingPages.map((nextPage) =>
+                  apiClient.getBooks({ ...request, page: nextPage }),
+                ),
+              );
+
+              books = [
+                ...books,
+                ...pageResponses.flatMap((pageResponse) =>
+                  pageResponse.success && pageResponse.data
+                    ? pageResponse.data.books
+                    : [],
+                ),
+              ];
+            }
+
             set({
-              books: response.data.books,
-              totalBooks: response.data.total,
-              currentPage: response.data.page,
+              books,
+              totalBooks: firstPage.total,
+              currentPage: firstPage.page,
               isLoading: false,
             });
           } else {

@@ -186,13 +186,14 @@ interface BooksListResponse {
   books: Book[];
   total: number;
   page: number;
-  pageSize: number;
-  hasMore: boolean;
+  limit: number;
+  totalPages: number;
 }
 
 interface BooksQuery {
   page?: number;
   pageSize?: number;
+  limit?: number;
   search?: string;
   sort?: 'title' | 'author' | 'addedAt' | 'lastReadAt';
   order?: 'asc' | 'desc';
@@ -203,7 +204,7 @@ const libraryApi = {
   getBooks: async (query: BooksQuery = {}): Promise<ApiResponse<BooksListResponse>> => {
     const params = new URLSearchParams();
     if (query.page) params.set('page', String(query.page));
-    if (query.pageSize) params.set('pageSize', String(query.pageSize));
+    if (query.limit || query.pageSize) params.set('limit', String(query.limit ?? query.pageSize));
     if (query.search) params.set('search', query.search);
     if (query.sort) params.set('sort', query.sort);
     if (query.order) params.set('order', query.order);

@@ -10,6 +10,7 @@ import { useAuthStore } from './authStore';
 
 // Storage keys
 const READING_PROGRESS_KEY = 'bookdock-reading-progress';
+const BOOKS_PAGE_SIZE = 100;
 
 interface LibraryState {
   books: Book[];
@@ -95,12 +96,41 @@ export const useLibraryStore = create<LibraryState>()(
         set({ isLoading: true, error: null });
         try {
           const apiClient = getApiClient();
-          const response = await apiClient.getBooks(params);
+          const request = {
+            ...params,
+            limit: params.limit ?? BOOKS_PAGE_SIZE,
+            page: params.page ?? 1,
+          };
+          const response = await apiClient.getBooks(request);
           if (response.success && response.data) {
+            const firstPage = response.data;
+            let books = firstPage.books;
+
+            if (!params.page && firstPage.totalPages > firstPage.page) {
+              const remainingPages = Array.from(
+                { length: firstPage.totalPages - firstPage.page },
+                (_, index) => firstPage.page + index + 1,
+              );
+              const pageResponses = await Promise.all(
+                remainingPages.map((nextPage) =>
+                  apiClient.getBooks({ ...request, page: nextPage }),
+                ),
+              );
+
+              books = [
+                ...books,
+                ...pageResponses.flatMap((pageResponse) =>
+                  pageResponse.success && pageResponse.data
+                    ? pageResponse.data.books
+                    : [],
+                ),
+              ];
+            }
+
             set({
-              books: response.data.books,
-              totalBooks: response.data.total,
-              currentPage: response.data.page,
+              books,
+              totalBooks: firstPage.total,
+              currentPage: firstPage.page,
               isLoading: false,
             });
           } else {
@@ -114,9 +144,28 @@ export const useLibraryStore = create<LibraryState>()(
       searchBooks: async (query) => {
         try {
           const apiClient = getApiClient();
-          const response = await apiClient.getBooks({ search: query });
+          const response = await apiClient.getBooks({ search: query, limit: BOOKS_PAGE_SIZE });
           if (response.success && response.data) {
-            return response.data.books;
+            const firstPage = response.data;
+            if (firstPage.totalPages <= firstPage.page) {
+              return firstPage.books;
+            }
+
+            const pageResponses = await Promise.all(
+              Array.from(
+                { length: firstPage.totalPages - firstPage.page },
+                (_, index) => firstPage.page + index + 1,
+              ).map((page) => apiClient.getBooks({ search: query, limit: BOOKS_PAGE_SIZE, page })),
+            );
+
+            return [
+              ...firstPage.books,
+              ...pageResponses.flatMap((pageResponse) =>
+                pageResponse.success && pageResponse.data
+                  ? pageResponse.data.books
+                  : [],
+              ),
+            ];
           }
           return [];
         } catch {

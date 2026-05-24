@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import axios, { AxiosInstance } from 'axios';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import * as cheerio from 'cheerio';
 import type { AnyNode, Element, Text } from 'domhandler';
+
+const execFileAsync = promisify(execFile);
 
 export interface DoubanBookInfo {
   title: string;
@@ -23,64 +26,144 @@ export interface DoubanBookInfo {
 @Injectable()
 export class DoubanScraperService {
   private readonly logger = new Logger(DoubanScraperService.name);
-  private readonly http: AxiosInstance;
+  private readonly userAgent: string;
+  private readonly cookie: string | undefined;
   private lastRequestTime = 0;
+  private warnedBlocked = false;
 
   constructor() {
-    this.http = axios.create({
-      timeout: 15000,
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        Referer: 'https://book.douban.com/',
-        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        Accept:
-          'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        Connection: 'keep-alive',
-      },
-    });
+    this.cookie = this.normalizeCookie(process.env.DOUBAN_COOKIE);
+    this.userAgent =
+      process.env.METADATA_USER_AGENT ||
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36';
+
+    if (this.cookie) {
+      this.logger.log('DOUBAN_COOKIE detected; authenticated Douban requests are enabled.');
+    }
+  }
+
+  /**
+   * 清理书名，去掉开头的年份数字和 "作者：" 前缀
+   * 例如 "韩寒：通稿2003" -> "通稿2003"
+   * 例如 "1975 天涯·明月·刀" -> "天涯·明月·刀"
+   */
+  private cleanTitle(title: string): string {
+    let cleaned = title.trim();
+    // 去掉开头的 "作者名：" 或 "作者名:" 前缀
+    cleaned = cleaned.replace(/^[^：:]+[：:]\s*/, '');
+    // 去掉开头的 4 位年份数字（如 "1975 "、"2003 "）
+    cleaned = cleaned.replace(/^\d{4}\s+/, '');
+    return cleaned.trim();
+  }
+
+  /**
+   * 通过 curl 发送 HTTP GET 请求，返回响应体字符串
+   */
+  private async curlGet(url: string, useCookie = true): Promise<string> {
+    const args = [
+      '-s', // silent
+      '-L', // follow redirects
+      '-m', '20', // max time 20s
+      '--compressed',
+      '-H', `User-Agent: ${this.userAgent}`,
+      '-H', 'Referer: https://book.douban.com/',
+      '-H', 'Accept-Language: zh-CN,zh;q=0.9,en;q=0.8,zh-TW;q=0.7,en-US;q=0.6',
+      '-H', 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+      '-H', 'Accept-Encoding: gzip, deflate',
+      '-H', 'Cache-Control: no-cache',
+      '-H', 'Pragma: no-cache',
+      '-H', 'Connection: keep-alive',
+      '-H', 'Priority: u=0, i',
+      '-H', 'Sec-Ch-Ua: "Google Chrome";v="147", "Not.A/Brand";v="8", "Chromium";v="147"',
+      '-H', 'Sec-Ch-Ua-Mobile: ?0',
+      '-H', 'Sec-Ch-Ua-Platform: "macOS"',
+      '-H', 'Sec-Fetch-Dest: document',
+      '-H', 'Sec-Fetch-Mode: navigate',
+      '-H', 'Sec-Fetch-Site: none',
+      '-H', 'Sec-Fetch-User: ?1',
+      '-H', 'Upgrade-Insecure-Requests: 1',
+    ];
+
+    if (useCookie && this.cookie) {
+      args.push('-H', `Cookie: ${this.cookie}`);
+    }
+
+    // 代理支持
+    if (process.env.HTTPS_PROXY) {
+      args.push('-x', process.env.HTTPS_PROXY);
+    } else if (process.env.HTTP_PROXY) {
+      args.push('-x', process.env.HTTP_PROXY);
+    }
+
+    args.push(url);
+
+    try {
+      const { stdout, stderr } = await execFileAsync('curl', args, {
+        maxBuffer: 10 * 1024 * 1024, // 10MB
+        timeout: 25000,
+      });
+
+      if (stderr) {
+        this.logger.debug(`curl stderr: ${stderr}`);
+      }
+
+      return stdout;
+    } catch (err: any) {
+      // curl 可能返回非 0 退出码但 stdout 已有数据（如连接被重置但响应已接收完）
+      const stdout = err?.stdout;
+      if (typeof stdout === 'string' && stdout.length > 0) {
+        this.logger.debug(`curl exited with code ${err.code} but returned ${stdout.length} bytes`);
+        return stdout;
+      }
+      throw err;
+    }
   }
 
   /**
    * 通过书名搜索豆瓣图书，返回第一条搜索结果
+   * 只使用 j/subject_suggest 接口
    */
   async searchBook(
     title: string,
   ): Promise<{ url: string; title: string; coverUrl?: string; rating?: number } | null> {
     await this.throttle();
 
-    const searchUrl = `https://book.douban.com/subject_search?search_text=${encodeURIComponent(title)}`;
+    const cleanTitle = this.cleanTitle(title);
+    const searchUrl = `https://book.douban.com/j/subject_suggest?q=${encodeURIComponent(cleanTitle)}`;
+
     this.logger.debug(`Searching Douban: ${searchUrl}`);
 
-    try {
-      const { data: html } = await this.http.get(searchUrl);
-      const match = html.match(/window\.__DATA__\s*=\s*"?({.+?})"?\s*;/);
+    // 先尝试带 cookie
+    for (const useCookie of [true, false]) {
+      try {
+        const raw = await this.curlGet(searchUrl, useCookie);
 
-      if (!match) {
-        this.logger.warn('window.__DATA__ not found in search page');
-        return null;
+        // 如果返回的是 HTML（风控页面），跳过
+        if (raw.trim().startsWith('<')) {
+          this.logger.debug(`Douban returned HTML instead of JSON (cookie=${useCookie}), retrying...`);
+          continue;
+        }
+
+        const data = JSON.parse(raw);
+
+        if (Array.isArray(data) && data.length > 0) {
+          const first = data.find((item) => item?.url || item?.id);
+          if (first) {
+            return {
+              url: first.url || `https://book.douban.com/subject/${first.id}/`,
+              title: first.title || first.name || '',
+              coverUrl: first.pic ? this.enlargeCoverUrl(first.pic) : undefined,
+              rating: first.rating ? Number(first.rating) : undefined,
+            };
+          }
+        }
+      } catch (err) {
+        this.logRequestError('searchBook', title, err);
       }
-
-      const data = JSON.parse(match[1]);
-      const items = data.payload?.items || [];
-
-      if (!items.length) {
-        this.logger.warn(`No results for title: ${title}`);
-        return null;
-      }
-
-      const first = items[0];
-      return {
-        url: first.url,
-        title: first.title,
-        coverUrl: first.cover_url ? this.enlargeCoverUrl(first.cover_url) : undefined,
-        rating: first.rating?.value,
-      };
-    } catch (err) {
-      this.logger.error(`searchBook failed for "${title}": ${err.message}`);
-      return null;
     }
+
+    this.logger.warn(`No search result for title: ${title} (cleaned: ${cleanTitle})`);
+    return null;
   }
 
   /**
@@ -92,7 +175,7 @@ export class DoubanScraperService {
     this.logger.debug(`Fetching detail: ${doubanUrl}`);
 
     try {
-      const { data: html } = await this.http.get(doubanUrl);
+      const html = await this.curlGet(doubanUrl);
       const $ = cheerio.load(html);
 
       const title = $('span[property="v:itemreviewed"]').text().trim();
@@ -219,7 +302,7 @@ export class DoubanScraperService {
         authorIntro,
       };
     } catch (err) {
-      this.logger.error(`fetchBookDetail failed for ${doubanUrl}: ${err.message}`);
+      this.logRequestError('fetchBookDetail', doubanUrl, err);
       return null;
     }
   }
@@ -237,6 +320,35 @@ export class DoubanScraperService {
   }
 
   /* ---------- 私有工具 ---------- */
+
+  private logRequestError(action: string, target: string, err: unknown): void {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('403')) {
+      if (!this.warnedBlocked) {
+        this.logger.warn(
+          `Douban blocked metadata requests with 403. Refresh DOUBAN_COOKIE or set HTTPS_PROXY if your network/IP is blocked.`,
+        );
+        this.warnedBlocked = true;
+      }
+      this.logger.debug(`${action} blocked for "${target}": HTTP 403`);
+      return;
+    }
+
+    this.logger.warn(`${action} failed for "${target}": ${message}`);
+  }
+
+  private normalizeCookie(cookie: string | undefined): string | undefined {
+    if (!cookie) return undefined;
+
+    const trimmed = cookie.trim().replace(/^Cookie:\s*/i, '');
+    const unwrapped =
+      (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+      (trimmed.startsWith("'") && trimmed.endsWith("'"))
+        ? trimmed.slice(1, -1)
+        : trimmed;
+
+    return unwrapped.replace(/\r?\n/g, '').replace(/\s*;\s*/g, '; ').trim();
+  }
 
   /**
    * 封面图 URL 替换为 large 尺寸
@@ -256,17 +368,16 @@ export class DoubanScraperService {
   }
 
   /**
-   * 反爬节流：确保两次请求间隔 ≥ 500 ms
+   * 反爬节流：确保两次请求间隔足够长
    */
   private async throttle(): Promise<void> {
+    const interval = Number(process.env.DOUBAN_REQUEST_INTERVAL_MS || 3000);
     const now = Date.now();
     const elapsed = now - this.lastRequestTime;
-    const wait = 500 - elapsed;
+    const wait = interval - elapsed;
     if (wait > 0) {
       await new Promise((r) => setTimeout(r, wait));
     }
     this.lastRequestTime = Date.now();
   }
 }
-
-// T2 completed
