@@ -1,6 +1,6 @@
 {
   "name": "@bookdock/server",
-  "version": "0.0.41",
+  "version": "0.0.42",
   "description": "BookDock NestJS API Server",
   "private": true,
   "scripts": {
