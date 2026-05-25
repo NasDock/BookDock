@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { useOrientation } from '../hooks/useOrientation';
+import { usePlusAuthGuard } from '../hooks/usePlusAuthGuard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const WeChat = NativeModules.WeChat || NativeModules.RCTWeChat;
@@ -29,6 +30,16 @@ interface PaymentOverlay {
 }
 
 export function MemberBenefitsScreen({ navigation }: any) {
+  const guard = usePlusAuthGuard();
+
+  useEffect(() => {
+    if (guard === 'need-login') {
+      navigation.replace('MemberLogin');
+    } else if (guard === 'is-vip') {
+      navigation.replace('MemberDetail');
+    }
+  }, [guard, navigation]);
+
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
   const orientation = useOrientation();
@@ -51,7 +62,7 @@ export function MemberBenefitsScreen({ navigation }: any) {
   const checkOrderStatusImmediately = async (orderId: string, userId: string, tier: string) => {
     try {
       const res = await plusQueryPaymentStatus(orderId);
-      if (res.code === 0 && res.data) {
+      if (res.code === 200 && res.data) {
         const status = res.data.status;
         if (status === 'paid') {
           if (pollRef.current) clearInterval(pollRef.current);
@@ -109,13 +120,10 @@ export function MemberBenefitsScreen({ navigation }: any) {
   }, []);
 
   const loadData = async () => {
-    try {
-      const vip = await refreshVipStatus();
-      if (vip) navigation.replace('MemberDetail');
-    } catch {}
+    // VIP redirect is now handled by usePlusAuthGuard at the top level
     try {
       const priceRes = await plusGetCurrentLowestPrice();
-      if (priceRes.code === 0 && priceRes.data) {
+      if (priceRes.code === 200 && priceRes.data) {
         const annualRaw = priceRes.data.annual ?? priceRes.data.annualPrice;
         const lifetimeRaw = priceRes.data.lifetime ?? priceRes.data.lifetimePrice;
         const annual = typeof annualRaw === 'object' && annualRaw !== null ? (annualRaw as any).currentPrice : annualRaw;
@@ -128,7 +136,7 @@ export function MemberBenefitsScreen({ navigation }: any) {
     } catch {}
     try {
       const couponRes = await plusGetMyCoupons();
-      if (couponRes.code === 0 && Array.isArray(couponRes.data)) setCoupons(couponRes.data);
+      if (couponRes.code === 200 && Array.isArray(couponRes.data)) setCoupons(couponRes.data);
     } catch {}
   };
 
@@ -152,7 +160,7 @@ export function MemberBenefitsScreen({ navigation }: any) {
 
       try {
         const res = await plusQueryPaymentStatus(orderId);
-        if (res.code === 0 && res.data) {
+        if (res.code === 200 && res.data) {
           const status = res.data.status;
           if (status === 'paid') {
             clearInterval(timer);
@@ -203,7 +211,7 @@ export function MemberBenefitsScreen({ navigation }: any) {
       const amount = Number((rawAmount * (100 - couponDiscount) / 100).toFixed(2));
       const vipTier = productId === 'lifetime' ? 'LIFETIME' : 'BASIC';
       const data = await plusCreateVipPayment({ userId, amount, method, forVip: true, forPoints: false, vipTier, clientType: 'app', couponCode: couponCode || undefined });
-      if (data.code !== 0) {
+      if (data.code !== 200) {
         Alert.alert('错误', data.message || '创建订单失败');
         return;
       }
@@ -336,7 +344,7 @@ export function MemberBenefitsScreen({ navigation }: any) {
             <TouchableOpacity style={[styles.wechatBtn, { backgroundColor: '#f59e0b', flex: 0 }]} onPress={async () => {
               if (!vipUser?.id || !couponCode) return;
               const res = await plusVerifyCoupon(couponCode, vipUser.id);
-              if (res.code === 0 && res.data?.valid) setCouponDiscount(res.data.discountPercent || 0);
+              if (res.code === 200 && res.data?.valid) setCouponDiscount(res.data.discountPercent || 0);
               else Alert.alert('提示', res.message || '优惠券不可用');
             }}>
               <Text style={styles.btnText}>使用</Text>

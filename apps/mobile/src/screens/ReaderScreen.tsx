@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useReaderStore, useThemeStore, useLibraryStore, useAuthStore } from '../stores';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { getApiClient } from '@bookdock/api-client';
 import type { ReaderPosition } from '@bookdock/ebook-reader';
@@ -28,7 +29,6 @@ import type { RootStackParamList } from '../navigation/types';
 import * as FileSystem from 'expo-file-system';
 import jschardet from 'jschardet';
 import * as gbkjs from 'gbk.js';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Base64 to ArrayBuffer decoder (Buffer is not available in React Native)
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
@@ -797,7 +797,17 @@ export function ReaderScreen() {
     }
   }, [book.fileType, currentChapter, chapters.length, loadChapter]);
 
-  const handleTTS = useCallback(() => {
+  const handleTTS = useCallback(async () => {
+    const token = await AsyncStorage.getItem('bookdock_plus_token');
+    if (!token) {
+      navigation.navigate('MemberLogin');
+      return;
+    }
+    const vip = await useAuthStore.getState().refreshVipStatus();
+    if (!vip) {
+      navigation.navigate('MemberBenefits');
+      return;
+    }
     navigation.navigate('TTSScreen', { book });
   }, [navigation, book]);
 
