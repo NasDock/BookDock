@@ -130,9 +130,6 @@ export default function MemberBenefits() {
         }
       } catch {}
     };
-    refreshVipStatus().then((vip) => {
-      if (vip) navigate("/member-detail");
-    });
     loadPrice();
     plusGetMyCoupons()
       .then((res) => {
@@ -201,11 +198,6 @@ export default function MemberBenefits() {
 
   const handleBuy = useCallback(
     async (productId: string, method: "WECHAT" | "ALIPAY") => {
-      const token = localStorage.getItem("bookdock_plus_token");
-      if (!token) {
-        navigate("/member-login", { state: { from: location.pathname } });
-        return;
-      }
       setCreatingOrder(productId);
       setError(null);
       try {

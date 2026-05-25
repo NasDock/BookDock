@@ -144,11 +144,6 @@ export default function Membership() {
   };
 
   const loadVipProfile = async () => {
-    const vip = await refreshVipStatus();
-    if (!vip) {
-      setLoading(false);
-      return;
-    }
     setLoading(false);
   };
 
@@ -216,11 +211,6 @@ export default function Membership() {
 
   const handlePay = async () => {
     if (!selectedProduct) return;
-    const token = localStorage.getItem(VIP_TOKEN_KEY);
-    if (!token) {
-      navigate('/member-login', { state: { from: location.pathname } });
-      return;
-    }
 
     setPaying(true);
     setPaymentError(null);

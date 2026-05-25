@@ -96,6 +96,41 @@ function PremiumRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * PlusAuthRoute: guards membership-related pages.
+ * Logic:
+ *   1. If not logged into Plus → redirect to /member-login
+ *   2. If logged in and already VIP → redirect to /member-detail
+ *   3. Otherwise → render children (membership purchase page)
+ */
+function PlusAuthRoute({ children, vipDestination = "/member-detail" }: { children: React.ReactNode; vipDestination?: string }) {
+  const { isAuthenticated, isLoading } = useAuth();
+  const { plusToken, isVip } = useAuthStore();
+  const location = useLocation();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (!plusToken) {
+    return <Navigate to="/member-login" state={{ from: location.pathname }} replace />;
+  }
+
+  if (isVip) {
+    return <Navigate to={vipDestination} replace />;
+  }
+
+  return <>{children}</>;
+}
+
 // ============ Layout ============
 
 function AppLayout({ children }: { children: React.ReactNode }) {
@@ -104,13 +139,16 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { theme, toggleTheme } = useThemeStore();
   const { isVip: isPlusVip, refreshVipStatus } = useAuthStore();
+  const [vipChecked, setVipChecked] = useState(false);
   const [syncMenuOpen, setSyncMenuOpen] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
   const syncMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    refreshVipStatus();
-    const interval = setInterval(refreshVipStatus, 30000);
+    refreshVipStatus().finally(() => setVipChecked(true));
+    const interval = setInterval(() => {
+      refreshVipStatus();
+    }, 30000);
     return () => clearInterval(interval);
   }, [refreshVipStatus]);
 
@@ -253,7 +291,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
                       to="/membership"
                       className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                     >
-                      {isPlusVip ? (
+                      {vipChecked && isPlusVip ? (
                         <>
                           <Crown className="w-4 h-4 text-amber-500" />
                           <span>会员中心</span>
@@ -349,9 +387,9 @@ function AppRoutes() {
         <Route
           path="/member-benefits"
           element={
-            <ProtectedRoute>
+            <PlusAuthRoute>
               <MemberBenefits />
-            </ProtectedRoute>
+            </PlusAuthRoute>
           }
         />
         <Route
@@ -373,9 +411,9 @@ function AppRoutes() {
         <Route
           path="/membership"
           element={
-            <ProtectedRoute>
+            <PlusAuthRoute>
               <Membership />
-            </ProtectedRoute>
+            </PlusAuthRoute>
           }
         />
         <Route
