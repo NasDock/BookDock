@@ -15,7 +15,7 @@ async function bootstrap() {
   const nasEbookPath = resolve(process.env.NAS_EBOOK_PATH || '/data/ebooks');
   const coversPath = join(nasEbookPath, 'covers');
   logger.log(`Serving covers from: ${coversPath}`);
-  app.use('/covers', express.static(coversPath));
+  app.use('/api/covers', express.static(coversPath));
 
   // Global prefix
   app.setGlobalPrefix('api');
