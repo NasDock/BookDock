@@ -26,7 +26,7 @@ import { HealthController } from './health.controller';
     }),
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'web'),
-      exclude: ['/api/(.*)', '/health', '/api/covers/(.*)'],
+      exclude: ['/api/(.*)', '/health', '/covers/(.*)'],
     }),
     DatabaseModule,
     AuthModule,

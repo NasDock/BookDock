@@ -21,6 +21,7 @@ import {
   selectRecentlyRead,
   useLibraryStore,
 } from "../stores/libraryStore";
+import { getCoverImageUrl } from "../utils/network";
 
 // Extended book type with source info for NAS books
 interface BookWithSource extends Book {
@@ -92,7 +93,7 @@ const BookCard: React.FC<{ book: Book; onSelect: () => void }> = ({
       <div className="aspect-[2/3] rounded-xl overflow-hidden relative shadow-sm group-hover:shadow-md transition-shadow">
         {book.coverUrl ? (
           <img
-            src={book.coverUrl}
+            src={getCoverImageUrl(book.coverUrl)}
             alt={book.title}
             className="w-full h-full object-cover"
           />
@@ -605,7 +606,7 @@ export default function Library() {
                 <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden relative">
                   {book.coverUrl ? (
                     <img
-                      src={book.coverUrl}
+                      src={getCoverImageUrl(book.coverUrl)}
                       alt={book.title}
                       className="w-full h-full object-cover"
                     />
@@ -651,7 +652,7 @@ export default function Library() {
                 <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden">
                   {book.coverUrl ? (
                     <img
-                      src={book.coverUrl}
+                      src={getCoverImageUrl(book.coverUrl)}
                       alt={book.title}
                       className="w-full h-full object-cover"
                     />
@@ -739,7 +740,7 @@ export default function Library() {
                   <div className="w-12 h-16 rounded-lg overflow-hidden flex-shrink-0 shadow-sm">
                     {book.coverUrl ? (
                       <img
-                        src={book.coverUrl}
+                        src={getCoverImageUrl(book.coverUrl)}
                         alt={book.title}
                         className="w-full h-full object-cover"
                       />

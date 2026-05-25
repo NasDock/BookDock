@@ -21,6 +21,23 @@ export function getApiBaseUrl(): string {
   return API_BASE_URL;
 }
 
+/**
+ * Get the server base URL (without /api suffix) for static assets like cover images
+ */
+export function getServerBaseUrl(): string {
+  return API_BASE_URL.replace(/\/api$/, '');
+}
+
+/**
+ * Build a full cover image URL from a relative cover path
+ */
+export function getCoverImageUrl(coverUrl: string | undefined): string | undefined {
+  if (!coverUrl) return undefined;
+  if (coverUrl.startsWith('http')) return coverUrl;
+  const serverBase = getServerBaseUrl();
+  return `${serverBase}${coverUrl}`;
+}
+
 // Simple cache interface
 interface CacheEntry<T> {
   data: T;

@@ -50,7 +50,7 @@ export class CoverDownloaderService {
   getCoverUrlPath(identifier: string): string {
     const timestamp = Date.now();
     const filename = `${identifier}_${timestamp}.jpg`;
-    return `/api/covers/${filename}`;
+    return `/covers/${filename}`;
   }
 
   /**
@@ -76,7 +76,7 @@ export class CoverDownloaderService {
       const timestamp = Date.now();
       const filename = `${identifier}_${timestamp}.jpg`;
       const localPath = path.join(coversDir, filename);
-      const localUrl = `/api/covers/${filename}`;
+      const localUrl = `/covers/${filename}`;
 
       // 3. 构造请求头
       const headers: Record<string, string> = {

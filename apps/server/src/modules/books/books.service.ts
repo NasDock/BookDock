@@ -733,11 +733,7 @@ export class BooksService implements OnModuleInit {
       fileHash: book.fileHash || undefined,
       fileSize: book.fileSize ? Number(book.fileSize) : undefined,
       pageCount: book.pageCount || undefined,
-      coverUrl: book.coverUrl
-        ? (book.coverUrl.startsWith('/')
-            ? `${this.apiBaseUrl}${book.coverUrl.startsWith('/covers/') ? '/api' + book.coverUrl : book.coverUrl}`
-            : book.coverUrl)
-        : undefined,
+      coverUrl: book.coverUrl || undefined,
       metadata: book.metadata || {},
       readCount: book.readCount,
       downloadCount: book.downloadCount,

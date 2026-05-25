@@ -21,6 +21,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useLibraryStore, useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { useOrientation } from '../hooks/useOrientation';
+import { getCoverImageUrl } from '../services/api';
 import type { Book } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -231,7 +232,7 @@ export function LibraryScreen() {
         <View style={[styles.coverContainer, { backgroundColor: gradStart }]}>
           {hasCover ? (
             <Image
-              source={{ uri: item.coverUrl }}
+              source={{ uri: getCoverImageUrl(item.coverUrl) }}
               style={styles.coverImage}
               resizeMode="cover"
             />

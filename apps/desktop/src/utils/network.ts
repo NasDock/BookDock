@@ -175,3 +175,21 @@ export function getSavedApiBaseUrl(fallback = DEFAULT_API_BASE_URL): string {
 
   return fallback;
 }
+
+/**
+ * Get the server base URL (without /api suffix) for static assets like cover images
+ */
+export function getServerBaseUrl(): string {
+  const apiBaseUrl = getSavedApiBaseUrl();
+  return apiBaseUrl.replace(/\/api$/, '');
+}
+
+/**
+ * Build a full cover image URL from a relative cover path
+ */
+export function getCoverImageUrl(coverUrl: string | undefined): string | undefined {
+  if (!coverUrl) return undefined;
+  if (coverUrl.startsWith('http')) return coverUrl;
+  const serverBase = getServerBaseUrl();
+  return `${serverBase}${coverUrl}`;
+}
