@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
+  Image,
+  Animated,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -85,6 +87,9 @@ export function LibraryScreen() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [filterFormat, setFilterFormat] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const scrollY = useState(new Animated.Value(0))[0];
+  const flatListRef = useRef<FlatList<Book>>(null);
 
   const orientation = useOrientation();
   const gridColumns = useMemo(() => getGridColumns(orientation.width), [orientation.width]);
@@ -167,6 +172,15 @@ export function LibraryScreen() {
     setRefreshing(false);
   }, [fetchBooks]);
 
+  const handleScroll = useCallback((event: { nativeEvent: { contentOffset: { y: number } } }) => {
+    const y = event.nativeEvent.contentOffset.y;
+    setShowScrollTop(y > 400);
+  }, []);
+
+  const scrollToTop = useCallback(() => {
+    flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+  }, []);
+
   const handleDownload = useCallback(async (book: Book) => {
     const isDownloaded = localBooks.some((b) => b.id === book.id && b.isDownloaded);
     if (isDownloaded) {
@@ -205,6 +219,7 @@ export function LibraryScreen() {
     const progress = item.readingProgress ?? 0;
     const statusLabel = getStatusLabel(progress);
     const [gradStart, gradEnd] = getBookGradient(item.title);
+    const hasCover = !!item.coverUrl;
 
     return (
       <Pressable
@@ -214,8 +229,18 @@ export function LibraryScreen() {
       >
         {/* Cover */}
         <View style={[styles.coverContainer, { backgroundColor: gradStart }]}>
-          <View style={[styles.coverGradient, { backgroundColor: gradEnd }]} />
-          <Text style={styles.coverInitial}>{item.title.charAt(0)}</Text>
+          {hasCover ? (
+            <Image
+              source={{ uri: item.coverUrl }}
+              style={styles.coverImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <>
+              <View style={[styles.coverGradient, { backgroundColor: gradEnd }]} />
+              <Text style={styles.coverInitial}>{item.title.charAt(0)}</Text>
+            </>
+          )}
 
           {/* Format badge */}
           <View style={styles.formatBadge}>
@@ -345,6 +370,7 @@ export function LibraryScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <FlatList
+        ref={flatListRef}
         data={filteredBooks}
         keyExtractor={(item) => item.id}
         numColumns={gridColumns}
@@ -352,6 +378,8 @@ export function LibraryScreen() {
         ListHeaderComponent={renderHeader}
         contentContainerStyle={styles.listContentContainer}
         columnWrapperStyle={styles.gridRow}
+        onScroll={handleScroll}
+        scrollEventThrottle={200}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -367,6 +395,15 @@ export function LibraryScreen() {
           </View>
         }
       />
+      {showScrollTop && (
+        <TouchableOpacity
+          style={[styles.scrollTopButton, { backgroundColor: theme.colors.primary }]}
+          onPress={scrollToTop}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="arrow-up" size={20} color="#fff" />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -458,6 +495,11 @@ function createStyles(theme: ReturnType<typeof getTheme>, itemWidth: number) {
       alignItems: 'center',
       overflow: 'hidden',
       position: 'relative',
+    },
+    coverImage: {
+      width: '100%',
+      height: '100%',
+      borderRadius: borderRadius.lg,
     },
     coverGradient: {
       position: 'absolute',
@@ -553,6 +595,21 @@ function createStyles(theme: ReturnType<typeof getTheme>, itemWidth: number) {
       fontSize: fontSizes.md,
       color: theme.colors.textSecondary,
       marginTop: spacing.xs,
+    },
+    scrollTopButton: {
+      position: 'absolute',
+      right: spacing.md,
+      bottom: spacing.xl,
+      width: 44,
+      height: 44,
+      borderRadius: borderRadius.full,
+      justifyContent: 'center',
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      elevation: 4,
     },
   });
 }
