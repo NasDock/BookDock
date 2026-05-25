@@ -121,7 +121,7 @@ export default function Membership() {
   const loadPrices = async () => {
     try {
       const res = await plusGetCurrentLowestPrice();
-      if (res.code === 0 && res.data) {
+      if (res.code === 200 && res.data) {
         const annualRaw = res.data.annual ?? res.data.annualPrice;
         const lifetimeRaw = res.data.lifetime ?? res.data.lifetimePrice;
         const annualPrice = typeof annualRaw === 'object' && annualRaw !== null ? annualRaw.currentPrice : annualRaw;
@@ -170,7 +170,7 @@ export default function Membership() {
       }
       try {
         const res = await plusQueryPaymentStatus(orderId);
-        if (res.code === 0 && res.data) {
+        if (res.code === 200 && res.data) {
           const status = res.data.status;
           if (status === 'paid') {
             clearInterval(timer);
@@ -244,7 +244,7 @@ export default function Membership() {
         clientType: 'desktop',
       });
 
-      if (data.code !== 0) {
+      if (data.code !== 200) {
         throw new Error(data.message || '创建订单失败');
       }
 
@@ -519,9 +519,17 @@ export default function Membership() {
                   </div>
                 )}
                 {isPolling && (
-                  <div className="flex items-center justify-center gap-2 text-sm text-gray-500 mb-4">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    正在查询支付结果...
+                  <div className="flex flex-col items-center gap-3 mb-4">
+                    <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      正在查询支付结果...
+                    </div>
+                    <button
+                      onClick={closeModal}
+                      className="text-sm text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 underline"
+                    >
+                      取消支付
+                    </button>
                   </div>
                 )}
                 {!isPolling && !paymentSuccess && (

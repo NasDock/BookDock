@@ -230,7 +230,7 @@ export default function MemberBenefits() {
           clientType: "desktop",
           couponCode: couponCode || undefined,
         });
-        if (data.code !== 0) {
+        if (data.code !== 200) {
           setError(data.message || "创建订单失败");
           return;
         }
@@ -542,9 +542,17 @@ export default function MemberBenefits() {
               </div>
             )}
             {isPolling && (
-              <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                正在查询支付结果...
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  正在查询支付结果...
+                </div>
+                <button
+                  onClick={closeOverlay}
+                  className="text-sm text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 underline"
+                >
+                  取消支付
+                </button>
               </div>
             )}
           </div>

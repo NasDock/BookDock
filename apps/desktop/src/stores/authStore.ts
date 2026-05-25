@@ -139,7 +139,7 @@ export const useAuthStore = create<AuthState>()(
             return false;
           }
           const res = await plusGetMe(parsed.id);
-          if (res.code === 0 && res.data) {
+          if (res.code === 200 && res.data) {
             const me = res.data;
             const currentTier = me?.vipTier;
             const isVipNow = currentTier === 'BASIC' || currentTier === 'LIFETIME';
