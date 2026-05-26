@@ -11,3 +11,4 @@ export { MemberBenefitsScreen } from './MemberBenefitsScreen';
 export { MemberDetailScreen } from './MemberDetailScreen';
 export { MemberPaymentSuccessScreen } from './MemberPaymentSuccessScreen';
 export { ScanLoginScreen } from './ScanLoginScreen';
+export { AdminUsersScreen } from './AdminUsersScreen';

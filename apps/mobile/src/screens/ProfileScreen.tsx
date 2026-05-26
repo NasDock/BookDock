@@ -228,6 +228,26 @@ export function ProfileScreen() {
                 padding: spacing.md,
                 opacity: syncing ? 0.5 : 1,
               }}
+              onPress={() => {
+                setMenuVisible(false);
+                navigation.navigate('AdminUsers');
+              }}
+              disabled={!!syncing}
+            >
+              <Ionicons name="people-outline" size={18} color={theme.colors.text} />
+              <Text style={{ fontSize: fontSizes.md, color: theme.colors.text }}>用户管理</Text>
+            </TouchableOpacity>
+
+            <View style={{ height: 1, backgroundColor: theme.colors.border, marginHorizontal: spacing.md }} />
+
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: spacing.sm,
+                padding: spacing.md,
+                opacity: syncing ? 0.5 : 1,
+              }}
               onPress={() => handleSync('incremental')}
               disabled={!!syncing}
             >

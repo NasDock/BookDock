@@ -16,6 +16,7 @@ export type RootStackParamList = {
   MemberPaymentSuccess: undefined;
   SourceManage: undefined;
   Settings: undefined;
+  AdminUsers: undefined;
 };
 
 // Tab navigator param list

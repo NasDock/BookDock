@@ -9,6 +9,7 @@ import { ReaderScreen } from "../screens/ReaderScreen";
 import { ScanLoginScreen } from "../screens/ScanLoginScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { TTSScreen } from "../screens/TTSScreen";
+import { AdminUsersScreen } from "../screens/AdminUsersScreen";
 import { useAuthStore, useThemeStore } from "../stores";
 import { getTheme } from "../utils/theme";
 import { setNavigationBarAuto } from "../utils/navigationBar";
@@ -102,6 +103,14 @@ export function RootNavigator() {
               component={SettingsScreen}
               options={{
                 title: "设置",
+                headerBackTitle: "返回",
+              }}
+            />
+            <Stack.Screen
+              name="AdminUsers"
+              component={AdminUsersScreen}
+              options={{
+                title: "用户管理",
                 headerBackTitle: "返回",
               }}
             />

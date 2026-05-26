@@ -573,9 +573,10 @@ export function ReaderScreen() {
         }
       } else if (data.type === 'scrollDirection') {
         const direction = data.direction;
-        if (direction === 'down' || direction === 'up') {
-          // Scrolling in either direction (reading) -> hide bars
+        if (direction === 'down') {
           animateBars(false);
+        } else if (direction === 'up') {
+          animateBars(true);
         }
       } else if (data.type === 'click') {
         const { x, y } = data;
@@ -662,16 +663,21 @@ export function ReaderScreen() {
 
       const detectScrollDirection = () => {
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
-        const direction = scrollTop > directionAnchor ? 'down' : 'up';
-        const delta = Math.abs(scrollTop - directionAnchor);
-        // Only report direction change after significant movement (80px)
-        if (direction !== lastScrollDirection && delta > 80) {
-          lastScrollDirection = direction;
+        if (scrollTop <= 10) return; // Don't trigger at very top
+        
+        const delta = scrollTop - directionAnchor;
+        if (delta > 30) {
+          if (lastScrollDirection !== 'down') {
+            lastScrollDirection = 'down';
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scrollDirection', direction: 'down' }));
+          }
           directionAnchor = scrollTop;
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'scrollDirection',
-            direction: direction
-          }));
+        } else if (delta < -30) {
+          if (lastScrollDirection !== 'up') {
+            lastScrollDirection = 'up';
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'scrollDirection', direction: 'up' }));
+          }
+          directionAnchor = scrollTop;
         }
       };
 
@@ -686,8 +692,7 @@ export function ReaderScreen() {
 
       window.addEventListener('scroll', () => {
         sendProgress();
-        if (scrollTimeout) clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(detectScrollDirection, 150);
+        detectScrollDirection();
       }, { passive: true });
 
       document.addEventListener('click', function(e) {

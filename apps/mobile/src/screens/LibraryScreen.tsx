@@ -17,6 +17,7 @@ import {
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useLibraryStore, useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
@@ -29,9 +30,10 @@ import type { RootStackParamList } from '../navigation/types';
 const GAP = 12;
 
 function getGridColumns(screenWidth: number): number {
-  if (screenWidth >= 900) return 5;
-  if (screenWidth >= 768) return 4;
-  if (screenWidth >= 600) return 3;
+  if (screenWidth >= 1200) return 8;
+  if (screenWidth >= 900) return 7;
+  if (screenWidth >= 700) return 6;
+  if (screenWidth >= 500) return 4;
   return 3;
 }
 
@@ -229,7 +231,7 @@ export function LibraryScreen() {
         android_ripple={{ color: theme.colors.primary + '20' }}
       >
         {/* Cover */}
-        <View style={[styles.coverContainer, { backgroundColor: gradStart }]}>
+        <View style={styles.coverContainer}>
           {hasCover ? (
             <Image
               source={{ uri: getCoverImageUrl(item.coverUrl) }}
@@ -237,10 +239,12 @@ export function LibraryScreen() {
               resizeMode="cover"
             />
           ) : (
-            <>
-              <View style={[styles.coverGradient, { backgroundColor: gradEnd }]} />
+            <LinearGradient
+              colors={[gradStart, gradEnd]}
+              style={styles.coverGradient}
+            >
               <Text style={styles.coverInitial}>{item.title.charAt(0)}</Text>
-            </>
+            </LinearGradient>
           )}
 
           {/* Format badge */}
@@ -503,12 +507,11 @@ function createStyles(theme: ReturnType<typeof getTheme>, itemWidth: number) {
       borderRadius: borderRadius.lg,
     },
     coverGradient: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      height: '60%',
-      opacity: 0.5,
+      flex: 1,
+      width: '100%',
+      height: '100%',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     coverInitial: {
       fontSize: fontSizes.xxxl,
