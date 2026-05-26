@@ -8,6 +8,8 @@ import { notificationService } from './services';
 import { initApiClient } from '@bookdock/api-client';
 import { autoSelectServer, getSavedApiBaseUrl, toApiBaseUrl } from './utils/network';
 import { setApiBaseUrl } from './services/api';
+import { setNavigationBarAuto } from './utils/navigationBar';
+import { getTheme } from './utils/theme';
 
 // Keep splash screen visible while loading
 SplashScreen.preventAutoHideAsync();
@@ -70,6 +72,12 @@ export default function App() {
 
     initApp();
   }, []);
+
+  // 同步导航栏主题与 App 主题（必须在所有条件 return 之前调用 Hook）
+  const theme = getTheme(actualTheme === 'dark');
+  useEffect(() => {
+    setNavigationBarAuto(theme.colors.background);
+  }, [theme.colors.background]);
 
   if (!appReady) {
     return null;

@@ -11,13 +11,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   SafeAreaView,
-  StatusBar,
   ScrollView,
   Modal,
   Alert,
   Pressable,
   ActivityIndicator,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -379,8 +379,7 @@ export function TTSReaderScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <StatusBar
-        barStyle={actualTheme === 'dark' ? 'light-content' : 'dark-content'}
-        backgroundColor={theme.colors.background}
+        style={actualTheme === 'dark' ? 'light' : 'dark'}
       />
 
       {/* Header */}

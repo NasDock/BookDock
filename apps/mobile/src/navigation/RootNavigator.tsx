@@ -1,5 +1,6 @@
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { useEffect, useRef } from "react";
 import { LoginScreen } from "../screens/LoginScreen";
 import { MemberBenefitsScreen } from "../screens/MemberBenefitsScreen";
 import { MemberDetailScreen } from "../screens/MemberDetailScreen";
@@ -10,6 +11,7 @@ import { SettingsScreen } from "../screens/SettingsScreen";
 import { TTSScreen } from "../screens/TTSScreen";
 import { useAuthStore, useThemeStore } from "../stores";
 import { getTheme } from "../utils/theme";
+import { setNavigationBarAuto } from "../utils/navigationBar";
 import { MainTabNavigator } from "./MainTabNavigator";
 import type { RootStackParamList } from "./types";
 
@@ -20,9 +22,29 @@ export function RootNavigator() {
   const theme = getTheme(actualTheme === "dark");
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isLoading = useAuthStore((state) => state.isLoading);
+  const navigationRef = useNavigationContainerRef();
+  const routeNameRef = useRef<string | undefined>();
+
+  // 监听路由变化：从阅读器返回时恢复导航栏颜色
+  useEffect(() => {
+    const unsubscribe = navigationRef.addListener('state', () => {
+      const currentRoute = navigationRef.getCurrentRoute();
+      const currentName = currentRoute?.name;
+      const previousName = routeNameRef.current;
+      routeNameRef.current = currentName;
+
+      // 从阅读器页面返回到非阅读器页面时，恢复 App 主题导航栏颜色
+      if (previousName === 'Reader' && currentName !== 'Reader') {
+        setNavigationBarAuto(theme.colors.background);
+      }
+    });
+
+    return unsubscribe;
+  }, [navigationRef, theme.colors.background]);
 
   return (
     <NavigationContainer
+      ref={navigationRef}
       theme={{
         dark: theme.dark,
         colors: {

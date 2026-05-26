@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   SafeAreaView,
-  StatusBar,
   ActivityIndicator,
   Modal,
   Pressable,
@@ -15,14 +14,16 @@ import {
   ScrollView,
   Dimensions,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useReaderStore, useThemeStore, useLibraryStore, useAuthStore } from '../stores';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
+import { setNavigationBarAuto } from '../utils/navigationBar';
 import { getApiClient } from '@bookdock/api-client';
 import type { ReaderPosition } from '@bookdock/ebook-reader';
 import type { RootStackParamList } from '../navigation/types';
@@ -330,6 +331,13 @@ export function ReaderScreen() {
 
   // Reader theme colors for native UI bars
   const readerTheme = READER_THEMES.find(tm => tm.key === readerStore.mode) || READER_THEMES[0];
+
+  // Sync navigation bar color with reader theme when focused
+  useFocusEffect(
+    useCallback(() => {
+      setNavigationBarAuto(readerTheme.bg);
+    }, [readerTheme.bg])
+  );
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
@@ -865,9 +873,8 @@ export function ReaderScreen() {
   return (
     <View style={[styles.container, { backgroundColor: readerTheme.bg }]}>
       <StatusBar
-        barStyle={readerStore.mode === 'dark' ? 'light-content' : 'dark-content'}
+        style={readerStore.mode === 'dark' ? 'light' : 'dark'}
         hidden={!showBars}
-        animated={true}
       />
 
       {/* Top Toolbar */}
