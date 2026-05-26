@@ -5,7 +5,7 @@ import { useReaderStore } from '../stores/themeStore';
 import { useAuthStore } from '../stores/authStore';
 import { Button } from '@bookdock/ui';
 import type { ReaderMode } from '@bookdock/ebook-reader';
-import { ArrowLeft, Settings, BookOpen, Bookmark, ChevronLeft, ChevronRight, Volume2, Timer, X, Keyboard, Sun, Moon, ScrollText, Plus } from 'lucide-react';
+import { ArrowLeft, Settings, BookOpen, Bookmark, ChevronLeft, ChevronRight, Volume2, Timer, X, Keyboard, Sun, Moon, ScrollText, Plus, FileText } from 'lucide-react';
 
 // ==================== Bookmark ====================
 interface Bookmark {
@@ -589,6 +589,7 @@ export default function Reader() {
   const [isAutoScroll, setIsAutoScroll] = useState(false);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const autoScrollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   // contentRef is used for both reading area and auto-scroll
 
   const {
@@ -664,7 +665,18 @@ export default function Reader() {
   // Fetch chapters + load cloud progress (parallel to avoid race)
   useEffect(() => {
     const fetchChaptersAndProgress = async () => {
-      if (!id) return;
+      if (!id || !book) return;
+
+      // PDF files: skip chapters, use direct download URL
+      if (book.fileType === 'pdf') {
+        const apiClient = getApiClient();
+        const authHeader = apiClient['client']?.defaults?.headers?.common?.['Authorization'];
+        const token = typeof authHeader === 'string' ? authHeader.replace('Bearer ', '') : '';
+        const url = `${apiClient.baseURL}/books/${id}/download${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+        setPdfUrl(url);
+        return;
+      }
+
       try {
         const apiClient = getApiClient();
         // Fetch chapters and progress in parallel
@@ -699,14 +711,14 @@ export default function Reader() {
       }
     };
     fetchChaptersAndProgress();
-  }, [id]);
+  }, [id, book]);
 
   // Fetch chapter content (with cancellation to prevent race)
   useEffect(() => {
     let cancelled = false;
 
     const fetchContent = async () => {
-      if (!id || chapters.length === 0) return;
+      if (!id || chapters.length === 0 || !book || book.fileType === 'pdf') return;
       setIsChapterLoading(true);
       setReaderError(null);
       try {
@@ -734,7 +746,7 @@ export default function Reader() {
     return () => {
       cancelled = true;
     };
-  }, [id, currentChapter, chapters.length]);
+  }, [id, currentChapter, chapters.length, book]);
 
   const resetScroll = useCallback(() => {
     scrollPositionRef.current = 0;
@@ -1136,45 +1148,55 @@ export default function Reader() {
       />
 
       {/* Reader container */}
-      <div
-        ref={contentRef}
-        className={`reading-container ${mode} pt-20 pb-20 overflow-auto`}
-        style={{
-          padding: `${margin + 80}px ${margin}px ${margin + 80}px`,
-          height: '100vh',
-          boxSizing: 'border-box',
-          fontFamily,
-          fontSize: `${fontSize}px`,
-          lineHeight,
-        }}
-      >
-        {isChapterLoading && (
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
-          </div>
-        )}
-
-        {!isChapterLoading && chapterContent && (
-          <div>
-            {/* Chapter title */}
-            <h2
-              className="text-xl sm:text-2xl font-bold mb-6 pb-4 border-b border-gray-200 dark:border-gray-700"
-              style={{ fontFamily }}
-            >
-              {chapters[currentChapter]?.title || `第 ${currentChapter + 1} 章`}
-            </h2>
-            <div className="whitespace-pre-wrap leading-relaxed">
-              {chapterContent}
+      {book.fileType === 'pdf' && pdfUrl ? (
+        <div className="fixed inset-0 pt-14 pb-16">
+          <iframe
+            src={pdfUrl}
+            className="w-full h-full border-0"
+            title={book.title}
+          />
+        </div>
+      ) : (
+        <div
+          ref={contentRef}
+          className={`reading-container ${mode} pt-20 pb-20 overflow-auto`}
+          style={{
+            padding: `${margin + 80}px ${margin}px ${margin + 80}px`,
+            height: '100vh',
+            boxSizing: 'border-box',
+            fontFamily,
+            fontSize: `${fontSize}px`,
+            lineHeight,
+          }}
+        >
+          {isChapterLoading && (
+            <div className="flex items-center justify-center h-64">
+              <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
             </div>
-          </div>
-        )}
+          )}
 
-        {!isChapterLoading && !chapterContent && !readerError && (
-          <div className="flex items-center justify-center h-64 text-gray-500">
-            本章无内容
-          </div>
-        )}
-      </div>
+          {!isChapterLoading && chapterContent && (
+            <div>
+              {/* Chapter title */}
+              <h2
+                className="text-xl sm:text-2xl font-bold mb-6 pb-4 border-b border-gray-200 dark:border-gray-700"
+                style={{ fontFamily }}
+              >
+                {chapters[currentChapter]?.title || `第 ${currentChapter + 1} 章`}
+              </h2>
+              <div className="whitespace-pre-wrap leading-relaxed">
+                {chapterContent}
+              </div>
+            </div>
+          )}
+
+          {!isChapterLoading && !chapterContent && !readerError && (
+            <div className="flex items-center justify-center h-64 text-gray-500">
+              本章无内容
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

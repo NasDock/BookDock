@@ -372,6 +372,11 @@ export function ReaderScreen() {
 
   // Load specific chapter for TXT books
   const loadChapter = useCallback(async (chapterIndex: number, scrollOffset = 0) => {
+    // Only supported for txt files
+    if (book.fileType !== 'txt') {
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     try {
