@@ -7,6 +7,8 @@ import { TTSScreen } from '../screens/TTSScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { MemberLoginScreen } from '../screens/MemberLoginScreen';
+import { MemberBenefitsScreen } from '../screens/MemberBenefitsScreen';
+import { MemberDetailScreen } from '../screens/MemberDetailScreen';
 import { ScanLoginScreen } from '../screens/ScanLoginScreen';
 import { useAuthStore, useThemeStore } from '../stores';
 import { getTheme } from '../utils/theme';
@@ -88,6 +90,16 @@ export function RootNavigator() {
           name="MemberLogin"
           component={MemberLoginScreen}
           options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="MemberBenefits"
+          component={MemberBenefitsScreen}
+          options={{ title: '会员权益', headerBackTitle: '返回' }}
+        />
+        <Stack.Screen
+          name="MemberDetail"
+          component={MemberDetailScreen}
+          options={{ title: '会员详情', headerBackTitle: '返回' }}
         />
         <Stack.Screen
           name="ScanLogin"

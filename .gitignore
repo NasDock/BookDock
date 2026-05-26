@@ -15,6 +15,7 @@ npm-debug.log*
 # Build outputs
 dist/
 build/
+dev-dist/
 
 # IDE
 .idea/
