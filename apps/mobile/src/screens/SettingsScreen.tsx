@@ -23,7 +23,7 @@ export function SettingsScreen() {
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const themeMode = useThemeStore((state) => state.theme);
   const setThemeMode = useThemeStore((state) => state.setTheme);
-  const authStore = useAuthStore();
+  const { user, isVip } = useAuthStore();
   const readerStore = useReaderStore();
   const ttsStore = useTTSStore();
 
@@ -104,8 +104,8 @@ export function SettingsScreen() {
             setIsLoading(true);
             try {
               const apiClient = getApiClient();
-              await apiClient.deleteUser(authStore.user?.id || '');
-              authStore.logout();
+              await apiClient.deleteUser(user?.id || '');
+              useAuthStore.getState().logout();
             } catch {
               Alert.alert('错误', '删除账户失败，请联系客服');
             } finally {
@@ -115,7 +115,7 @@ export function SettingsScreen() {
         },
       ]
     );
-  }, [authStore]);
+  }, [user]);
 
   const renderSection = (title: string, children: React.ReactNode) => (
     <View style={styles.section}>
@@ -144,19 +144,17 @@ export function SettingsScreen() {
     </TouchableOpacity>
   );
 
-  const user = authStore.user;
-  const isPremium = user?.membership === 'premium';
   const handleMembershipPress = useCallback(() => {
     if (!user) {
       navigation.navigate('MemberLogin');
       return;
     }
-    if (isPremium) {
+    if (isVip) {
       navigation.navigate('MemberDetail');
       return;
     }
     navigation.navigate('MemberBenefits');
-  }, [isPremium, navigation, user]);
+  }, [isVip, navigation, user]);
 
   return (
     <ScrollView
@@ -170,14 +168,9 @@ export function SettingsScreen() {
           <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
           {renderRow('crown-outline', '会员类型',
             <View style={styles.rowValueRow}>
-              <Text style={styles.rowValueText}>{isPremium ? '高级会员' : '免费用户'}</Text>
+              <Text style={styles.rowValueText}>{isVip ? '高级会员' : '免费用户'}</Text>
               <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
             </View>,
-            handleMembershipPress
-          )}
-          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
-          {renderRow('star-outline', '升级到 Premium',
-            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />,
             handleMembershipPress
           )}
         </>
@@ -238,7 +231,7 @@ export function SettingsScreen() {
       )}
 
       {/* Logout */}
-      <TouchableOpacity style={styles.logoutButton} onPress={authStore.logout}>
+      <TouchableOpacity style={styles.logoutButton} onPress={useAuthStore.getState().logout}>
         <Text style={styles.logoutText}>退出登录</Text>
       </TouchableOpacity>
     </ScrollView>

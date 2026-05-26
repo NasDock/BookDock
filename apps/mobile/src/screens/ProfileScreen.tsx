@@ -127,21 +127,23 @@ export function ProfileScreen() {
               <Ionicons name="add" size={26} color={theme.colors.text} />
             </TouchableOpacity>
           )}
+        </View>
+      ),
+      headerRight: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 16 }}>
           <TouchableOpacity
             style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
             onPress={() => navigation.navigate('ScanLogin')}
           >
-            <Ionicons name="scan-outline" size={24} color={theme.colors.text} />
+            <Ionicons name="qr-code-outline" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
+            onPress={() => navigation.navigate('Settings')}
+          >
+            <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
           </TouchableOpacity>
         </View>
-      ),
-      headerRight: () => (
-        <TouchableOpacity
-          style={{ marginRight: 16, width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
-          onPress={() => navigation.navigate('Settings')}
-        >
-          <Ionicons name="settings-outline" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
       ),
     });
   }, [navigation, theme, user?.role]);
@@ -160,7 +162,16 @@ export function ProfileScreen() {
             </Text>
           </View>
         </View>
-        <Text style={styles.username}>{user?.username || '用户'}</Text>
+        <View style={styles.usernameRow}>
+          <Text style={styles.username}>{user?.username || '用户'}</Text>
+          <TouchableOpacity onPress={handleManageSubscription} style={styles.crownButton}>
+            <Ionicons
+              name={isVip ? 'diamond' : 'diamond-outline'}
+              size={20}
+              color={isVip ? '#FFD700' : theme.colors.textSecondary}
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Stats */}
@@ -173,31 +184,6 @@ export function ProfileScreen() {
           </View>
         ))}
       </View>
-
-      {/* Membership Card */}
-      <TouchableOpacity
-        style={[styles.membershipCard, { backgroundColor: theme.colors.surface }]}
-        onPress={handleManageSubscription}
-      >
-        <View style={styles.membershipHeader}>
-          <Ionicons
-            name={(user?.membership === 'premium' || isVip) ? 'diamond' : 'diamond-outline'}
-            size={24}
-            color={(user?.membership === 'premium' || isVip) ? '#FFD700' : theme.colors.textSecondary}
-          />
-          <View style={styles.membershipInfo}>
-            <Text style={styles.membershipTitle}>
-              {isVip ? (vipTier === 'LIFETIME' ? '永久会员' : '年卡会员') : user?.membership === 'premium' ? '高级会员' : '免费用户'}
-            </Text>
-            <Text style={styles.membershipSubtitle}>
-              {(user?.membership === 'premium' || isVip)
-                ? '已解锁全部功能'
-                : '升级解锁更多功能'}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
-        </View>
-      </TouchableOpacity>
 
       {/* Actions */}
       <View style={[styles.actionsCard, { backgroundColor: theme.colors.surface }]}>
@@ -319,11 +305,19 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       borderWidth: 2,
       borderColor: theme.colors.background,
     },
+    usernameRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: spacing.md,
+      gap: spacing.xs,
+    },
     username: {
       fontSize: fontSizes.xl,
       fontWeight: '700',
       color: theme.colors.text,
-      marginTop: spacing.md,
+    },
+    crownButton: {
+      padding: spacing.xs,
     },
     roleContainer: {
       marginTop: spacing.sm,
