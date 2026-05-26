@@ -1,24 +1,23 @@
-import type { JSX } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { MainTabNavigator } from './MainTabNavigator';
-import { ReaderScreen } from '../screens/ReaderScreen';
-import { TTSScreen } from '../screens/TTSScreen';
-import { SettingsScreen } from '../screens/SettingsScreen';
-import { LoginScreen } from '../screens/LoginScreen';
-import { MemberLoginScreen } from '../screens/MemberLoginScreen';
-import { MemberBenefitsScreen } from '../screens/MemberBenefitsScreen';
-import { MemberDetailScreen } from '../screens/MemberDetailScreen';
-import { ScanLoginScreen } from '../screens/ScanLoginScreen';
-import { useAuthStore, useThemeStore } from '../stores';
-import { getTheme } from '../utils/theme';
-import type { RootStackParamList } from './types';
+import { NavigationContainer } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { LoginScreen } from "../screens/LoginScreen";
+import { MemberBenefitsScreen } from "../screens/MemberBenefitsScreen";
+import { MemberDetailScreen } from "../screens/MemberDetailScreen";
+import { MemberLoginScreen } from "../screens/MemberLoginScreen";
+import { ReaderScreen } from "../screens/ReaderScreen";
+import { ScanLoginScreen } from "../screens/ScanLoginScreen";
+import { SettingsScreen } from "../screens/SettingsScreen";
+import { TTSScreen } from "../screens/TTSScreen";
+import { useAuthStore, useThemeStore } from "../stores";
+import { getTheme } from "../utils/theme";
+import { MainTabNavigator } from "./MainTabNavigator";
+import type { RootStackParamList } from "./types";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
   const actualTheme = useThemeStore((state) => state.actualTheme);
-  const theme = getTheme(actualTheme === 'dark');
+  const theme = getTheme(actualTheme === "dark");
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const isLoading = useAuthStore((state) => state.isLoading);
 
@@ -43,7 +42,7 @@ export function RootNavigator() {
           },
           headerTintColor: theme.colors.text,
           headerTitleStyle: {
-            fontWeight: '600',
+            fontWeight: "600",
           },
           contentStyle: {
             backgroundColor: theme.colors.background,
@@ -72,16 +71,16 @@ export function RootNavigator() {
               name="TTSScreen"
               component={TTSScreen}
               options={{
-                title: '听书',
-                headerBackTitle: '返回',
+                title: "听书",
+                headerBackTitle: "返回",
               }}
             />
             <Stack.Screen
               name="Settings"
               component={SettingsScreen}
               options={{
-                title: '设置',
-                headerBackTitle: '返回',
+                title: "设置",
+                headerBackTitle: "返回",
               }}
             />
           </>
@@ -94,12 +93,12 @@ export function RootNavigator() {
         <Stack.Screen
           name="MemberBenefits"
           component={MemberBenefitsScreen}
-          options={{ title: '会员权益', headerBackTitle: '返回' }}
+          options={{ title: "会员权益", headerBackTitle: "返回" }}
         />
         <Stack.Screen
           name="MemberDetail"
           component={MemberDetailScreen}
-          options={{ title: '会员详情', headerBackTitle: '返回' }}
+          options={{ title: "会员详情", headerBackTitle: "返回" }}
         />
         <Stack.Screen
           name="ScanLogin"
