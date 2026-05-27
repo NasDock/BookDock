@@ -5,7 +5,7 @@ import { useReaderStore } from '../stores/themeStore';
 import { useAuthStore } from '../stores/authStore';
 import { Button } from '@bookdock/ui';
 import type { ReaderMode } from '@bookdock/ebook-reader';
-import { ArrowLeft, Settings, BookOpen, Bookmark, ChevronLeft, ChevronRight, Volume2, Timer, X, Keyboard, Sun, Moon, ScrollText, Plus, FileText } from 'lucide-react';
+import { ArrowLeft, Settings, BookOpen, Bookmark, ChevronLeft, ChevronRight, Volume2, Timer, X, Keyboard, Sun, Moon, ScrollText, Plus, FileText, Heart, FolderPlus } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -816,7 +816,7 @@ export default function Reader() {
       if (!id || !book) return;
 
       // PDF files: skip chapters, use direct download URL
-      if (book.fileType === 'pdf') {
+      if ((book.fileType || book.format) === 'pdf') {
         const apiClient = getApiClient();
         const token = localStorage.getItem('bookdock_auth_token') || '';
         const baseUrl = `${apiClient.baseURL}/books/${id}/download`;
@@ -1311,9 +1311,9 @@ export default function Reader() {
       />
 
       {/* Reader container */}
-      {book.fileType === 'pdf' && pdfUrl ? (
+      {(book.fileType || book.format) === 'pdf' && pdfUrl ? (
         <PdfViewer url={pdfUrl} title={book.title} />
-      ) : book.fileType === 'pdf' && !pdfUrl ? (
+      ) : (book.fileType || book.format) === 'pdf' && !pdfUrl ? (
         <div className="fixed inset-0 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto"></div>

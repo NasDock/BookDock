@@ -10,6 +10,7 @@ import { ScanLoginScreen } from "../screens/ScanLoginScreen";
 import { SettingsScreen } from "../screens/SettingsScreen";
 import { TTSScreen } from "../screens/TTSScreen";
 import { AdminUsersScreen } from "../screens/AdminUsersScreen";
+import { CollectionDetailScreen } from "../screens/CollectionDetailScreen";
 import { useAuthStore, useThemeStore } from "../stores";
 import { getTheme } from "../utils/theme";
 import { setNavigationBarAuto } from "../utils/navigationBar";
@@ -113,6 +114,11 @@ export function RootNavigator() {
                 title: "用户管理",
                 headerBackTitle: "返回",
               }}
+            />
+            <Stack.Screen
+              name="CollectionDetail"
+              component={CollectionDetailScreen}
+              options={{ headerShown: false }}
             />
           </>
         )}

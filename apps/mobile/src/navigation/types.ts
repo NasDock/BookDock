@@ -17,6 +17,7 @@ export type RootStackParamList = {
   SourceManage: undefined;
   Settings: undefined;
   AdminUsers: undefined;
+  CollectionDetail: { collectionId: string };
 };
 
 // Tab navigator param list

@@ -242,7 +242,7 @@ export function TTSScreen() {
           <View style={styles.bookMeta}>
             <Text style={styles.bookTitle} numberOfLines={2}>{book.title}</Text>
             <Text style={styles.bookAuthor}>{book.author}</Text>
-            <Text style={styles.bookType}>{book.fileType.toUpperCase()}</Text>
+            <Text style={styles.bookType}>{(book.fileType || book.format || 'unknown').toUpperCase()}</Text>
           </View>
         </View>
 

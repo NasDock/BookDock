@@ -490,7 +490,7 @@ export function ReaderScreen() {
             // Use react-native-pdf for local PDF files
             setPdfSource({ uri: localPath });
           } else {
-            const html = generateReaderHtml(book.title, book.author, '', book.fileType, readerConfigRef.current);
+            const html = generateReaderHtml(book.title, book.author, '', book.fileType || book.format || 'epub', readerConfigRef.current);
             setHtmlContent(html);
           }
           setIsLoading(false);
@@ -532,7 +532,7 @@ export function ReaderScreen() {
         setPdfSource({ uri: pdfUrl, cache: true });
       } else {
         const arrayBuffer = await apiClient.downloadBookFile(book.id);
-        const html = generateReaderHtml(book.title, book.author, '', book.fileType, readerConfigRef.current);
+        const html = generateReaderHtml(book.title, book.author, '', book.fileType || book.format || 'epub', readerConfigRef.current);
         setHtmlContent(html);
       }
     } catch (err) {

@@ -1,6 +1,7 @@
 export { LibraryScreen } from './LibraryScreen';
 export { RecommendScreen } from './RecommendScreen';
 export { ReaderScreen } from './ReaderScreen';
+export { CollectionDetailScreen } from './CollectionDetailScreen';
 export { TTSScreen } from './TTSScreen';
 export { TTSReaderScreen } from './TTSReaderScreen';
 export { TTSTabScreen } from './TTSTabScreen';

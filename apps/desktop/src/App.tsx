@@ -10,6 +10,7 @@ import {
   Sparkles,
   Sun,
   Shield,
+  User,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -23,8 +24,10 @@ import {
 
 // Pages
 import Admin from "./pages/Admin";
+import CollectionDetail from "./pages/CollectionDetail";
 import Library from "./pages/Library";
 import Login from "./pages/Login";
+import Profile from "./pages/Profile";
 import Recommend from "./pages/Recommend";
 import MemberBenefits from "./pages/MemberBenefits";
 import MemberDetail from "./pages/MemberDetail";
@@ -206,6 +209,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   const navItems = [
     { path: "/recommend", label: "推荐", icon: Sparkles },
     { path: "/", label: "书库", icon: BookOpen },
+    { path: "/profile", label: "我的", icon: User },
   ];
 
   // Admin nav items moved to user dropdown menu
@@ -476,6 +480,22 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <Settings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Profile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/collections/:id"
+          element={
+            <ProtectedRoute>
+              <CollectionDetail />
             </ProtectedRoute>
           }
         />

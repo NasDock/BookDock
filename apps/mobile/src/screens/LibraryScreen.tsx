@@ -249,7 +249,7 @@ export function LibraryScreen() {
 
           {/* Format badge */}
           <View style={styles.formatBadge}>
-            <Text style={styles.formatBadgeText}>{item.fileType.toUpperCase()}</Text>
+            <Text style={styles.formatBadgeText}>{(item.fileType || item.format || 'unknown').toUpperCase()}</Text>
           </View>
 
           {/* Download button */}
@@ -282,7 +282,7 @@ export function LibraryScreen() {
         <Text style={styles.bookAuthor} numberOfLines={1}>{item.author || '未知作者'}</Text>
         <View style={styles.bookMeta}>
           <Text style={styles.statusText}>{statusLabel}</Text>
-          <Text style={styles.sizeText}>{formatFileSize(item.fileSize)}</Text>
+          <Text style={styles.sizeText}>{formatFileSize(item.fileSize ?? 0)}</Text>
         </View>
       </Pressable>
     );

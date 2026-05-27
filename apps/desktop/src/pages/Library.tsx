@@ -121,7 +121,7 @@ const BookCard: React.FC<{ book: Book; onSelect: () => void }> = ({
 
         {/* Format badge */}
         <div className="absolute top-2 right-2 px-2 py-0.5 bg-orange-400/90 rounded-md text-[10px] text-white font-medium uppercase">
-          {book.fileType}
+          {book.fileType || book.format}
         </div>
       </div>
 
@@ -164,7 +164,7 @@ export default function Library() {
   const [nasBooks, setNasBooks] = useState<BookWithSource[]>([]);
 
   // Advanced filters
-  const [filterFormat, setFilterFormat] = useState<Book["fileType"] | "all">(
+  const [filterFormat, setFilterFormat] = useState<string | "all">(
     "all",
   );
   const [filterProgress, setFilterProgress] = useState<ProgressFilter>("all");
@@ -259,7 +259,7 @@ export default function Library() {
                   id: `nas_${selectedSourceId}_${f.path}`,
                   title: f.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " "),
                   author: "未知作者",
-                  fileType: ext as Book["fileType"],
+                  fileType: ext,
                   filePath: f.path,
                   fileSize: f.size,
                   addedAt: f.lastModified,
@@ -672,7 +672,7 @@ export default function Library() {
 
                   {/* Format */}
                   <span className="text-sm text-orange-500 dark:text-orange-400 flex-shrink-0">
-                    {book.fileType.toUpperCase()}
+                    {(book.fileType || book.format || '').toUpperCase()}
                   </span>
 
                   {/* Status badge */}

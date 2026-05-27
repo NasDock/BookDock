@@ -232,7 +232,7 @@ export const useLibraryStore = create<LibraryState>()(
             await FileSystem.makeDirectoryAsync(booksDir, { intermediates: true });
           }
 
-          const localPath = `${booksDir}${book.id}_${book.title}.${book.fileType}`;
+          const localPath = `${booksDir}${book.id}_${book.title}.${book.fileType || book.format || 'epub'}`;
 
           // Check if already downloaded
           const fileInfo = await FileSystem.getInfoAsync(localPath);

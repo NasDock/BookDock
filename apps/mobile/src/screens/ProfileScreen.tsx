@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useLayoutEffect } from 'react';
+import { useCallback, useMemo, useState, useLayoutEffect, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,91 +9,107 @@ import {
   Modal,
   Pressable,
   ActivityIndicator,
+  Image,
+  TextInput,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore, useLibraryStore, useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
-import { getApiClient } from '@bookdock/api-client';
+import { getApiClient, type Book, type Collection } from '@bookdock/api-client';
+import { getCoverImageUrl } from '../services/api';
 
-interface StatItem {
-  label: string;
-  value: string | number;
-  icon: string;
+function getBookGradient(title: string): string[] {
+  const gradients = [
+    ['#3B82F6', '#6366F1'],
+    ['#8B5CF6', '#A855F7'],
+    ['#06B6D4', '#3B82F6'],
+    ['#10B981', '#34D399'],
+    ['#F59E0B', '#F97316'],
+    ['#EF4444', '#F97316'],
+    ['#EC4899', '#F43F5E'],
+    ['#6366F1', '#8B5CF6'],
+  ];
+  let hash = 0;
+  for (let i = 0; i < title.length; i++) {
+    hash = title.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return gradients[Math.abs(hash) % gradients.length];
 }
+
+type TabKey = 'collections' | 'reading' | 'favorites' | 'downloads';
 
 export function ProfileScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
-  const { user, logout, isVip, vipTier } = useAuthStore();
+  const { user, logout, isVip } = useAuthStore();
   const { books, localBooks } = useLibraryStore();
+
+  const [activeTab, setActiveTab] = useState<TabKey>('collections');
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [favorites, setFavorites] = useState<Book[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState('');
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  // Calculate stats from real data
-  const totalBooks = books.length;
-  const downloadedBooks = localBooks.filter((b) => b.isDownloaded).length;
-  const totalReadingProgress = books.reduce((acc, book) => acc + (book.readingProgress || 0), 0);
-  const avgProgress = totalBooks > 0 ? Math.round(totalReadingProgress / totalBooks) : 0;
-
-  const stats: StatItem[] = [
-    { label: '书籍', value: totalBooks, icon: 'library' },
-    { label: '已下载', value: downloadedBooks, icon: 'cloud-download' },
-    { label: '平均进度', value: `${avgProgress}%`, icon: 'trending-up' },
-  ];
-
-  const handleEditProfile = useCallback(() => {
-    Alert.alert('即将上线', '编辑资料功能将在后续版本开放');
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const api = getApiClient();
+      const [colRes, favRes] = await Promise.all([
+        api.getCollections(),
+        api.getFavorites(),
+      ]);
+      if (colRes.success && colRes.data) setCollections(colRes.data);
+      if (favRes.success && favRes.data) setFavorites(favRes.data);
+    } catch (err) {
+      console.error('Failed to fetch profile data:', err);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const handleManageSubscription = useCallback(() => {
-    if (!user) {
-      navigation.navigate('MemberLogin');
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const inProgressBooks = useMemo(
+    () => books.filter((b) => (b.readingProgress ?? 0) > 0 && (b.readingProgress ?? 0) < 100),
+    [books]
+  );
+
+  const downloadedBooks = useMemo(
+    () => localBooks.filter((b) => b.isDownloaded),
+    [localBooks]
+  );
+
+  const handleCreateCollection = useCallback(async () => {
+    if (!newCollectionName.trim()) {
+      Alert.alert('提示', '请输入书单名称');
       return;
     }
-    if (isVip) {
-      navigation.navigate('MemberDetail');
-      return;
+    try {
+      const api = getApiClient();
+      await api.createCollection({ name: newCollectionName.trim() });
+      setNewCollectionName('');
+      setShowCreateModal(false);
+      fetchData();
+    } catch {
+      Alert.alert('错误', '创建书单失败');
     }
-    navigation.navigate('MemberBenefits');
-  }, [navigation, user, isVip]);
-
-  const handleLogout = useCallback(() => {
-    Alert.alert('确认', '确定要退出登录吗？', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '退出登录',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const apiClient = getApiClient();
-            await apiClient.logout();
-          } catch {
-            // Ignore logout errors
-          }
-          logout();
-          // @ts-ignore
-          navigation.replace('Login');
-        },
-      },
-    ]);
-  }, [logout, navigation]);
-
-  // Header sync button state
-  const [menuVisible, setMenuVisible] = useState(false);
-  const [syncing, setSyncing] = useState<string | null>(null);
+  }, [newCollectionName, fetchData]);
 
   const handleSync = useCallback(async (type: 'full' | 'incremental') => {
     const title = type === 'full' ? '全量更新' : '增量更新';
-    const message =
-      type === 'full'
-        ? '扫描所有本地书籍，新增数据库不存在的，标记已删除的，重新抓取所有现有书籍的元数据。'
-        : '仅扫描新数据，现有数据不做处理。';
-
-    Alert.alert(title, message, [
+    Alert.alert(title, type === 'full' ? '扫描所有本地书籍...' : '仅扫描新数据...', [
       { text: '取消', style: 'cancel' },
       {
         text: '确认',
@@ -102,7 +118,7 @@ export function ProfileScreen() {
           try {
             const api = getApiClient();
             const res = await api.syncBooks(type);
-            Alert.alert('同步完成', res.data?.message || `${type === 'full' ? '全量' : '增量'}更新成功`);
+            Alert.alert('同步完成', res.data?.message || '更新成功');
           } catch (e: any) {
             Alert.alert('同步失败', e?.response?.data?.message || '请求失败');
           } finally {
@@ -114,19 +130,35 @@ export function ProfileScreen() {
     ]);
   }, []);
 
-  // Configure header buttons
+  const handleLogout = useCallback(() => {
+    Alert.alert('确认', '确定要退出登录吗？', [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '退出登录',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const apiClient = getApiClient();
+            await apiClient.logout();
+          } catch { /* ignore */ }
+          logout();
+          // @ts-ignore
+          navigation.replace('Login');
+        },
+      },
+    ]);
+  }, [logout, navigation]);
+
   useLayoutEffect(() => {
     navigation.setOptions({
       headerLeft: () => (
         <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 16 }}>
-          {user?.role === 'admin' && (
-            <TouchableOpacity
-              style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
-              onPress={() => setMenuVisible(true)}
-            >
-              <Ionicons name="add" size={26} color={theme.colors.text} />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
+            onPress={() => setMenuVisible(true)}
+          >
+            <Ionicons name="add" size={26} color={theme.colors.text} />
+          </TouchableOpacity>
         </View>
       ),
       headerRight: () => (
@@ -146,143 +178,199 @@ export function ProfileScreen() {
         </View>
       ),
     });
-  }, [navigation, theme, user?.role]);
+  }, [navigation, theme]);
+
+  const tabs: { key: TabKey; label: string }[] = [
+    { key: 'collections', label: '书单' },
+    { key: 'reading', label: '在读' },
+    { key: 'favorites', label: '收藏' },
+    { key: 'downloads', label: '下载' },
+  ];
+
+  const renderBookCard = (book: Book) => (
+    <TouchableOpacity
+      key={book.id}
+      style={[styles.bookCard, { backgroundColor: theme.colors.surface }]}
+      onPress={() => navigation.navigate('Reader', { book })}
+      activeOpacity={0.8}
+    >
+      <View style={styles.coverContainer}>
+        {book.coverUrl ? (
+          <Image source={{ uri: getCoverImageUrl(book.coverUrl) }} style={styles.coverImage} resizeMode="cover" />
+        ) : (
+          <LinearGradient colors={getBookGradient(book.title) as [string, string]} style={styles.coverImage}>
+            <Text style={styles.coverLetter}>{book.title.charAt(0)}</Text>
+          </LinearGradient>
+        )}
+      </View>
+      <View style={styles.bookInfo}>
+        <Text style={[styles.bookTitle, { color: theme.colors.text }]} numberOfLines={2}>{book.title}</Text>
+        <Text style={[styles.bookAuthor, { color: theme.colors.textSecondary }]}>{book.author || '未知作者'}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+
+  const renderContent = () => {
+    if (isLoading) {
+      return (
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+        </View>
+      );
+    }
+
+    switch (activeTab) {
+      case 'collections':
+        return (
+          <View style={styles.listContainer}>
+            {collections.length === 0 ? (
+              <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>暂无书单</Text>
+            ) : (
+              collections.map((col) => (
+                <TouchableOpacity
+                  key={col.id}
+                  style={[styles.collectionCard, { backgroundColor: theme.colors.surface }]}
+                  onPress={() => navigation.navigate('CollectionDetail', { collectionId: col.id })}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="folder-open-outline" size={32} color={theme.colors.primary} />
+                  <View style={styles.collectionInfo}>
+                    <Text style={[styles.collectionName, { color: theme.colors.text }]} numberOfLines={1}>{col.name}</Text>
+                    <Text style={[styles.collectionMeta, { color: theme.colors.textSecondary }]}>{col.bookCount} 本书</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              ))
+            )}
+          </View>
+        );
+      case 'reading':
+        return (
+          <View style={styles.listContainer}>
+            {inProgressBooks.length === 0 ? (
+              <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>暂无在读书籍</Text>
+            ) : (
+              inProgressBooks.map(renderBookCard)
+            )}
+          </View>
+        );
+      case 'favorites':
+        return (
+          <View style={styles.listContainer}>
+            {favorites.length === 0 ? (
+              <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>暂无收藏</Text>
+            ) : (
+              favorites.map(renderBookCard)
+            )}
+          </View>
+        );
+      case 'downloads':
+        return (
+          <View style={styles.listContainer}>
+            {downloadedBooks.length === 0 ? (
+              <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>暂无下载</Text>
+            ) : (
+              downloadedBooks.map((b) => renderBookCard(b as unknown as Book))
+            )}
+          </View>
+        );
+    }
+  };
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
-      contentContainerStyle={styles.content}
-    >
-      {/* Profile Header */}
-      <View style={[styles.profileHeader, { backgroundColor: theme.colors.surface }]}>
-        <View style={styles.avatarContainer}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <ScrollView contentContainerStyle={styles.content}>
+        {/* Profile Header */}
+        <View style={[styles.profileHeader, { backgroundColor: theme.colors.surface }]}>
           <View style={[styles.avatar, { backgroundColor: theme.colors.primary }]}>
-            <Text style={styles.avatarText}>
-              {user?.username?.charAt(0).toUpperCase() || 'U'}
-            </Text>
+            <Text style={styles.avatarText}>{user?.username?.charAt(0).toUpperCase() || 'U'}</Text>
+          </View>
+          <View style={styles.usernameRow}>
+            <Text style={styles.username}>{user?.username || '用户'}</Text>
+            <TouchableOpacity onPress={() => {}}>
+              <Ionicons name={isVip ? 'diamond' : 'diamond-outline'} size={20} color={isVip ? '#FFD700' : theme.colors.textSecondary} />
+            </TouchableOpacity>
           </View>
         </View>
-        <View style={styles.usernameRow}>
-          <Text style={styles.username}>{user?.username || '用户'}</Text>
-          <TouchableOpacity onPress={handleManageSubscription} style={styles.crownButton}>
-            <Ionicons
-              name={isVip ? 'diamond' : 'diamond-outline'}
-              size={20}
-              color={isVip ? '#FFD700' : theme.colors.textSecondary}
-            />
-          </TouchableOpacity>
+
+        {/* Tabs */}
+        <View style={[styles.tabBar, { backgroundColor: theme.colors.surface }]}>
+          {tabs.map((tab) => (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.tabItem, activeTab === tab.key && { borderBottomColor: theme.colors.primary }]}
+              onPress={() => setActiveTab(tab.key)}
+            >
+              <Text style={[styles.tabText, { color: activeTab === tab.key ? theme.colors.primary : theme.colors.textSecondary }]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
-      </View>
 
-      {/* Stats */}
-      <View style={styles.statsContainer}>
-        {stats.map((stat, index) => (
-          <View key={index} style={[styles.statCard, { backgroundColor: theme.colors.surface }]}>
-            <Ionicons name={stat.icon as any} size={24} color={theme.colors.primary} />
-            <Text style={styles.statValue}>{stat.value}</Text>
-            <Text style={styles.statLabel}>{stat.label}</Text>
-          </View>
-        ))}
-      </View>
+        {/* Content */}
+        {renderContent()}
 
-      {/* Actions */}
-      <View style={[styles.actionsCard, { backgroundColor: theme.colors.surface }]}>
-        <TouchableOpacity style={styles.actionItem} onPress={handleLogout}>
+        {/* Logout */}
+        <TouchableOpacity style={[styles.logoutButton, { backgroundColor: theme.colors.surface }]} onPress={handleLogout}>
           <Ionicons name="log-out-outline" size={20} color={theme.colors.error} />
-          <Text style={[styles.actionText, { color: theme.colors.error }]}>退出登录</Text>
-          <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+          <Text style={[styles.logoutText, { color: theme.colors.error }]}>退出登录</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
 
-      {/* Sync Menu Modal */}
-      <Modal
-        visible={menuVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setMenuVisible(false)}
-      >
+      {/* Add Menu Modal */}
+      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' }} onPress={() => setMenuVisible(false)}>
-          <View
-            style={{
-              position: 'absolute',
-              top: 60,
-              left: 16,
-              width: 160,
-              backgroundColor: theme.colors.surface,
-              borderRadius: borderRadius.lg,
-              borderWidth: 1,
-              borderColor: theme.colors.border,
-              overflow: 'hidden',
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.15,
-              shadowRadius: 8,
-              elevation: 5,
-            }}
-          >
-            <TouchableOpacity
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: spacing.sm,
-                padding: spacing.md,
-                opacity: syncing ? 0.5 : 1,
-              }}
-              onPress={() => {
-                setMenuVisible(false);
-                navigation.navigate('AdminUsers');
-              }}
-              disabled={!!syncing}
-            >
-              <Ionicons name="people-outline" size={18} color={theme.colors.text} />
-              <Text style={{ fontSize: fontSizes.md, color: theme.colors.text }}>用户管理</Text>
+          <View style={[styles.menu, { backgroundColor: theme.colors.surface }]}>
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); setShowCreateModal(true); }}>
+              <Ionicons name="folder-open-outline" size={18} color={theme.colors.text} />
+              <Text style={{ fontSize: fontSizes.md, color: theme.colors.text }}>新建书单</Text>
             </TouchableOpacity>
-
-            <View style={{ height: 1, backgroundColor: theme.colors.border, marginHorizontal: spacing.md }} />
-
-            <TouchableOpacity
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: spacing.sm,
-                padding: spacing.md,
-                opacity: syncing ? 0.5 : 1,
-              }}
-              onPress={() => handleSync('incremental')}
-              disabled={!!syncing}
-            >
-              {syncing === 'incremental' ? (
-                <ActivityIndicator size="small" color={theme.colors.primary} />
-              ) : (
-                <Ionicons name="add-circle-outline" size={18} color={theme.colors.text} />
-              )}
-              <Text style={{ fontSize: fontSizes.md, color: theme.colors.text }}>增量更新</Text>
-            </TouchableOpacity>
-
-            <View style={{ height: 1, backgroundColor: theme.colors.border, marginHorizontal: spacing.md }} />
-
-            <TouchableOpacity
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: spacing.sm,
-                padding: spacing.md,
-                opacity: syncing ? 0.5 : 1,
-              }}
-              onPress={() => handleSync('full')}
-              disabled={!!syncing}
-            >
-              {syncing === 'full' ? (
-                <ActivityIndicator size="small" color={theme.colors.primary} />
-              ) : (
-                <Ionicons name="refresh-circle-outline" size={18} color={theme.colors.text} />
-              )}
-              <Text style={{ fontSize: fontSizes.md, color: theme.colors.text }}>全量更新</Text>
-            </TouchableOpacity>
+            {user?.role === 'admin' && (
+              <>
+                <View style={{ height: 1, backgroundColor: theme.colors.border, marginHorizontal: spacing.md }} />
+                <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); navigation.navigate('AdminUsers'); }}>
+                  <Ionicons name="people-outline" size={18} color={theme.colors.text} />
+                  <Text style={{ fontSize: fontSizes.md, color: theme.colors.text }}>用户管理</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.menuItem} onPress={() => handleSync('incremental')} disabled={!!syncing}>
+                  <Ionicons name="add-circle-outline" size={18} color={theme.colors.text} />
+                  <Text style={{ fontSize: fontSizes.md, color: theme.colors.text }}>增量更新</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.menuItem} onPress={() => handleSync('full')} disabled={!!syncing}>
+                  <Ionicons name="refresh-circle-outline" size={18} color={theme.colors.text} />
+                  <Text style={{ fontSize: fontSizes.md, color: theme.colors.text }}>全量更新</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </Pressable>
       </Modal>
-    </ScrollView>
+
+      {/* Create Collection Modal */}
+      <Modal visible={showCreateModal} transparent animationType="slide" onRequestClose={() => setShowCreateModal(false)}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: theme.colors.text }]}>新建书单</Text>
+            <TextInput
+              style={[styles.input, { color: theme.colors.text, borderColor: theme.colors.border }]}
+              placeholder="书单名称"
+              placeholderTextColor={theme.colors.textSecondary}
+              value={newCollectionName}
+              onChangeText={setNewCollectionName}
+            />
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <TouchableOpacity style={[styles.modalButton, { backgroundColor: theme.colors.border }]} onPress={() => setShowCreateModal(false)}>
+                <Text style={{ color: theme.colors.text }}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalButton, { backgroundColor: theme.colors.primary }]} onPress={handleCreateCollection}>
+                <Text style={{ color: '#fff' }}>创建</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
@@ -295,13 +383,15 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       padding: spacing.md,
       gap: spacing.md,
     },
+    center: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: spacing.xl,
+    },
     profileHeader: {
       alignItems: 'center',
       padding: spacing.lg,
       borderRadius: borderRadius.lg,
-    },
-    avatarContainer: {
-      position: 'relative',
     },
     avatar: {
       width: 80,
@@ -315,16 +405,6 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontWeight: 'bold',
       color: '#fff',
     },
-    premiumBadge: {
-      position: 'absolute',
-      bottom: 0,
-      right: 0,
-      backgroundColor: theme.colors.surface,
-      borderRadius: borderRadius.full,
-      padding: spacing.xs,
-      borderWidth: 2,
-      borderColor: theme.colors.background,
-    },
     usernameRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -336,104 +416,138 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontWeight: '700',
       color: theme.colors.text,
     },
-    crownButton: {
-      padding: spacing.xs,
-    },
-    roleContainer: {
-      marginTop: spacing.sm,
-    },
-    roleBadge: {
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.xs,
-      borderRadius: borderRadius.md,
-    },
-    roleText: {
-      fontSize: fontSizes.sm,
-      fontWeight: '600',
-    },
-    editButton: {
+    tabBar: {
       flexDirection: 'row',
-      alignItems: 'center',
-      marginTop: spacing.md,
-      paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.md,
-      borderRadius: borderRadius.md,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-    },
-    editButtonText: {
-      marginLeft: spacing.xs,
-      fontSize: fontSizes.md,
-      color: theme.colors.primary,
-      fontWeight: '500',
-    },
-    statsContainer: {
-      flexDirection: 'row',
-      gap: spacing.sm,
-    },
-    statCard: {
-      flex: 1,
-      alignItems: 'center',
-      padding: spacing.md,
-      borderRadius: borderRadius.lg,
-    },
-    statValue: {
-      fontSize: fontSizes.xl,
-      fontWeight: '700',
-      color: theme.colors.text,
-      marginTop: spacing.sm,
-    },
-    statLabel: {
-      fontSize: fontSizes.sm,
-      color: theme.colors.textSecondary,
-      marginTop: spacing.xs,
-    },
-    membershipCard: {
-      padding: spacing.md,
-      borderRadius: borderRadius.lg,
-    },
-    membershipHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    membershipInfo: {
-      flex: 1,
-      marginLeft: spacing.md,
-    },
-    membershipTitle: {
-      fontSize: fontSizes.md,
-      fontWeight: '600',
-      color: theme.colors.text,
-    },
-    membershipSubtitle: {
-      fontSize: fontSizes.sm,
-      color: theme.colors.textSecondary,
-      marginTop: 2,
-    },
-    actionsCard: {
       borderRadius: borderRadius.lg,
       overflow: 'hidden',
     },
-    actionItem: {
+    tabItem: {
+      flex: 1,
+      alignItems: 'center',
+      paddingVertical: spacing.md,
+      borderBottomWidth: 2,
+      borderBottomColor: 'transparent',
+    },
+    tabText: {
+      fontSize: fontSizes.md,
+      fontWeight: '500',
+    },
+    listContainer: {
+      gap: spacing.sm,
+    },
+    collectionCard: {
       flexDirection: 'row',
       alignItems: 'center',
       padding: spacing.md,
+      borderRadius: borderRadius.md,
+      gap: spacing.sm,
     },
-    actionText: {
+    collectionInfo: {
       flex: 1,
-      marginLeft: spacing.md,
+    },
+    collectionName: {
       fontSize: fontSizes.md,
-      color: theme.colors.text,
+      fontWeight: '500',
     },
-    divider: {
-      height: 1,
-      marginHorizontal: spacing.md,
+    collectionMeta: {
+      fontSize: fontSizes.sm,
+      marginTop: 2,
     },
-    settingsButton: {
-      width: 40,
-      height: 40,
+    bookCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: spacing.sm,
+      borderRadius: borderRadius.md,
+    },
+    coverContainer: {
+      width: 60,
+      height: 90,
+      borderRadius: borderRadius.sm,
+      overflow: 'hidden',
+    },
+    coverImage: {
+      width: '100%',
+      height: '100%',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    coverLetter: {
+      fontSize: 24,
+      fontWeight: 'bold',
+      color: '#fff',
+    },
+    bookInfo: {
+      flex: 1,
+      marginLeft: spacing.sm,
+    },
+    bookTitle: {
+      fontSize: fontSizes.md,
+      fontWeight: '500',
+    },
+    bookAuthor: {
+      fontSize: fontSizes.sm,
+      marginTop: 2,
+    },
+    emptyText: {
+      textAlign: 'center',
+      padding: spacing.xl,
+      fontSize: fontSizes.md,
+    },
+    logoutButton: {
+      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
+      padding: spacing.md,
+      borderRadius: borderRadius.lg,
+      gap: spacing.sm,
+    },
+    logoutText: {
+      fontSize: fontSizes.md,
+      fontWeight: '500',
+    },
+    menu: {
+      position: 'absolute',
+      top: 60,
+      left: 16,
+      width: 180,
+      borderRadius: borderRadius.lg,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      overflow: 'hidden',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 8,
+      elevation: 5,
+    },
+    menuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      padding: spacing.md,
+    },
+    modalContent: {
+      width: '80%',
+      padding: spacing.lg,
+      borderRadius: borderRadius.lg,
+      gap: spacing.md,
+    },
+    modalTitle: {
+      fontSize: fontSizes.lg,
+      fontWeight: '600',
+      textAlign: 'center',
+    },
+    input: {
+      borderWidth: 1,
+      borderRadius: borderRadius.md,
+      padding: spacing.md,
+      fontSize: fontSizes.md,
+    },
+    modalButton: {
+      flex: 1,
+      alignItems: 'center',
+      padding: spacing.md,
+      borderRadius: borderRadius.md,
     },
   });
 }

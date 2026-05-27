@@ -9,10 +9,11 @@ export interface LocalBook {
   title: string;
   author: string;
   coverUrl?: string;
-  fileType: 'epub' | 'pdf' | 'mobi' | 'txt';
-  filePath: string;
-  fileSize: number;
-  addedAt: string;
+  format?: string;
+  fileType?: 'epub' | 'pdf' | 'mobi' | 'txt';
+  filePath?: string;
+  fileSize?: number;
+  addedAt?: string;
   lastReadAt?: string;
   readingProgress?: number;
   totalPages?: number;

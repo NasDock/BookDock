@@ -50,6 +50,7 @@ model User {
   collections        Collection[]
   readingProgress    ReadingProgress[]
   bookmarks          Bookmark[]
+  favorites          Favorite[]
   ttsJobs            TtsJob[]
   ttsAudioFiles      TtsAudioFile[]
   sessions           Session[]
@@ -89,6 +90,7 @@ model Book {
   collectionItems CollectionItem[]
   readingProgress ReadingProgress[]
   bookmarks      Bookmark[]
+  favorites      Favorite[]
   ttsJobs        TtsJob[]
   ttsAudioFiles  TtsAudioFile[]
   bookTags       BookTag[]
@@ -137,6 +139,21 @@ model CollectionItem {
   @@index([collectionId])
   @@index([bookId])
   @@map("collection_items")
+}
+
+model Favorite {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  bookId    String   @map("book_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bookId])
+  @@index([userId])
+  @@index([bookId])
+  @@map("favorites")
 }
 
 model ReadingProgress {

@@ -12,10 +12,11 @@ export interface Book {
   title: string;
   author: string;
   coverUrl?: string;
-  fileType: 'epub' | 'pdf' | 'mobi' | 'txt';
-  filePath: string;
-  fileSize: number;
-  addedAt: string;
+  format?: string;
+  fileType?: 'epub' | 'pdf' | 'mobi' | 'txt';
+  filePath?: string;
+  fileSize?: number;
+  addedAt?: string;
   lastReadAt?: string;
   readingProgress?: number;
   totalPages?: number;
@@ -24,6 +25,20 @@ export interface Book {
   publisher?: string;
   language?: string;
   isbn?: string;
+}
+
+export interface Collection {
+  id: string;
+  name: string;
+  description?: string;
+  coverUrl?: string;
+  bookCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CollectionDetail extends Collection {
+  books: Book[];
 }
 
 export interface User {
@@ -291,6 +306,63 @@ class ApiClient {
   // Storage info
   async getStorageInfo(): Promise<ApiResponse<{ used: number; limit: number }>> {
     const { data } = await this.client.get('/storage/info');
+    return data;
+  }
+
+  // Collection APIs
+  async getCollections(): Promise<ApiResponse<Collection[]>> {
+    const { data } = await this.client.get('/collections');
+    return data;
+  }
+
+  async getCollection(id: string): Promise<ApiResponse<CollectionDetail>> {
+    const { data } = await this.client.get(`/collections/${id}`);
+    return data;
+  }
+
+  async createCollection(dto: { name: string; description?: string }): Promise<ApiResponse<Collection>> {
+    const { data } = await this.client.post('/collections', dto);
+    return data;
+  }
+
+  async updateCollection(id: string, dto: { name?: string; description?: string }): Promise<ApiResponse<Collection>> {
+    const { data } = await this.client.put(`/collections/${id}`, dto);
+    return data;
+  }
+
+  async deleteCollection(id: string): Promise<ApiResponse<void>> {
+    const { data } = await this.client.delete(`/collections/${id}`);
+    return data;
+  }
+
+  async addBookToCollection(collectionId: string, bookId: string): Promise<ApiResponse<void>> {
+    const { data } = await this.client.post(`/collections/${collectionId}/books`, { bookId });
+    return data;
+  }
+
+  async removeBookFromCollection(collectionId: string, bookId: string): Promise<ApiResponse<void>> {
+    const { data } = await this.client.delete(`/collections/${collectionId}/books/${bookId}`);
+    return data;
+  }
+
+  // Favorite APIs
+  async getFavorites(): Promise<ApiResponse<Book[]>> {
+    const { data } = await this.client.get('/favorites');
+    return data;
+  }
+
+  async checkFavorite(bookId: string): Promise<ApiResponse<{ isFavorite: boolean }>> {
+    const { data } = await this.client.get(`/favorites/check/${bookId}`);
+    return data;
+  }
+
+  async addFavorite(bookId: string): Promise<ApiResponse<void>> {
+    const { data } = await this.client.post('/favorites', { bookId });
+    return data;
+  }
+
+  async removeFavorite(bookId: string): Promise<ApiResponse<void>> {
+    const { data } = await this.client.delete(`/favorites/${bookId}`);
     return data;
   }
 }
