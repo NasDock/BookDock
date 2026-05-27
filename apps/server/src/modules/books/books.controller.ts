@@ -170,14 +170,17 @@ export class BooksController {
   async download(
     @Param('id', ParseUUIDPipe) id: string,
     @Res() res: Response,
+    @Query('view') view?: string,
   ) {
     const { path, filename, contentType } = await this.booksService.download(id);
     const encoded = encodeURIComponent(filename);
+    // 如果带 ?view=1 参数或者是 PDF 文件，使用 inline 让浏览器直接显示
+    const isInline = view === '1' || contentType === 'application/pdf';
     res.set({
       'Content-Type': contentType,
-      'Content-Disposition': `attachment; filename="${encoded}"; filename*=UTF-8''${encoded}`,
+      'Content-Disposition': `${isInline ? 'inline' : 'attachment'}; filename="${encoded}"; filename*=UTF-8''${encoded}`,
     });
-    res.download(path);
+    res.sendFile(path);
   }
 
   @Post(':id/tags')

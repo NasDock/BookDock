@@ -14,6 +14,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagg
 import { AdminService } from './admin.service';
 import {
   UserQueryDto,
+  CreateUserDto,
   UpdateUserDto,
   AdminUserResponseDto,
   CreateDataSourceDto,
@@ -42,6 +43,14 @@ export class AdminController {
   @ApiResponse({ status: 200 })
   async listUsers(@Query() query: UserQueryDto) {
     return this.adminService.listUsers(query);
+  }
+
+  @Post('users')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Create user (admin only)' })
+  @ApiResponse({ status: 201, type: AdminUserResponseDto })
+  async createUser(@Body() dto: CreateUserDto) {
+    return this.adminService.createUser(dto);
   }
 
   @Get('users/:userId')
@@ -138,5 +147,23 @@ export class AdminController {
   @ApiResponse({ status: 200, type: SystemStatsDto })
   async getSystemStats() {
     return this.adminService.getSystemStats();
+  }
+
+  // ── System Config ────────────────────────────────────────────────────────────
+
+  @Get('config/:key')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Get system config value' })
+  async getConfig(@Param('key') key: string) {
+    const value = await this.adminService.getSystemConfig(key);
+    return { key, value };
+  }
+
+  @Put('config/:key')
+  @Roles('admin')
+  @ApiOperation({ summary: 'Set system config value' })
+  async setConfig(@Param('key') key: string, @Body('value') value: string) {
+    await this.adminService.setSystemConfig(key, value);
+    return { message: 'Config updated' };
   }
 }

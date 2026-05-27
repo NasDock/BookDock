@@ -6,6 +6,11 @@ import { useAuthStore } from '../stores/authStore';
 import { Button } from '@bookdock/ui';
 import type { ReaderMode } from '@bookdock/ebook-reader';
 import { ArrowLeft, Settings, BookOpen, Bookmark, ChevronLeft, ChevronRight, Volume2, Timer, X, Keyboard, Sun, Moon, ScrollText, Plus, FileText } from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+
+// 设置 PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 
 // ==================== Bookmark ====================
 interface Bookmark {
@@ -336,6 +341,149 @@ function SettingsDrawer({
         </div>
       </div>
     </>
+  );
+}
+
+// ==================== PDF Viewer ====================
+interface PdfViewerProps {
+  url: string;
+  title: string;
+}
+
+function PdfViewer({ url, title }: PdfViewerProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(0);
+  const [scale, setScale] = useState(1.5);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPdf = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // 使用 blob URL 或普通 URL 加载 PDF
+        const loadingTask = pdfjsLib.getDocument(url);
+        const pdf = await loadingTask.promise;
+
+        if (cancelled) return;
+
+        setPdfDoc(pdf);
+        setTotalPages(pdf.numPages);
+        setCurrentPage(1);
+      } catch (err: any) {
+        if (!cancelled) {
+          setError(err.message || '加载 PDF 失败');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadPdf();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  useEffect(() => {
+    if (!pdfDoc || !canvasRef.current) return;
+
+    const renderPage = async () => {
+      try {
+        const page = await pdfDoc.getPage(currentPage);
+        const canvas = canvasRef.current!;
+        const context = canvas.getContext('2d')!;
+
+        const viewport = page.getViewport({ scale });
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        await page.render({
+          canvasContext: context,
+          viewport: viewport,
+        }).promise;
+      } catch (err: any) {
+        setError(err.message || '渲染页面失败');
+      }
+    };
+
+    renderPage();
+  }, [pdfDoc, currentPage, scale]);
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 pt-14 pb-16 flex items-center justify-center bg-white">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto"></div>
+          <p className="mt-4 text-gray-600">加载 PDF 中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="fixed inset-0 pt-14 pb-16 flex items-center justify-center bg-white">
+        <div className="text-center text-red-500">
+          <p>PDF 加载失败</p>
+          <p className="text-sm mt-2">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 pt-14 pb-16 bg-white flex flex-col">
+      {/* PDF Toolbar */}
+      <div className="flex items-center justify-center gap-4 py-2 bg-gray-100 border-b">
+        <button
+          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+          disabled={currentPage <= 1}
+          className="px-3 py-1 rounded bg-blue-500 text-white disabled:bg-gray-300"
+        >
+          上一页
+        </button>
+        <span className="text-sm">
+          {currentPage} / {totalPages}
+        </span>
+        <button
+          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+          disabled={currentPage >= totalPages}
+          className="px-3 py-1 rounded bg-blue-500 text-white disabled:bg-gray-300"
+        >
+          下一页
+        </button>
+        <div className="flex items-center gap-2 ml-4">
+          <button
+            onClick={() => setScale((s) => Math.max(0.5, s - 0.25))}
+            className="px-2 py-1 rounded bg-gray-200"
+          >
+            -
+          </button>
+          <span className="text-sm">{Math.round(scale * 100)}%</span>
+          <button
+            onClick={() => setScale((s) => Math.min(3, s + 0.25))}
+            className="px-2 py-1 rounded bg-gray-200"
+          >
+            +
+          </button>
+        </div>
+      </div>
+
+      {/* PDF Canvas */}
+      <div className="flex-1 overflow-auto flex justify-center p-4">
+        <canvas ref={canvasRef} className="shadow-lg" />
+      </div>
+    </div>
   );
 }
 
@@ -670,10 +818,25 @@ export default function Reader() {
       // PDF files: skip chapters, use direct download URL
       if (book.fileType === 'pdf') {
         const apiClient = getApiClient();
-        const authHeader = apiClient['client']?.defaults?.headers?.common?.['Authorization'];
-        const token = typeof authHeader === 'string' ? authHeader.replace('Bearer ', '') : '';
-        const url = `${apiClient.baseURL}/books/${id}/download${token ? `?token=${encodeURIComponent(token)}` : ''}`;
-        setPdfUrl(url);
+        const token = localStorage.getItem('bookdock_auth_token') || '';
+        const baseUrl = `${apiClient.baseURL}/books/${id}/download`;
+        // 使用 fetch 下载 PDF 并创建 blob URL，避免 iframe 跨域/认证问题
+        fetch(`${baseUrl}?token=${encodeURIComponent(token)}`)
+          .then((res) => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.blob();
+          })
+          .then((blob) => {
+            // 确保 blob 类型是 PDF
+            const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+            const blobUrl = URL.createObjectURL(pdfBlob);
+            console.log('[PDF] Blob URL created:', blobUrl, 'size:', pdfBlob.size);
+            setPdfUrl(blobUrl);
+          })
+          .catch((err) => {
+            console.error('Failed to load PDF:', err);
+            setError('PDF 加载失败: ' + err.message);
+          });
         return;
       }
 
@@ -1149,12 +1312,13 @@ export default function Reader() {
 
       {/* Reader container */}
       {book.fileType === 'pdf' && pdfUrl ? (
-        <div className="fixed inset-0 pt-14 pb-16">
-          <iframe
-            src={pdfUrl}
-            className="w-full h-full border-0"
-            title={book.title}
-          />
+        <PdfViewer url={pdfUrl} title={book.title} />
+      ) : book.fileType === 'pdf' && !pdfUrl ? (
+        <div className="fixed inset-0 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto"></div>
+            <p className="mt-4 text-gray-600 dark:text-gray-400">加载 PDF 中...</p>
+          </div>
         </div>
       ) : (
         <div

@@ -3,6 +3,7 @@ import {
   Inject,
   NotFoundException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
@@ -11,6 +12,7 @@ import { join } from 'path';
 import { PRISMA_CLIENT } from '../../config/database.module';
 import {
   UserQueryDto,
+  CreateUserDto,
   UpdateUserDto,
   AdminUserResponseDto,
   CreateDataSourceDto,
@@ -42,9 +44,8 @@ export class AdminService {
     if (role) where.role = role;
     if (search) {
       where.OR = [
-        { email: { contains: search, mode: 'insensitive' } },
-        { username: { contains: search, mode: 'insensitive' } },
-        { displayName: { contains: search, mode: 'insensitive' } },
+        { username: { contains: search } },
+        { displayName: { contains: search } },
       ];
     }
 
@@ -65,6 +66,34 @@ export class AdminService {
       data: users.map((u) => this.toAdminUser(u)),
       total,
     };
+  }
+
+  async createUser(dto: CreateUserDto): Promise<AdminUserResponseDto> {
+    const existing = await this.prisma.user.findUnique({
+      where: { username: dto.username },
+    });
+    if (existing) {
+      throw new ConflictException('Username already taken');
+    }
+
+    const bcrypt = await import('bcryptjs');
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const email = `${dto.username}@bookdock.local`;
+
+    const user = await this.prisma.user.create({
+      data: {
+        email,
+        username: dto.username,
+        passwordHash,
+        displayName: dto.displayName || dto.username,
+        role: dto.role || 'user',
+      },
+      include: {
+        _count: { select: { collections: true, readingProgress: true, bookmarks: true } },
+      },
+    });
+
+    return this.toAdminUser(user);
   }
 
   async getUser(userId: string): Promise<AdminUserResponseDto> {
@@ -271,7 +300,6 @@ export class AdminService {
   private toAdminUser(u: any): AdminUserResponseDto {
     return {
       id: u.id,
-      email: u.email,
       username: u.username,
       displayName: u.displayName || undefined,
       role: u.role,
@@ -281,5 +309,20 @@ export class AdminService {
       createdAt: u.createdAt,
       _count: u._count,
     };
+  }
+
+  // ── System Config ──────────────────────────────────────────────────────────
+
+  async getSystemConfig(key: string): Promise<string | null> {
+    const config = await this.prisma.systemConfig.findUnique({ where: { key } });
+    return config?.value ?? null;
+  }
+
+  async setSystemConfig(key: string, value: string): Promise<void> {
+    await this.prisma.systemConfig.upsert({
+      where: { key },
+      create: { key, value },
+      update: { value },
+    });
   }
 }

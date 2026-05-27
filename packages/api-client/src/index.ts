@@ -228,8 +228,13 @@ class ApiClient {
   }
 
   // Admin endpoints
-  async getUsers(params?: { page?: number; limit?: number }): Promise<ApiResponse<{ users: User[]; total: number }>> {
+  async getUsers(params?: { page?: number; limit?: number; search?: string }): Promise<ApiResponse<{ data: User[]; total: number }>> {
     const { data } = await this.client.get('/admin/users', { params });
+    return data;
+  }
+
+  async createUser(userData: { username: string; password: string; displayName?: string; role?: string }): Promise<ApiResponse<User>> {
+    const { data } = await this.client.post('/admin/users', userData);
     return data;
   }
 
@@ -240,6 +245,16 @@ class ApiClient {
 
   async deleteUser(id: string): Promise<ApiResponse> {
     const { data } = await this.client.delete(`/admin/users/${id}`);
+    return data;
+  }
+
+  async getSystemConfig(key: string): Promise<ApiResponse<{ key: string; value: string | null }>> {
+    const { data } = await this.client.get(`/admin/config/${key}`);
+    return data;
+  }
+
+  async setSystemConfig(key: string, value: string): Promise<ApiResponse<{ message: string }>> {
+    const { data } = await this.client.put(`/admin/config/${key}`, { value });
     return data;
   }
 

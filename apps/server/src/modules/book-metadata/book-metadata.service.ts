@@ -75,7 +75,23 @@ export class BookMetadataService {
       ...(data.tags !== undefined && { tags: data.tags }),
     });
 
-    // 5. 用 Prisma 更新 Book 表
+    // 5. 同步 tags 到 Tag 表（如果豆瓣抓取了 tags）
+    if (data.tags && data.tags.length > 0) {
+      for (const tagName of data.tags) {
+        const tag = await this.prisma.tag.upsert({
+          where: { name: tagName },
+          create: { name: tagName },
+          update: {},
+        });
+        await this.prisma.bookTag.upsert({
+          where: { bookId_tagId: { bookId, tagId: tag.id } },
+          create: { bookId, tagId: tag.id },
+          update: {},
+        });
+      }
+    }
+
+    // 6. 用 Prisma 更新 Book 表
     const updatedBook = await this.prisma.book.update({
       where: { id: bookId },
       data: {

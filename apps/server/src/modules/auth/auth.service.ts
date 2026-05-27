@@ -4,6 +4,7 @@ import {
   UnauthorizedException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -27,6 +28,17 @@ export class AuthService {
       throw new BadRequestException('Passwords do not match');
     }
 
+    // Check if self-registration is allowed (skip for first user)
+    const userCount = await this.prisma.user.count();
+    if (userCount > 0) {
+      const config = await this.prisma.systemConfig.findUnique({
+        where: { key: 'allow_register' },
+      });
+      if (config?.value === 'false') {
+        throw new ForbiddenException('Registration is currently disabled');
+      }
+    }
+
     // Check username uniqueness
     const existingUsername = await this.prisma.user.findUnique({
       where: { username: dto.username },
@@ -39,7 +51,6 @@ export class AuthService {
     const email = `${dto.username}@bookdock.local`;
 
     // First registered user becomes admin
-    const userCount = await this.prisma.user.count();
     const role = userCount === 0 ? 'admin' : 'user';
 
     const user = await this.prisma.user.create({

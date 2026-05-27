@@ -3,17 +3,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getApiClient } from '@bookdock/api-client';
 import { Button, Card, CardHeader, CardTitle, CardContent, Input } from '@bookdock/ui';
-import { Crown, ArrowLeft, X, Check } from 'lucide-react';
-
-interface VipInfo {
-  vipLevel: string;
-  vipExpiredAt: string | null;
-}
+import { ArrowLeft, X, Check } from 'lucide-react';
 
 interface AdminUser {
   id: string;
   username: string;
-  email: string;
   displayName?: string;
   role: 'admin' | 'user' | 'guest';
   isActive: boolean;
@@ -24,8 +18,6 @@ interface AdminUser {
     readingProgress: number;
     bookmarks: number;
   };
-  vipLevel?: string;
-  vipExpiredAt?: string | null;
 }
 
 export default function AdminUsers() {
@@ -39,8 +31,11 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [showDetail, setShowDetail] = useState(false);
-  const [showVipModal, setShowVipModal] = useState(false);
-  const [vipEdit, setVipEdit] = useState<{ level: string; expiredAt: string }>({ level: 'free', expiredAt: '' });
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({ username: '', password: '', displayName: '', role: 'user' });
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [allowRegister, setAllowRegister] = useState(true);
+  const [allowRegisterLoading, setAllowRegisterLoading] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -57,8 +52,11 @@ export default function AdminUsers() {
       });
 
       if (response.success && response.data) {
-        setUsers(response.data.users);
-        setTotal(response.data.total);
+        setUsers(response.data.data || []);
+        setTotal(response.data.total || 0);
+      } else {
+        setUsers([]);
+        setTotal(0);
       }
     } catch (err) {
       console.error('Failed to fetch users:', err);
@@ -70,6 +68,21 @@ export default function AdminUsers() {
   useEffect(() => {
     fetchUsers();
   }, [fetchUsers]);
+
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const apiClient = getApiClient();
+        const response = await apiClient.getSystemConfig('allow_register');
+        if (response.success) {
+          setAllowRegister(response.data?.value !== 'false');
+        }
+      } catch {
+        // ignore
+      }
+    };
+    fetchConfig();
+  }, []);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,36 +123,38 @@ export default function AdminUsers() {
     }
   };
 
-  const openVipModal = (user: AdminUser) => {
-    setSelectedUser(user);
-    setVipEdit({
-      level: user.vipLevel || 'free',
-      expiredAt: user.vipExpiredAt ? new Date(user.vipExpiredAt).toISOString().slice(0, 16) : '',
-    });
-    setShowVipModal(true);
-  };
-
-  const handleSaveVip = async () => {
-    if (!selectedUser) return;
-    setActionLoading(true);
-    try {
-      const apiClient = getApiClient();
-      await apiClient.updateUser(selectedUser.id, {
-        vipLevel: vipEdit.level,
-        vipExpiredAt: vipEdit.expiredAt ? new Date(vipEdit.expiredAt).toISOString() : null,
-      } as any);
-      setShowVipModal(false);
-      await fetchUsers();
-    } catch (err) {
-      console.error('Failed to update VIP:', err);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
   const openDetail = (user: AdminUser) => {
     setSelectedUser(user);
     setShowDetail(true);
+  };
+
+  const handleCreateUser = async () => {
+    if (!createForm.username.trim() || !createForm.password.trim()) {
+      setCreateError('用户名和密码不能为空');
+      return;
+    }
+    if (createForm.password.length < 6) {
+      setCreateError('密码至少6位');
+      return;
+    }
+    setActionLoading(true);
+    setCreateError(null);
+    try {
+      const apiClient = getApiClient();
+      await apiClient.createUser({
+        username: createForm.username.trim(),
+        password: createForm.password,
+        displayName: createForm.displayName.trim() || undefined,
+        role: createForm.role,
+      });
+      setShowCreateModal(false);
+      setCreateForm({ username: '', password: '', displayName: '', role: 'user' });
+      await fetchUsers();
+    } catch (err: any) {
+      setCreateError(err.response?.data?.message || '创建用户失败');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const formatDate = (dateStr?: string) => {
@@ -153,23 +168,7 @@ export default function AdminUsers() {
     });
   };
 
-  const getVipBadge = (level?: string) => {
-    if (!level || level === 'free') return null;
-    const colors: Record<string, string> = {
-      year: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-      lifetime: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-    };
-    const labels: Record<string, string> = {
-      year: '年费会员',
-      lifetime: '永久会员',
-    };
-    return (
-      <span className={`ml-1 px-1.5 py-0.5 rounded text-xs font-medium ${colors[level] || ''}`}>
-        <Crown className="w-3 h-3 inline mr-0.5" />
-        {labels[level] || level}
-      </span>
-    );
-  };
+
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -178,25 +177,17 @@ export default function AdminUsers() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
-              <button
-                onClick={() => navigate('/admin')}
-                className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                返回
-              </button>
               <h1 className="text-xl font-bold text-gray-900 dark:text-white">用户管理</h1>
-              <span className="text-sm text-gray-500">共 {total} 位用户</span>
             </div>
           </div>
 
           {/* Search bar */}
           <div className="pb-4">
-            <form onSubmit={handleSearch} className="flex gap-2">
+            <form onSubmit={handleSearch} className="flex gap-2 items-center">
               <div className="flex-1 max-w-md">
                 <Input
                   type="text"
-                  placeholder="搜索用户名、邮箱..."
+                  placeholder="搜索用户名..."
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   className="w-full"
@@ -208,6 +199,38 @@ export default function AdminUsers() {
                   清除
                 </Button>
               )}
+              <div className="flex-1"></div>
+              <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer select-none">
+                <div
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                    allowRegister ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
+                  }`}
+                  onClick={async () => {
+                    if (allowRegisterLoading) return;
+                    setAllowRegisterLoading(true);
+                    try {
+                      const apiClient = getApiClient();
+                      const newValue = allowRegister ? 'false' : 'true';
+                      await apiClient.setSystemConfig('allow_register', newValue);
+                      setAllowRegister(!allowRegister);
+                    } catch (err) {
+                      console.error('Failed to update config:', err);
+                    } finally {
+                      setAllowRegisterLoading(false);
+                    }
+                  }}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                      allowRegister ? 'translate-x-5' : 'translate-x-1'
+                    }`}
+                  />
+                </div>
+                {allowRegisterLoading ? '保存中...' : allowRegister ? '允许注册' : '禁止注册'}
+              </label>
+              <Button type="button" size="sm" onClick={() => setShowCreateModal(true)}>
+                新增用户
+              </Button>
             </form>
           </div>
         </div>
@@ -229,16 +252,10 @@ export default function AdminUsers() {
                       用户
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      邮箱
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       注册时间
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       最后登录
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                      会员状态
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                       状态
@@ -251,7 +268,7 @@ export default function AdminUsers() {
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                   {users.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
+                      <td colSpan={5} className="px-6 py-12 text-center text-gray-500 dark:text-gray-400">
                         暂无用户
                       </td>
                     </tr>
@@ -277,25 +294,10 @@ export default function AdminUsers() {
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                          {user.email}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                           {formatDate(user.createdAt)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                           {formatDate(user.lastLoginAt)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <button
-                            onClick={() => openVipModal(user)}
-                            className="inline-flex items-center text-sm hover:underline"
-                          >
-                            {getVipBadge(user.vipLevel) || (
-                              <span className="px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400">
-                                免费用户
-                              </span>
-                            )}
-                          </button>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <button
@@ -317,12 +319,6 @@ export default function AdminUsers() {
                               className="text-blue-500 hover:text-blue-700 text-xs"
                             >
                               详情
-                            </button>
-                            <button
-                              onClick={() => openVipModal(user)}
-                              className="text-amber-500 hover:text-amber-700 text-xs"
-                            >
-                              会员
                             </button>
                             {user.role !== 'admin' && (
                               deleteConfirm === user.id ? (
@@ -424,10 +420,6 @@ export default function AdminUsers() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs text-gray-500 dark:text-gray-400">邮箱</label>
-                  <p className="text-sm text-gray-900 dark:text-white">{selectedUser.email}</p>
-                </div>
-                <div>
                   <label className="text-xs text-gray-500 dark:text-gray-400">状态</label>
                   <p className="text-sm text-gray-900 dark:text-white">
                     {selectedUser.isActive ? <><Check className="w-3 h-3 inline" /> 正常</> : <><X className="w-3 h-3 inline" /> 禁用</>}
@@ -453,90 +445,92 @@ export default function AdminUsers() {
                   <label className="text-xs text-gray-500 dark:text-gray-400">书签数</label>
                   <p className="text-sm text-gray-900 dark:text-white">{selectedUser._count?.bookmarks || 0}</p>
                 </div>
-                <div>
-                  <label className="text-xs text-gray-500 dark:text-gray-400">会员等级</label>
-                  <p className="text-sm text-gray-900 dark:text-white">
-                    {selectedUser.vipLevel === 'year' ? (
-                      <span className="inline-flex items-center gap-1">
-                        <Crown className="w-3 h-3 text-amber-500" />
-                        年费会员
-                      </span>
-                    ) : selectedUser.vipLevel === 'lifetime' ? (
-                      <span className="inline-flex items-center gap-1">
-                        <Crown className="w-3 h-3 text-purple-500" />
-                        永久会员
-                      </span>
-                    ) : '免费用户'}
-                    {selectedUser.vipExpiredAt && (
-                      <span className="text-xs text-gray-500 ml-1">
-                        (到期: {new Date(selectedUser.vipExpiredAt).toLocaleDateString('zh-CN')})
-                      </span>
-                    )}
-                  </p>
-                </div>
               </div>
             </div>
             <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setShowDetail(false)}>关闭</Button>
-              <Button onClick={() => { setShowDetail(false); openVipModal(selectedUser); }}>管理会员</Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* VIP Management Modal */}
-      {showVipModal && selectedUser && (
+      {/* Create User Modal */}
+      {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full mx-4">
             <div className="p-6 border-b border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white">会员管理</h2>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">新增用户</h2>
                 <button
-                  onClick={() => setShowVipModal(false)}
+                  onClick={() => { setShowCreateModal(false); setCreateError(null); }}
                   className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <p className="text-sm text-gray-500 mt-1">
-                用户: {selectedUser.displayName || selectedUser.username}
-              </p>
             </div>
             <div className="p-6 space-y-4">
+              {createError && (
+                <div className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded">
+                  {createError}
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  会员等级
+                  用户名 <span className="text-red-500">*</span>
                 </label>
-                <select
-                  value={vipEdit.level}
-                  onChange={(e) => setVipEdit((v) => ({ ...v, level: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="free">免费用户</option>
-                  <option value="year">年费会员</option>
-                  <option value="lifetime">永久会员</option>
-                </select>
+                <Input
+                  type="text"
+                  placeholder="请输入用户名"
+                  value={createForm.username}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, username: e.target.value }))}
+                  className="w-full"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  到期时间 {vipEdit.level === 'lifetime' && '(永久留空)'}
+                  密码 <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="datetime-local"
-                  value={vipEdit.expiredAt}
-                  onChange={(e) => setVipEdit((v) => ({ ...v, expiredAt: e.target.value }))}
-                  disabled={vipEdit.level === 'lifetime'}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                <Input
+                  type="password"
+                  placeholder="至少6位"
+                  value={createForm.password}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
+                  className="w-full"
                 />
-                {vipEdit.level === 'lifetime' && (
-                  <p className="text-xs text-gray-500 mt-1">永久会员无到期时间</p>
-                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  显示名称
+                </label>
+                <Input
+                  type="text"
+                  placeholder="可选"
+                  value={createForm.displayName}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, displayName: e.target.value }))}
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  角色
+                </label>
+                <select
+                  value={createForm.role}
+                  onChange={(e) => setCreateForm((f) => ({ ...f, role: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="user">普通用户</option>
+                  <option value="admin">管理员</option>
+                </select>
               </div>
             </div>
             <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowVipModal(false)}>取消</Button>
-              <Button onClick={handleSaveVip} disabled={actionLoading}>
-                {actionLoading ? '保存中...' : '保存'}
+              <Button variant="ghost" onClick={() => { setShowCreateModal(false); setCreateError(null); }}>
+                取消
+              </Button>
+              <Button onClick={handleCreateUser} disabled={actionLoading}>
+                {actionLoading ? '创建中...' : '创建'}
               </Button>
             </div>
           </div>

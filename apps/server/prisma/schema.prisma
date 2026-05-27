@@ -363,3 +363,13 @@ model IndexerJob {
   @@index([createdAt])
   @@map("indexer_jobs")
 }
+
+model SystemConfig {
+  id            String   @id @default(uuid())
+  key           String   @unique
+  value         String
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("system_configs")
+}

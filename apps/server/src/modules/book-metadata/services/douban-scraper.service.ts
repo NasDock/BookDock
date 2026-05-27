@@ -43,14 +43,22 @@ export class DoubanScraperService {
   }
 
   /**
-   * 清理书名，去掉开头的年份数字和 "作者：" 前缀
+   * 清理书名，去掉前缀噪音
    * 例如 "韩寒：通稿2003" -> "通稿2003"
    * 例如 "1975 天涯·明月·刀" -> "天涯·明月·刀"
+   * 例如 "2.8《微纪元》" -> "微纪元"
+   * 例如 "[小说] 三体" -> "三体"
    */
   private cleanTitle(title: string): string {
     let cleaned = title.trim();
     // 去掉开头的 "作者名：" 或 "作者名:" 前缀
     cleaned = cleaned.replace(/^[^：:]+[：:]\s*/, '');
+    // 去掉开头的数字+点号（如 "2.8 "、"1 "）
+    cleaned = cleaned.replace(/^\d+(\.\d+)?\s*/, '');
+    // 去掉书名号《》
+    cleaned = cleaned.replace(/[《》]/g, '');
+    // 去掉方括号及内容（如 "[小说] "、"[已读] "）
+    cleaned = cleaned.replace(/^\[[^\]]*\]\s*/, '');
     // 去掉开头的 4 位年份数字（如 "1975 "、"2003 "）
     cleaned = cleaned.replace(/^\d{4}\s+/, '');
     return cleaned.trim();
@@ -214,11 +222,16 @@ export class DoubanScraperService {
             }
           }
         });
-      // 如果上面没取到，再尝试直接从 #info a 中过滤
+      // 如果上面没取到，再尝试直接从 #info a 中过滤（只取作者链接）
       if (authors.length === 0) {
         $('#info a').each((_index: number, el: Element) => {
-          const t = $(el).text().trim();
-          if (t && !t.includes('更多')) authors.push(t);
+          const $el = $(el);
+          const href = $el.attr('href') || '';
+          const t = $el.text().trim();
+          // 只取链接指向 /author/ 的，排除出版社(/press/)、丛书等
+          if (t && !t.includes('更多') && href.includes('/author/')) {
+            authors.push(t);
+          }
         });
       }
 

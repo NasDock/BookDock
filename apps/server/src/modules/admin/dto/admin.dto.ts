@@ -44,6 +44,29 @@ export class UserQueryDto {
   role?: UserRole;
 }
 
+export class CreateUserDto {
+  @ApiProperty()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(50)
+  username: string;
+
+  @ApiProperty()
+  @IsString()
+  @MinLength(6)
+  password: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  displayName?: string;
+
+  @ApiPropertyOptional({ enum: UserRole })
+  @IsEnum(UserRole)
+  @IsOptional()
+  role?: UserRole = 'user';
+}
+
 export class UpdateUserDto {
   @ApiPropertyOptional()
   @IsString()
@@ -74,9 +97,6 @@ export class UpdateUserDto {
 export class AdminUserResponseDto {
   @ApiProperty()
   id: string;
-
-  @ApiProperty()
-  email: string;
 
   @ApiProperty()
   username: string;

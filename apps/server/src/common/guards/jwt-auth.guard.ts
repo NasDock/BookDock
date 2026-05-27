@@ -17,7 +17,7 @@ export class JwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
-    const token = this.extractTokenFromHeader(request);
+    const token = this.extractTokenFromRequest(request);
 
     if (!token) {
       throw new UnauthorizedException('Missing authentication token');
@@ -35,11 +35,19 @@ export class JwtAuthGuard implements CanActivate {
     return true;
   }
 
-  private extractTokenFromHeader(request: Request): string | undefined {
+  private extractTokenFromRequest(request: Request): string | undefined {
+    // 1. 从 Authorization header 提取
     const authHeader = request.headers.authorization;
-    if (!authHeader) return undefined;
-    const [type, token] = authHeader.split(' ');
-    return type === 'Bearer' ? token : undefined;
+    if (authHeader) {
+      const [type, token] = authHeader.split(' ');
+      if (type === 'Bearer' && token) return token;
+    }
+    // 2. 从 query 参数 ?token= 提取（用于 iframe/pdf 等无法设置 header 的场景）
+    const queryToken = request.query?.token;
+    if (typeof queryToken === 'string' && queryToken) {
+      return queryToken;
+    }
+    return undefined;
   }
 }
 
@@ -52,7 +60,7 @@ export class OptionalJwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
-    const token = this.extractTokenFromHeader(request);
+    const token = this.extractTokenFromRequest(request);
 
     if (token) {
       try {
@@ -68,11 +76,19 @@ export class OptionalJwtAuthGuard implements CanActivate {
     return true;
   }
 
-  private extractTokenFromHeader(request: Request): string | undefined {
+  private extractTokenFromRequest(request: Request): string | undefined {
+    // 1. 从 Authorization header 提取
     const authHeader = request.headers.authorization;
-    if (!authHeader) return undefined;
-    const [type, token] = authHeader.split(' ');
-    return type === 'Bearer' ? token : undefined;
+    if (authHeader) {
+      const [type, token] = authHeader.split(' ');
+      if (type === 'Bearer' && token) return token;
+    }
+    // 2. 从 query 参数 ?token= 提取
+    const queryToken = request.query?.token;
+    if (typeof queryToken === 'string' && queryToken) {
+      return queryToken;
+    }
+    return undefined;
   }
 }
 

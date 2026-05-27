@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { getApiClient, User, EbookSource, Book } from '@bookdock/api-client';
+import { getCoverImageUrl } from '../utils/network';
 import { Button, Card, CardHeader, CardTitle, CardContent, Input } from '@bookdock/ui';
 import {
   BookOpen,
@@ -786,7 +787,18 @@ function BooksManagement() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-14 bg-gray-100 dark:bg-gray-700 rounded overflow-hidden flex-shrink-0">
-                            {book.coverUrl ? <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500"><span className="text-white font-bold">{book.title.charAt(0)}</span></div>}
+                            {book.coverUrl ? (
+                              <img
+                                src={getCoverImageUrl(book.coverUrl)}
+                                alt={book.title}
+                                className="w-full h-full object-cover"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500">
+                                <span className="text-white font-bold">{book.title.charAt(0)}</span>
+                              </div>
+                            )}
                           </div>
                           <span className="font-medium text-gray-900 dark:text-white truncate max-w-[200px]">{book.title}</span>
                         </div>

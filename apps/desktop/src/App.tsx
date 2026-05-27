@@ -8,7 +8,7 @@ import {
   RefreshCw,
   Settings as SettingsIcon,
   Sun,
-  Wrench,
+  Shield,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -203,12 +203,9 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { path: "/", label: "书库", icon: BookOpen },
-    { path: "/settings", label: "设置", icon: SettingsIcon },
   ];
 
-  if (user?.role === "admin") {
-    navItems.push({ path: "/admin", label: "管理", icon: Wrench });
-  }
+  // Admin nav items moved to user dropdown menu
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -320,6 +317,29 @@ function AppLayout({ children }: { children: React.ReactNode }) {
                       <RefreshCw className="w-4 h-4" />
                       <span>全量更新</span>
                     </button>
+
+                    <div className="mx-3 my-1 border-t border-gray-100 dark:border-gray-700" />
+
+                    <Link
+                      to="/settings"
+                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      <SettingsIcon className="w-4 h-4" />
+                      <span>设置</span>
+                    </Link>
+
+                    {user?.role === "admin" && (
+                      <>
+                        <div className="mx-3 my-1 border-t border-gray-100 dark:border-gray-700" />
+                        <Link
+                          to="/admin"
+                          className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                        >
+                          <Shield className="w-4 h-4" />
+                          <span>管理后台</span>
+                        </Link>
+                      </>
+                    )}
 
                     <div className="mx-3 my-1 border-t border-gray-100 dark:border-gray-700" />
 
