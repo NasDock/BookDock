@@ -2,6 +2,7 @@ import type { JSX } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { LibraryScreen } from '../screens/LibraryScreen';
+import { RecommendScreen } from '../screens/RecommendScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { useThemeStore } from '../stores';
 import { getTheme } from '../utils/theme';
@@ -31,6 +32,17 @@ export function MainTabNavigator() {
         },
       }}
     >
+      <Tab.Screen
+        name="Recommend"
+        component={RecommendScreen}
+        options={{
+          title: '推荐',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="sparkles" size={size} color={color} />
+          ),
+          headerTitle: '推荐',
+        }}
+      />
       <Tab.Screen
         name="Library"
         component={LibraryScreen}

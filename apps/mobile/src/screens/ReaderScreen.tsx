@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
+import Pdf from 'react-native-pdf';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
@@ -212,17 +213,9 @@ function generateReaderHtml(
   const textColor = isDark ? '#e0e0e0' : '#1a1a1a';
   const linkColor = isDark ? '#6b9fff' : '#0066cc';
 
+  // PDF is now rendered with react-native-pdf, not WebView
   if (fileType === 'pdf') {
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-  <style>body{margin:0;padding:0;background:${bgColor};overflow:hidden;height:100vh;}</style>
-</head>
-<body>
-  <embed src="data:application/pdf;base64,${content}" type="application/pdf" width="100%" height="100%" />
-</body>
-</html>`;
+    return '';
   }
 
   if (fileType === 'txt' || fileType === 'text') {
@@ -322,6 +315,7 @@ export function ReaderScreen() {
   const [chapters, setChapters] = useState<Array<{ index: number; title: string }>>([]);
   const [currentChapter, setCurrentChapter] = useState(0);
   const [readingProgress, setReadingProgress] = useState(book.readingProgress ?? 0);
+  const [pdfSource, setPdfSource] = useState<{ uri: string; cache?: boolean } | null>(null);
   const localChaptersRef = useRef<Array<{ title: string; content: string }>>([]);
   const webViewRef = useRef<WebView>(null);
   const latestPositionRef = useRef<ReaderPosition>({ percentage: book.readingProgress ?? 0, scrollOffset: 0 });
@@ -493,9 +487,8 @@ export function ReaderScreen() {
               scrollOffset: initialScrollOffset,
             };
           } else if (book.fileType === 'pdf') {
-            const base64 = await FileSystem.readAsStringAsync(localPath, { encoding: FileSystem.EncodingType.Base64 });
-            const html = generateReaderHtml(book.title, book.author, base64, 'pdf', readerConfigRef.current, true);
-            setHtmlContent(html);
+            // Use react-native-pdf for local PDF files
+            setPdfSource({ uri: localPath });
           } else {
             const html = generateReaderHtml(book.title, book.author, '', book.fileType, readerConfigRef.current);
             setHtmlContent(html);
@@ -531,16 +524,16 @@ export function ReaderScreen() {
         } else {
           throw new Error(chaptersRes.error || '获取章节目录失败');
         }
+      } else if (book.fileType === 'pdf') {
+        // Use react-native-pdf for PDF rendering
+        const token = useAuthStore.getState().token || '';
+        const baseUrl = apiClient.baseURL.replace(/\/api$/, '');
+        const pdfUrl = `${baseUrl}/books/${book.id}/download?token=${encodeURIComponent(token)}`;
+        setPdfSource({ uri: pdfUrl, cache: true });
       } else {
         const arrayBuffer = await apiClient.downloadBookFile(book.id);
-        if (book.fileType === 'pdf') {
-          const base64 = arrayBufferToBase64(arrayBuffer);
-          const html = generateReaderHtml(book.title, book.author, base64, 'pdf', readerConfigRef.current, true);
-          setHtmlContent(html);
-        } else {
-          const html = generateReaderHtml(book.title, book.author, '', book.fileType, readerConfigRef.current);
-          setHtmlContent(html);
-        }
+        const html = generateReaderHtml(book.title, book.author, '', book.fileType, readerConfigRef.current);
+        setHtmlContent(html);
       }
     } catch (err) {
       console.error('Failed to load book:', err);
@@ -924,6 +917,32 @@ export function ReaderScreen() {
             <Text style={{ color: theme.colors.primary }}>重试</Text>
           </TouchableOpacity>
         </View>
+      ) : book.fileType === 'pdf' && pdfSource ? (
+        <Pdf
+          source={pdfSource}
+          style={styles.webview}
+          onLoadProgress={(percent) => {
+            setReadingProgress(Math.round(percent * 100));
+          }}
+          onPageChanged={(page, numberOfPages) => {
+            setReadingProgress(Math.round((page / numberOfPages) * 100));
+            latestPositionRef.current = {
+              percentage: Math.round((page / numberOfPages) * 100),
+              currentPage: page,
+              scrollOffset: 0,
+            };
+            if (readerStore.autoSaveProgress) {
+              libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
+            }
+          }}
+          onError={(err) => {
+            console.error('PDF error:', err);
+            setError('加载 PDF 失败: ' + err);
+          }}
+          onPressLink={(uri) => {
+            // Ignore link taps in PDF
+          }}
+        />
       ) : (
         <WebView
           ref={webViewRef}

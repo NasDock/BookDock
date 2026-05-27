@@ -22,6 +22,7 @@ export type RootStackParamList = {
 // Tab navigator param list
 export type MainTabParamList = {
   Library: undefined;
+  Recommend: undefined;
   Profile: undefined;
 };
 

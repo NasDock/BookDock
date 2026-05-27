@@ -7,6 +7,7 @@ import {
   Plus,
   RefreshCw,
   Settings as SettingsIcon,
+  Sparkles,
   Sun,
   Shield,
 } from "lucide-react";
@@ -24,6 +25,7 @@ import {
 import Admin from "./pages/Admin";
 import Library from "./pages/Library";
 import Login from "./pages/Login";
+import Recommend from "./pages/Recommend";
 import MemberBenefits from "./pages/MemberBenefits";
 import MemberDetail from "./pages/MemberDetail";
 import MemberLogin from "./pages/MemberLogin";
@@ -202,6 +204,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
     location.pathname === "/login" || location.pathname === "/member-login";
 
   const navItems = [
+    { path: "/recommend", label: "推荐", icon: Sparkles },
     { path: "/", label: "书库", icon: BookOpen },
   ];
 
@@ -324,7 +327,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
                       to="/settings"
                       className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                     >
-                      <SettingsIcon className="w-4 h-4" />
+                      <Sparkles className="w-4 h-4" />
                       <span>设置</span>
                     </Link>
 
@@ -441,6 +444,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <Library />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/recommend"
+          element={
+            <ProtectedRoute>
+              <Recommend />
             </ProtectedRoute>
           }
         />

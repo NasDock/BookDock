@@ -5,7 +5,6 @@ import {
   ArrowDown,
   ArrowUp,
   BookOpen,
-  Clock,
   Cloud,
   FolderOpen,
   LayoutGrid,
@@ -17,8 +16,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../stores/authStore";
 import {
-  selectBooksByProgress,
-  selectRecentlyRead,
   useLibraryStore,
 } from "../stores/libraryStore";
 import { getCoverImageUrl } from "../utils/network";
@@ -379,11 +376,7 @@ export default function Library() {
     sortOrder,
   ]);
 
-  const recentlyRead = useMemo(
-    () => selectRecentlyRead(allBooks, 5),
-    [allBooks],
-  );
-  const inProgress = useMemo(() => selectBooksByProgress(allBooks), [allBooks]);
+  // recentlyRead and inProgress moved to Recommend page
 
   const handleSearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -589,92 +582,6 @@ export default function Library() {
           </button>
         </div>
       </div>
-
-      {/* Continue Reading */}
-      {inProgress.length > 0 && (
-        <section>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
-            <BookOpen className="w-5 h-5 inline mr-1" /> 继续阅读
-          </h2>
-          <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4">
-            {inProgress.map((book) => (
-              <div
-                key={book.id}
-                className="flex-shrink-0 w-48 cursor-pointer"
-                onClick={() => handleBookSelect(book)}
-              >
-                <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden relative">
-                  {book.coverUrl ? (
-                    <img
-                      src={getCoverImageUrl(book.coverUrl)}
-                      alt={book.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500">
-                      <span className="text-3xl text-white font-bold">
-                        {book.title.charAt(0)}
-                      </span>
-                    </div>
-                  )}
-                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-300 dark:bg-gray-600">
-                    <div
-                      className="h-full bg-blue-500"
-                      style={{ width: `${book.readingProgress}%` }}
-                    />
-                  </div>
-                </div>
-                <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white truncate">
-                  {book.title}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {book.readingProgress}%
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Recently Added */}
-      {recentlyRead.length > 0 && (
-        <section>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 inline-flex items-center gap-1">
-            <Clock className="w-5 h-5" /> 最近阅读
-          </h2>
-          <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4">
-            {recentlyRead.map((book) => (
-              <div
-                key={book.id}
-                className="flex-shrink-0 w-48 cursor-pointer"
-                onClick={() => handleBookSelect(book)}
-              >
-                <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden">
-                  {book.coverUrl ? (
-                    <img
-                      src={getCoverImageUrl(book.coverUrl)}
-                      alt={book.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-green-400 to-teal-500">
-                      <span className="text-3xl text-white font-bold">
-                        {book.title.charAt(0)}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white truncate">
-                  {book.title}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {formatDate(book.lastReadAt)}
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* All Books */}
       <section>
