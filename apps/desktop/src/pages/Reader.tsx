@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { getApiClient, Book } from '@bookdock/api-client';
 import { useReaderStore } from '../stores/themeStore';
 import { useAuthStore } from '../stores/authStore';
 import { Button } from '@bookdock/ui';
 import type { ReaderMode } from '@bookdock/ebook-reader';
-import { ArrowLeft, Settings, BookOpen, Bookmark, ChevronLeft, ChevronRight, Volume2, Timer, X, Keyboard, Sun, Moon, ScrollText, Plus, FileText, Heart, FolderPlus } from 'lucide-react';
+import { ArrowLeft, Settings, BookOpen, Bookmark, ChevronLeft, ChevronRight, Volume2, Timer, X, Sun, Moon, ScrollText, Plus } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -75,13 +75,13 @@ function ChapterDrawer({ chapters, currentChapter, isOpen, onClose, onSelectChap
           ) : (
             <div className="space-y-0.5 px-2">
               {chapters.map((chapter, idx) => {
-                const isActive = idx === currentChapter;
+                const isActive = chapter.index === currentChapter;
                 return (
                   <button
                     key={chapter.index}
                     data-active={isActive}
                     onClick={() => {
-                      onSelectChapter(idx);
+                      onSelectChapter(chapter.index);
                       onClose();
                     }}
                     className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${
@@ -347,53 +347,74 @@ function SettingsDrawer({
 // ==================== PDF Viewer ====================
 interface PdfViewerProps {
   url: string;
-  title: string;
+  currentPage: number;
+  onPdfLoaded: (info: { totalPages: number; outline: Array<{ title: string; page: number }> }) => void;
 }
 
-function PdfViewer({ url, title }: PdfViewerProps) {
+function PdfViewer({ url, currentPage, onPdfLoaded }: PdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
   const [scale, setScale] = useState(1.5);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const hasReportedLoad = useRef(false);
 
+  // Load PDF
   useEffect(() => {
     let cancelled = false;
+    hasReportedLoad.current = false;
 
     const loadPdf = async () => {
       try {
         setLoading(true);
         setError(null);
-
-        // 使用 blob URL 或普通 URL 加载 PDF
         const loadingTask = pdfjsLib.getDocument(url);
         const pdf = await loadingTask.promise;
-
         if (cancelled) return;
-
         setPdfDoc(pdf);
-        setTotalPages(pdf.numPages);
-        setCurrentPage(1);
+
+        // Extract outline (bookmarks / table of contents)
+        let outline: Array<{ title: string; page: number }> = [];
+        try {
+          const rawOutline = await pdf.getOutline();
+          if (rawOutline && rawOutline.length > 0) {
+            const dests = await pdf.getDestinations();
+            const outlineItems: Array<{ title: string; page: number }> = [];
+            for (const item of rawOutline) {
+              let pageNum = 1;
+              if (item.dest) {
+                const dest = Array.isArray(item.dest) ? item.dest[0] : item.dest;
+                if (typeof dest === 'string' && dests[dest]) {
+                  const destRef = Array.isArray(dests[dest]) ? dests[dest][0] : dests[dest];
+                  pageNum = (await pdf.getPageIndex(destRef)) + 1;
+                } else if (dest && typeof dest === 'object' && 'num' in dest) {
+                  pageNum = (await pdf.getPageIndex(dest)) + 1;
+                }
+              }
+              outlineItems.push({ title: item.title || '未命名', page: pageNum });
+            }
+            outline = outlineItems;
+          }
+        } catch (e) {
+          console.warn('Failed to extract PDF outline:', e);
+        }
+
+        if (!cancelled && !hasReportedLoad.current) {
+          hasReportedLoad.current = true;
+          onPdfLoaded({ totalPages: pdf.numPages, outline });
+        }
       } catch (err: any) {
-        if (!cancelled) {
-          setError(err.message || '加载 PDF 失败');
-        }
+        if (!cancelled) setError(err.message || '加载 PDF 失败');
       } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       }
     };
 
     loadPdf();
+    return () => { cancelled = true; };
+  }, [url, onPdfLoaded]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [url]);
-
+  // Render page
   useEffect(() => {
     if (!pdfDoc || !canvasRef.current) return;
 
@@ -402,15 +423,10 @@ function PdfViewer({ url, title }: PdfViewerProps) {
         const page = await pdfDoc.getPage(currentPage);
         const canvas = canvasRef.current!;
         const context = canvas.getContext('2d')!;
-
         const viewport = page.getViewport({ scale });
         canvas.height = viewport.height;
         canvas.width = viewport.width;
-
-        await page.render({
-          canvasContext: context,
-          viewport: viewport,
-        }).promise;
+        await page.render({ canvasContext: context, viewport }).promise;
       } catch (err: any) {
         setError(err.message || '渲染页面失败');
       }
@@ -419,12 +435,26 @@ function PdfViewer({ url, title }: PdfViewerProps) {
     renderPage();
   }, [pdfDoc, currentPage, scale]);
 
+  // Wheel zoom
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        setScale((s) => Math.max(0.5, Math.min(3, s + (e.deltaY > 0 ? -0.1 : 0.1))));
+      }
+    };
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', handleWheel);
+  }, []);
+
   if (loading) {
     return (
-      <div className="fixed inset-0 pt-14 pb-16 flex items-center justify-center bg-white">
+      <div className="fixed inset-0 pt-14 pb-16 flex items-center justify-center bg-white dark:bg-gray-900">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto"></div>
-          <p className="mt-4 text-gray-600">加载 PDF 中...</p>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">加载 PDF 中...</p>
         </div>
       </div>
     );
@@ -432,7 +462,7 @@ function PdfViewer({ url, title }: PdfViewerProps) {
 
   if (error) {
     return (
-      <div className="fixed inset-0 pt-14 pb-16 flex items-center justify-center bg-white">
+      <div className="fixed inset-0 pt-14 pb-16 flex items-center justify-center bg-white dark:bg-gray-900">
         <div className="text-center text-red-500">
           <p>PDF 加载失败</p>
           <p className="text-sm mt-2">{error}</p>
@@ -442,44 +472,7 @@ function PdfViewer({ url, title }: PdfViewerProps) {
   }
 
   return (
-    <div className="fixed inset-0 pt-14 pb-16 bg-white flex flex-col">
-      {/* PDF Toolbar */}
-      <div className="flex items-center justify-center gap-4 py-2 bg-gray-100 border-b">
-        <button
-          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-          disabled={currentPage <= 1}
-          className="px-3 py-1 rounded bg-blue-500 text-white disabled:bg-gray-300"
-        >
-          上一页
-        </button>
-        <span className="text-sm">
-          {currentPage} / {totalPages}
-        </span>
-        <button
-          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-          disabled={currentPage >= totalPages}
-          className="px-3 py-1 rounded bg-blue-500 text-white disabled:bg-gray-300"
-        >
-          下一页
-        </button>
-        <div className="flex items-center gap-2 ml-4">
-          <button
-            onClick={() => setScale((s) => Math.max(0.5, s - 0.25))}
-            className="px-2 py-1 rounded bg-gray-200"
-          >
-            -
-          </button>
-          <span className="text-sm">{Math.round(scale * 100)}%</span>
-          <button
-            onClick={() => setScale((s) => Math.min(3, s + 0.25))}
-            className="px-2 py-1 rounded bg-gray-200"
-          >
-            +
-          </button>
-        </div>
-      </div>
-
-      {/* PDF Canvas */}
+    <div className="fixed inset-0 pt-14 pb-16 bg-white dark:bg-gray-900 flex flex-col">
       <div className="flex-1 overflow-auto flex justify-center p-4">
         <canvas ref={canvasRef} className="shadow-lg" />
       </div>
@@ -507,6 +500,7 @@ interface ReaderControlsProps {
   showSettings: boolean;
   onNavigateTts: () => void;
   scrollContainerRef?: React.RefObject<HTMLDivElement>;
+  isPdf?: boolean;
 }
 
 function ReaderControls({
@@ -514,6 +508,7 @@ function ReaderControls({
   currentChapter,
   totalChapters,
   chapterTitle,
+  mode,
   onPrevPage,
   onNextPage,
   onGoBack,
@@ -527,6 +522,7 @@ function ReaderControls({
   showSettings,
   onNavigateTts,
   scrollContainerRef,
+  isPdf = false,
 }: ReaderControlsProps) {
   const [hidden, setHidden] = useState(false);
   const lastScrollY = useRef(0);
@@ -539,10 +535,8 @@ function ReaderControls({
     const handleScroll = () => {
       const currentY = container.scrollTop;
       if (currentY > lastScrollY.current && currentY > 60) {
-        // Scrolling down: hide
         setHidden(true);
       } else if (currentY < lastScrollY.current) {
-        // Scrolling up: show
         setHidden(false);
       }
       lastScrollY.current = currentY;
@@ -572,6 +566,9 @@ function ReaderControls({
 
   const barTransition = 'transform 0.3s ease-in-out';
 
+  const isFirst = currentChapter === 0;
+  const isLast = currentChapter >= totalChapters - 1;
+
   return (
     <>
       {/* Top bar */}
@@ -600,7 +597,9 @@ function ReaderControls({
                 className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate max-w-[60%] text-center"
                 title={chapterTitle}
               >
-                {chapterTitle || `第 ${currentChapter + 1} 章`}
+                {isPdf
+                  ? `${chapterTitle || 'PDF'} · 第 ${currentChapter + 1} / ${totalChapters} 页`
+                  : chapterTitle || `第 ${currentChapter + 1} 章`}
               </h1>
             </div>
 
@@ -658,8 +657,8 @@ function ReaderControls({
               <button
                 onClick={onPrevPage}
                 className="p-2 sm:p-2.5 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={currentChapter === 0}
-                title="上一章"
+                disabled={isFirst}
+                title={isPdf ? '上一页' : '上一章'}
               >
                 <ChevronLeft className="w-5 h-5" />
               </button>
@@ -689,8 +688,8 @@ function ReaderControls({
               <button
                 onClick={onNextPage}
                 className="p-2 sm:p-2.5 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={currentChapter >= totalChapters - 1}
-                title="下一章 (→)"
+                disabled={isLast}
+                title={isPdf ? '下一页 (→)' : '下一章 (→)'}
               >
                 <ChevronRight className="w-5 h-5" />
               </button>
@@ -738,7 +737,9 @@ export default function Reader() {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const autoScrollTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  // contentRef is used for both reading area and auto-scroll
+  const [pdfTotalPages, setPdfTotalPages] = useState(0);
+  const [pdfOutline, setPdfOutline] = useState<Array<{ title: string; page: number }>>([]);
+  const isPdf = book ? (book.fileType || book.format) === 'pdf' : false;
 
   const {
     mode,
@@ -816,21 +817,18 @@ export default function Reader() {
       if (!id || !book) return;
 
       // PDF files: skip chapters, use direct download URL
-      if ((book.fileType || book.format) === 'pdf') {
+      if (isPdf) {
         const apiClient = getApiClient();
         const token = localStorage.getItem('bookdock_auth_token') || '';
         const baseUrl = `${apiClient.baseURL}/books/${id}/download`;
-        // 使用 fetch 下载 PDF 并创建 blob URL，避免 iframe 跨域/认证问题
         fetch(`${baseUrl}?token=${encodeURIComponent(token)}`)
           .then((res) => {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return res.blob();
           })
           .then((blob) => {
-            // 确保 blob 类型是 PDF
             const pdfBlob = new Blob([blob], { type: 'application/pdf' });
             const blobUrl = URL.createObjectURL(pdfBlob);
-            console.log('[PDF] Blob URL created:', blobUrl, 'size:', pdfBlob.size);
             setPdfUrl(blobUrl);
           })
           .catch((err) => {
@@ -842,7 +840,6 @@ export default function Reader() {
 
       try {
         const apiClient = getApiClient();
-        // Fetch chapters and progress in parallel
         const [chaptersRes, progressRes] = await Promise.allSettled([
           apiClient.getChapters(id),
           apiClient.getReadingProgress(id),
@@ -861,7 +858,6 @@ export default function Reader() {
           const savedChapter = progressData?.currentChapter ?? 0;
           const savedScroll = progressData?.scrollOffset ?? 0;
           if (savedChapter >= 0 && savedChapter < chaptersData.length) {
-            // Batch set states so fetchContent only runs once with correct chapter
             setChapters(chaptersData);
             setCurrentChapter(savedChapter);
             setPendingScrollTop(savedScroll);
@@ -874,14 +870,14 @@ export default function Reader() {
       }
     };
     fetchChaptersAndProgress();
-  }, [id, book]);
+  }, [id, book, isPdf]);
 
   // Fetch chapter content (with cancellation to prevent race)
   useEffect(() => {
     let cancelled = false;
 
     const fetchContent = async () => {
-      if (!id || chapters.length === 0 || !book || book.fileType === 'pdf') return;
+      if (!id || chapters.length === 0 || !book || isPdf) return;
       setIsChapterLoading(true);
       setReaderError(null);
       try {
@@ -909,7 +905,7 @@ export default function Reader() {
     return () => {
       cancelled = true;
     };
-  }, [id, currentChapter, chapters.length, book]);
+  }, [id, currentChapter, chapters.length, book, isPdf]);
 
   const resetScroll = useCallback(() => {
     scrollPositionRef.current = 0;
@@ -924,10 +920,10 @@ export default function Reader() {
       cfi: '',
       position: currentChapter,
       createdAt: new Date().toISOString(),
-      percentage: Math.round(((currentChapter + 1) / chapters.length) * 100),
+      percentage: Math.round(((currentChapter + 1) / (isPdf ? pdfTotalPages : chapters.length)) * 100),
     };
     saveBookmarks([...bookmarks, newBookmark]);
-  }, [book, currentChapter, chapters.length, bookmarks, saveBookmarks]);
+  }, [book, currentChapter, chapters.length, bookmarks, saveBookmarks, isPdf, pdfTotalPages]);
 
   const handleGoToBookmark = useCallback((bookmark: Bookmark) => {
     setCurrentChapter(bookmark.position);
@@ -1003,109 +999,36 @@ export default function Reader() {
     setMargin(newMargin);
   }, [setMargin]);
 
+  const handlePdfLoaded = useCallback(({ totalPages, outline }: { totalPages: number; outline: Array<{ title: string; page: number }> }) => {
+    setPdfTotalPages(totalPages);
+    setPdfOutline(outline);
+  }, []);
+
   const handleGoToPage = useCallback((page: number) => {
     setCurrentChapter(page - 1);
-    resetScroll();
-  }, [resetScroll]);
+    if (!isPdf) resetScroll();
+  }, [isPdf, resetScroll]);
 
   const handleGoToChapter = useCallback((index: number) => {
     setCurrentChapter(index);
-    scrollPositionRef.current = 0;
-    shouldResetScrollRef.current = true;
-    setPendingScrollTop(null);
-    applyScrollTop(0);
-  }, [applyScrollTop]);
-
-  // Track the first visible line position + debounced save on scroll stop
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-
-    let scrollSaveTimer: NodeJS.Timeout | null = null;
-
-    const handler = () => {
-      const top = getCurrentScrollTop();
-      scrollPositionRef.current = top;
-
-      // Debounced save: only scroll changes trigger save
-      if (scrollSaveTimer) clearTimeout(scrollSaveTimer);
-      scrollSaveTimer = setTimeout(() => {
-        saveReadingPosition(top, 'scroll progress');
-      }, 1500);
-    };
-
-    el.addEventListener('scroll', handler, { passive: true });
-    window.addEventListener('scroll', handler, { passive: true });
-    return () => {
-      el.removeEventListener('scroll', handler);
-      window.removeEventListener('scroll', handler);
-      if (scrollSaveTimer) {
-        clearTimeout(scrollSaveTimer);
-        saveReadingPosition(getCurrentScrollTop(), 'scroll progress');
-      }
-    };
-  }, [getCurrentScrollTop, saveReadingPosition]);
-
-  // Save immediately when chapter changes (skip during restore — restore effect saves itself)
-  useEffect(() => {
-    if (!id || chapters.length === 0 || pendingScrollTop !== null) return;
-    if (prevChapterRef.current === currentChapter) return; // avoid duplicate save when pendingScrollTop flips to null
-    prevChapterRef.current = currentChapter;
-
-    const scrollTop = scrollPositionRef.current;
-    saveReadingPosition(scrollTop, 'chapter progress');
-  }, [id, currentChapter, chapters.length, pendingScrollTop, saveReadingPosition]);
-
-  // Restore or reset scroll position after new chapter content renders
-  useEffect(() => {
-    if (!chapterContent || !contentRef.current) return;
-
-    if (pendingScrollTop !== null) {
-      // Restoring saved position
-      const target = pendingScrollTop;
-      const timer = setTimeout(() => {
-        applyScrollTop(target);
-        setPendingScrollTop(null);
-
-        // Save restored progress immediately so DB has the first visible line.
-        saveReadingPosition(target, 'restored progress');
-      }, 300);
-      return () => clearTimeout(timer);
+    if (!isPdf) {
+      scrollPositionRef.current = 0;
+      shouldResetScrollRef.current = true;
+      setPendingScrollTop(null);
+      applyScrollTop(0);
     }
-
-    if (shouldResetScrollRef.current) {
-      // Explicit chapter navigation starts at the chapter top.
-      const timer = setTimeout(() => {
-        applyScrollTop(0, 'smooth');
-        shouldResetScrollRef.current = false;
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [applyScrollTop, chapterContent, pendingScrollTop, saveReadingPosition]);
-
-  // Save the current first visible line when leaving the reader.
-  useEffect(() => {
-    const saveOnExit = () => saveReadingPosition(getCurrentScrollTop(), 'exit progress');
-
-    window.addEventListener('pagehide', saveOnExit);
-    window.addEventListener('beforeunload', saveOnExit);
-
-    return () => {
-      saveOnExit();
-      window.removeEventListener('pagehide', saveOnExit);
-      window.removeEventListener('beforeunload', saveOnExit);
-    };
-  }, [getCurrentScrollTop, saveReadingPosition]);
+  }, [isPdf, applyScrollTop]);
 
   const prevPage = useCallback(() => {
     setCurrentChapter((prev) => Math.max(0, prev - 1));
-    resetScroll();
-  }, [resetScroll]);
+    if (!isPdf) resetScroll();
+  }, [isPdf, resetScroll]);
 
   const nextPage = useCallback(() => {
-    setCurrentChapter((prev) => Math.min(chapters.length - 1, prev + 1));
-    resetScroll();
-  }, [chapters.length, resetScroll]);
+    const max = isPdf ? pdfTotalPages - 1 : chapters.length - 1;
+    setCurrentChapter((prev) => Math.min(max, prev + 1));
+    if (!isPdf) resetScroll();
+  }, [isPdf, chapters.length, pdfTotalPages, resetScroll]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -1129,12 +1052,12 @@ export default function Reader() {
         case 'Home':
           e.preventDefault();
           setCurrentChapter(0);
-          resetScroll();
+          if (!isPdf) resetScroll();
           break;
         case 'End':
           e.preventDefault();
-          setCurrentChapter(chapters.length - 1);
-          resetScroll();
+          setCurrentChapter(isPdf ? pdfTotalPages - 1 : chapters.length - 1);
+          if (!isPdf) resetScroll();
           break;
         case 'Escape':
           setShowSettings(false);
@@ -1151,7 +1074,7 @@ export default function Reader() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [nextPage, prevPage, chapters.length, handleAddBookmark, resetScroll]);
+  }, [nextPage, prevPage, chapters.length, handleAddBookmark, resetScroll, isPdf, pdfTotalPages]);
 
   // Touch swipe handling
   useEffect(() => {
@@ -1191,25 +1114,113 @@ export default function Reader() {
   const handleNavigateTts = useCallback(async () => {
     if (!id) return;
     
-    // Check if user is logged in to Plus system
     const { refreshVipStatus, plusToken } = useAuthStore.getState();
     
-    // If not logged in to Plus, redirect to member login
     if (!plusToken) {
       navigate('/member-login', { state: { from: location.pathname } });
       return;
     }
     
-    // If logged in but not VIP, redirect to membership page
     const vipNow = await refreshVipStatus();
     if (!vipNow) {
       navigate('/membership', { state: { from: location.pathname } });
       return;
     }
     
-    // User is VIP, navigate to TTS
     navigate(`/book/${id}/tts`);
   }, [id, navigate, location.pathname]);
+
+  // Track the first visible line position + debounced save on scroll stop
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+
+    let scrollSaveTimer: NodeJS.Timeout | null = null;
+
+    const handler = () => {
+      const top = getCurrentScrollTop();
+      scrollPositionRef.current = top;
+
+      if (scrollSaveTimer) clearTimeout(scrollSaveTimer);
+      scrollSaveTimer = setTimeout(() => {
+        saveReadingPosition(top, 'scroll progress');
+      }, 1500);
+    };
+
+    el.addEventListener('scroll', handler, { passive: true });
+    window.addEventListener('scroll', handler, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', handler);
+      window.removeEventListener('scroll', handler);
+      if (scrollSaveTimer) {
+        clearTimeout(scrollSaveTimer);
+        saveReadingPosition(getCurrentScrollTop(), 'scroll progress');
+      }
+    };
+  }, [getCurrentScrollTop, saveReadingPosition]);
+
+  // Save immediately when chapter changes
+  useEffect(() => {
+    if (!id || chapters.length === 0 || pendingScrollTop !== null) return;
+    if (prevChapterRef.current === currentChapter) return;
+    prevChapterRef.current = currentChapter;
+
+    const scrollTop = scrollPositionRef.current;
+    saveReadingPosition(scrollTop, 'chapter progress');
+  }, [id, currentChapter, chapters.length, pendingScrollTop, saveReadingPosition]);
+
+  // Restore or reset scroll position after new chapter content renders
+  useEffect(() => {
+    if (!chapterContent || !contentRef.current) return;
+
+    if (pendingScrollTop !== null) {
+      const target = pendingScrollTop;
+      const timer = setTimeout(() => {
+        applyScrollTop(target);
+        setPendingScrollTop(null);
+        saveReadingPosition(target, 'restored progress');
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+
+    if (shouldResetScrollRef.current) {
+      const timer = setTimeout(() => {
+        applyScrollTop(0, 'smooth');
+        shouldResetScrollRef.current = false;
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [applyScrollTop, chapterContent, pendingScrollTop, saveReadingPosition]);
+
+  // Save the current first visible line when leaving the reader.
+  useEffect(() => {
+    const saveOnExit = () => saveReadingPosition(getCurrentScrollTop(), 'exit progress');
+
+    window.addEventListener('pagehide', saveOnExit);
+    window.addEventListener('beforeunload', saveOnExit);
+
+    return () => {
+      saveOnExit();
+      window.removeEventListener('pagehide', saveOnExit);
+      window.removeEventListener('beforeunload', saveOnExit);
+    };
+  }, [getCurrentScrollTop, saveReadingPosition]);
+
+  // Build TOC chapters for PDF
+  const pdfTocChapters = useMemo(() => {
+    if (!isPdf || pdfTotalPages === 0) return [];
+    // If PDF has outline/bookmarks, use them; otherwise fall back to page numbers
+    if (pdfOutline.length > 0) {
+      return pdfOutline.map((item, idx) => ({
+        title: item.title,
+        index: item.page - 1,
+      }));
+    }
+    return Array.from({ length: pdfTotalPages }, (_, i) => ({
+      title: `第 ${i + 1} 页`,
+      index: i,
+    }));
+  }, [isPdf, pdfTotalPages, pdfOutline]);
 
   if (isLoading) {
     return (
@@ -1251,6 +1262,9 @@ export default function Reader() {
     );
   }
 
+  const tocChapters = isPdf ? pdfTocChapters : chapters;
+  const totalChapters = isPdf ? pdfTotalPages : chapters.length;
+
   return (
     <div
       className={`min-h-screen ${
@@ -1264,8 +1278,8 @@ export default function Reader() {
       <ReaderControls
         book={book}
         currentChapter={currentChapter}
-        totalChapters={chapters.length}
-        chapterTitle={chapters[currentChapter]?.title || ''}
+        totalChapters={totalChapters}
+        chapterTitle={isPdf ? book.title : chapters[currentChapter]?.title || ''}
         mode={mode}
         onPrevPage={prevPage}
         onNextPage={nextPage}
@@ -1280,11 +1294,12 @@ export default function Reader() {
         showSettings={showSettings}
         onNavigateTts={handleNavigateTts}
         scrollContainerRef={contentRef}
+        isPdf={isPdf}
       />
 
       {/* Chapter Drawer (TOC) - LEFT */}
       <ChapterDrawer
-        chapters={chapters}
+        chapters={tocChapters}
         currentChapter={currentChapter}
         isOpen={showToc}
         onClose={() => setShowToc(false)}
@@ -1311,9 +1326,13 @@ export default function Reader() {
       />
 
       {/* Reader container */}
-      {(book.fileType || book.format) === 'pdf' && pdfUrl ? (
-        <PdfViewer url={pdfUrl} title={book.title} />
-      ) : (book.fileType || book.format) === 'pdf' && !pdfUrl ? (
+      {isPdf && pdfUrl ? (
+        <PdfViewer
+          url={pdfUrl}
+          currentPage={currentChapter + 1}
+          onPdfLoaded={handlePdfLoaded}
+        />
+      ) : isPdf && !pdfUrl ? (
         <div className="fixed inset-0 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto"></div>

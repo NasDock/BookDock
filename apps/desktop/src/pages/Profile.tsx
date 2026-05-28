@@ -9,7 +9,6 @@ import {
   Heart,
   FolderOpen,
   Download,
-  LogOut,
   ChevronRight,
   Plus,
   X,
@@ -37,7 +36,7 @@ type TabKey = "collections" | "reading" | "favorites" | "downloads";
 
 export default function Profile() {
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const [activeTab, setActiveTab] = useState<TabKey>("collections");
   const [collections, setCollections] = useState<Collection[]>([]);
   const [favorites, setFavorites] = useState<Book[]>([]);
@@ -90,10 +89,7 @@ export default function Profile() {
     }
   }, [newCollectionName, fetchData]);
 
-  const handleLogout = useCallback(() => {
-    logout();
-    navigate("/login");
-  }, [logout, navigate]);
+
 
   const tabs: { key: TabKey; label: string; icon: any }[] = [
     { key: "collections", label: "书单", icon: FolderOpen },
@@ -246,14 +242,7 @@ export default function Profile() {
         {/* Content */}
         {renderContent()}
 
-        {/* Logout */}
-        <button
-          onClick={handleLogout}
-          className="w-full mt-6 flex items-center justify-center gap-2 py-3 bg-white dark:bg-gray-800 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-        >
-          <LogOut className="w-4 h-4" />
-          退出登录
-        </button>
+
       </div>
 
       {/* Create Collection Modal */}

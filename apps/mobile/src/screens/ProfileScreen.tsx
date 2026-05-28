@@ -130,24 +130,7 @@ export function ProfileScreen() {
     ]);
   }, []);
 
-  const handleLogout = useCallback(() => {
-    Alert.alert('确认', '确定要退出登录吗？', [
-      { text: '取消', style: 'cancel' },
-      {
-        text: '退出登录',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const apiClient = getApiClient();
-            await apiClient.logout();
-          } catch { /* ignore */ }
-          logout();
-          // @ts-ignore
-          navigation.replace('Login');
-        },
-      },
-    ]);
-  }, [logout, navigation]);
+
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -311,11 +294,7 @@ export function ProfileScreen() {
         {/* Content */}
         {renderContent()}
 
-        {/* Logout */}
-        <TouchableOpacity style={[styles.logoutButton, { backgroundColor: theme.colors.surface }]} onPress={handleLogout}>
-          <Ionicons name="log-out-outline" size={20} color={theme.colors.error} />
-          <Text style={[styles.logoutText, { color: theme.colors.error }]}>退出登录</Text>
-        </TouchableOpacity>
+
       </ScrollView>
 
       {/* Add Menu Modal */}
