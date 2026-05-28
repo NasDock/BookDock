@@ -254,6 +254,42 @@ function generateReaderHtml(
 </html>`;
   }
 
+  // EPUB / MOBI / AZW3 - content is already HTML from server, embed directly
+  if (fileType === 'epub' || fileType === 'mobi' || fileType === 'azw3') {
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: ${config.fontFamily};
+      font-size: ${config.fontSize}px;
+      line-height: ${config.lineHeight};
+      color: ${textColor};
+      background: ${bgColor};
+      margin: 0;
+      padding: ${config.margin}px;
+      padding-top: ${config.margin + 56}px;
+      text-align: justify;
+      word-wrap: break-word;
+    }
+    h1, h2, h3, h4, h5, h6 { color: ${textColor}; margin-top: 1em; margin-bottom: 0.5em; }
+    h1 { font-size: ${config.fontSize * 1.5}px; }
+    h2 { font-size: ${config.fontSize * 1.3}px; }
+    h3 { font-size: ${config.fontSize * 1.15}px; }
+    p { margin: 0.5em 0; }
+    img { max-width: 100%; height: auto; }
+    a { color: ${linkColor}; }
+  </style>
+</head>
+<body>
+  ${content}
+</body>
+</html>`;
+  }
+
   // EPUB / MOBI fallback - show a message with download option
   return `<!DOCTYPE html>
 <html>
@@ -367,10 +403,10 @@ export function ReaderScreen() {
     }).start();
   }, [topBarAnim, bottomBarAnim]);
 
-  // Load specific chapter for TXT books
+  // Load specific chapter for TXT/EPUB/MOBI books
   const loadChapter = useCallback(async (chapterIndex: number, scrollOffset = 0) => {
-    // Only supported for txt files
-    if (book.fileType !== 'txt') {
+    // Only supported for txt, epub, and mobi files
+    if (book.fileType !== 'txt' && book.fileType !== 'epub' && book.fileType !== 'mobi' && book.fileType !== 'azw3') {
       return;
     }
 
@@ -492,6 +528,26 @@ export function ReaderScreen() {
           } else if (book.fileType === 'pdf') {
             // Use react-native-pdf for local PDF files
             setPdfSource({ uri: localPath });
+          } else if (book.fileType === 'epub' || book.fileType === 'mobi' || book.fileType === 'azw3') {
+            // EPUB/MOBI/AZW3 is loaded chapter by chapter from server, same as remote
+            const apiClient = getApiClient();
+            const chaptersRes = await apiClient.getChapters(book.id);
+            if (chaptersRes.success && chaptersRes.data) {
+              const chs = chaptersRes.data.map((ch: any) => ({ index: ch.index, title: ch.title }));
+              setChapters(chs);
+              const contentRes = await apiClient.getChapterContent(book.id, initialChapter);
+              if (contentRes.success && contentRes.data) {
+                const html = generateReaderHtml(book.title, book.author, contentRes.data.content, book.fileType, readerConfigRef.current);
+                setHtmlContent(html);
+                const overallPct = chs.length > 0 ? Math.round(((initialChapter + 1) / chs.length) * 100) : 0;
+                setReadingProgress(overallPct);
+                latestPositionRef.current = {
+                  percentage: overallPct,
+                  currentPage: initialChapter,
+                  scrollOffset: initialScrollOffset,
+                };
+              }
+            }
           } else {
             const html = generateReaderHtml(book.title, book.author, '', book.fileType || book.format || 'epub', readerConfigRef.current);
             setHtmlContent(html);
@@ -503,10 +559,10 @@ export function ReaderScreen() {
 
       // Fetch from server
       const apiClient = getApiClient();
-      if (book.fileType === 'txt') {
+      if (book.fileType === 'txt' || book.fileType === 'epub' || book.fileType === 'mobi' || book.fileType === 'azw3') {
         const chaptersRes = await apiClient.getChapters(book.id);
         if (chaptersRes.success && chaptersRes.data) {
-          const chs = chaptersRes.data.map(ch => ({ index: ch.index, title: ch.title }));
+          const chs = chaptersRes.data.map((ch: any) => ({ index: ch.index, title: ch.title }));
           setChapters(chs);
 
           const contentRes = await apiClient.getChapterContent(book.id, initialChapter);
@@ -757,7 +813,7 @@ export function ReaderScreen() {
 
   const handleChapterPress = useCallback((chapterIndex: number) => {
     setShowChapters(false);
-    if (book.fileType === 'txt') {
+    if (book.fileType === 'txt' || book.fileType === 'epub' || book.fileType === 'mobi' || book.fileType === 'azw3') {
       loadChapter(chapterIndex, 0);
     } else if (book.fileType === 'pdf') {
       setPdfCurrentPage(chapterIndex + 1);
@@ -781,7 +837,7 @@ export function ReaderScreen() {
   }, [requestCurrentPositionSave]);
 
   const handlePrevPage = useCallback(() => {
-    if (book.fileType === 'txt') {
+    if (book.fileType === 'txt' || book.fileType === 'epub' || book.fileType === 'mobi' || book.fileType === 'azw3') {
       if (currentChapter > 0) {
         loadChapter(currentChapter - 1, 0);
       } else {
@@ -805,7 +861,7 @@ export function ReaderScreen() {
   }, [book.fileType, currentChapter, loadChapter, pdfCurrentPage]);
 
   const handleNextPage = useCallback(() => {
-    if (book.fileType === 'txt') {
+    if (book.fileType === 'txt' || book.fileType === 'epub' || book.fileType === 'mobi' || book.fileType === 'azw3') {
       if (currentChapter < chapters.length - 1) {
         loadChapter(currentChapter + 1, 0);
       } else {

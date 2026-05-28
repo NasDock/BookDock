@@ -1367,9 +1367,21 @@ export default function Reader() {
               >
                 {chapters[currentChapter]?.title || `第 ${currentChapter + 1} 章`}
               </h2>
-              <div className="whitespace-pre-wrap leading-relaxed">
-                {chapterContent}
-              </div>
+              {isPdf ? (
+                <div className="whitespace-pre-wrap leading-relaxed">
+                  {chapterContent}
+                </div>
+              ) : book?.format === 'epub' || book?.fileType === 'epub' || book?.format === 'mobi' || book?.fileType === 'mobi' || book?.format === 'azw3' || book?.fileType === 'azw3' ? (
+                <div
+                  className="leading-relaxed epub-content"
+                  style={{ fontFamily, fontSize: `${fontSize}px`, lineHeight }}
+                  dangerouslySetInnerHTML={{ __html: chapterContent }}
+                />
+              ) : (
+                <div className="whitespace-pre-wrap leading-relaxed">
+                  {chapterContent}
+                </div>
+              )}
             </div>
           )}
 

@@ -23,6 +23,16 @@ import {
   PaginatedBooksDto,
   BookStatsDto,
 } from './dto/books.dto';
+import { EPub } from 'epub';
+
+// MOBI parser is ESM-only, use dynamic import
+let mobiParser: typeof import('@lingo-reader/mobi-parser') | null = null;
+async function getMobiParser() {
+  if (!mobiParser) {
+    mobiParser = await import('@lingo-reader/mobi-parser');
+  }
+  return mobiParser;
+}
 
 @Injectable()
 export class BooksService implements OnModuleInit {
@@ -298,7 +308,17 @@ export class BooksService implements OnModuleInit {
       return chapters.map((c, i) => ({ title: c.title, index: i }));
     }
 
-    // For non-txt, return a single chapter placeholder
+    if (book.format === 'epub') {
+      const chapters = await this.parseEpubChapters(book.filePath);
+      return chapters.map((c) => ({ title: c.title, index: c.index }));
+    }
+
+    if (book.format === 'mobi' || book.format === 'azw3') {
+      const chapters = await this.parseMobiChapters(book.filePath);
+      return chapters.map((c) => ({ title: c.title, index: c.index }));
+    }
+
+    // For other formats, return a single chapter placeholder
     return [{ title: '全文', index: 0 }];
   }
 
@@ -308,16 +328,28 @@ export class BooksService implements OnModuleInit {
     });
     if (!book) throw new NotFoundException('Book not found');
 
-    if (book.format !== 'txt') {
-      throw new NotFoundException('Chapter content only supported for txt files');
+    if (book.format === 'txt') {
+      return this.getTxtChapterContent(book.filePath, chapterIndex);
     }
 
-    const chapters = await this.parseTxtChapters(book.filePath);
+    if (book.format === 'epub') {
+      return this.getEpubChapterContent(book.filePath, chapterIndex);
+    }
+
+    if (book.format === 'mobi' || book.format === 'azw3') {
+      return this.getMobiChapterContent(book.filePath, chapterIndex);
+    }
+
+    throw new NotFoundException('Chapter content only supported for txt, epub, and mobi files');
+  }
+
+  private async getTxtChapterContent(filePath: string, chapterIndex: number): Promise<{ title: string; content: string }> {
+    const chapters = await this.parseTxtChapters(filePath);
     if (chapterIndex < 0 || chapterIndex >= chapters.length) {
       throw new NotFoundException('Chapter not found');
     }
 
-    const fullPath = join(this.nasEbookPath, book.filePath);
+    const fullPath = join(this.nasEbookPath, filePath);
     const text = await this.readTextFile(fullPath);
     const lines = text.split(/\r?\n/);
 
@@ -333,6 +365,246 @@ export class BooksService implements OnModuleInit {
       title: chapters[chapterIndex].title,
       content: content || '(本章无内容)',
     };
+  }
+
+  // ─── EPUB Parsing ────────────────────────────────────────────────────────
+
+  private async parseEpubChapters(filePath: string): Promise<{ title: string; id: string; index: number }[]> {
+    const fullPath = join(this.nasEbookPath, filePath);
+    if (!existsSync(fullPath)) return [];
+
+    try {
+      const epub = new EPub(fullPath);
+      await epub.parse();
+
+      // Use TOC for chapter titles, fallback to spine order
+      const tocMap = new Map<string, string>();
+      for (const tocItem of epub.toc) {
+        // href may contain fragment like "chapter1.xhtml#section1"
+        const baseHref = tocItem.href.split('#')[0];
+        if (!tocMap.has(baseHref) || tocItem.level === 0) {
+          tocMap.set(baseHref, tocItem.title);
+        }
+      }
+
+      const chapters: { title: string; id: string; index: number }[] = [];
+      for (let i = 0; i < epub.flow.length; i++) {
+        const item = epub.flow[i];
+        const href = item.href;
+        const title = tocMap.get(href) || (item.title as string) || `第 ${i + 1} 章`;
+        chapters.push({ title, id: item.id, index: i });
+      }
+
+      return chapters;
+    } catch (err) {
+      console.error('Failed to parse EPUB:', err);
+      return [];
+    }
+  }
+
+  private async getEpubChapterContent(filePath: string, chapterIndex: number): Promise<{ title: string; content: string }> {
+    const fullPath = join(this.nasEbookPath, filePath);
+    if (!existsSync(fullPath)) {
+      throw new NotFoundException('EPUB file not found');
+    }
+
+    try {
+      const epub = new EPub(fullPath);
+      await epub.parse();
+
+      if (chapterIndex < 0 || chapterIndex >= epub.flow.length) {
+        throw new NotFoundException('Chapter not found');
+      }
+
+      const item = epub.flow[chapterIndex];
+      const rawHtml = await epub.getChapter(item.id);
+
+      // Clean HTML for reading: remove scripts, styles, keep basic structure
+      const cleanContent = this.cleanEpubHtml(rawHtml, item.href);
+
+      // Try to get title from TOC
+      let title = (item.title as string) || `第 ${chapterIndex + 1} 章`;
+      const tocItem = epub.toc.find((t) => t.href.split('#')[0] === item.href);
+      if (tocItem) {
+        title = tocItem.title as string;
+      }
+
+      return {
+        title,
+        content: cleanContent || '(本章无内容)',
+      };
+    } catch (err) {
+      console.error('Failed to get EPUB chapter:', err);
+      throw new NotFoundException('Failed to read EPUB chapter');
+    }
+  }
+
+  /**
+   * Clean EPUB HTML for reading:
+   * - Remove scripts and event handlers
+   * - Inline styles that break reading layout
+   * - Keep basic text structure (p, h1-h6, img, etc.)
+   */
+  private cleanEpubHtml(html: string, baseHref: string): string {
+    if (!html) return '';
+
+    // Remove DOCTYPE, html, head, body tags - keep inner content
+    let cleaned = html
+      .replace(/<!DOCTYPE[^>]*>/gi, '')
+      .replace(/<html[^>]*>/gi, '')
+      .replace(/<\/html>/gi, '')
+      .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+      .replace(/<body[^>]*>/gi, '')
+      .replace(/<\/body>/gi, '');
+
+    // Remove scripts
+    cleaned = cleaned.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '');
+    cleaned = cleaned.replace(/<script[^>]*\/>/gi, '');
+
+    // Remove inline event handlers
+    cleaned = cleaned.replace(/\son\w+="[^"]*"/gi, '');
+    cleaned = cleaned.replace(/\son\w+='[^']*'/gi, '');
+
+    // Remove style tags (we'll apply reader's own styles)
+    cleaned = cleaned.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
+
+    // Remove class attributes that may conflict with reader styles
+    cleaned = cleaned.replace(/\sclass="[^"]*"/gi, '');
+    cleaned = cleaned.replace(/\sclass='[^']*'/gi, '');
+
+    // Remove id attributes (may conflict)
+    cleaned = cleaned.replace(/\sid="[^"]*"/gi, '');
+    cleaned = cleaned.replace(/\sid='[^']*'/gi, '');
+
+    // Remove style attributes
+    cleaned = cleaned.replace(/\sstyle="[^"]*"/gi, '');
+    cleaned = cleaned.replace(/\sstyle='[^']*'/gi, '');
+
+    // Clean up excessive whitespace
+    cleaned = cleaned.replace(/\n\s*\n/g, '\n');
+
+    return cleaned.trim();
+  }
+
+  // ─── MOBI / AZW3 Parsing ─────────────────────────────────────────────────
+
+  private async parseMobiChapters(filePath: string): Promise<{ title: string; id: string; index: number }[]> {
+    const fullPath = join(this.nasEbookPath, filePath);
+    if (!existsSync(fullPath)) return [];
+
+    let mobi: any;
+    try {
+      const parser = await getMobiParser();
+      mobi = await parser.initMobiFile(fullPath);
+      const spine = mobi.getSpine();
+      const toc = mobi.getToc();
+
+      // Build TOC map: href -> title
+      const tocMap = new Map<string, string>();
+      const walkToc = (items: any[]) => {
+        for (const item of items) {
+          const baseHref = item.href.split('#')[0];
+          if (!tocMap.has(baseHref)) {
+            tocMap.set(baseHref, item.label);
+          }
+          if (item.children && item.children.length > 0) {
+            walkToc(item.children);
+          }
+        }
+      };
+      walkToc(toc);
+
+      const chapters: { title: string; id: string; index: number }[] = [];
+      for (let i = 0; i < spine.length; i++) {
+        const item = spine[i];
+        // For MOBI, try to resolve href from id to find TOC title
+        let title: string | undefined;
+        const resolved = mobi.resolveHref(item.id);
+        if (resolved) {
+          // resolved has { id, selector }, use id to match spine item
+          const baseId = resolved.id;
+          title = tocMap.get(baseId);
+        }
+        chapters.push({
+          title: title || `第 ${i + 1} 章`,
+          id: item.id,
+          index: i,
+        });
+      }
+
+      return chapters;
+    } catch (err) {
+      console.error('Failed to parse MOBI/AZW3:', err);
+      return [];
+    } finally {
+      if (mobi) {
+        try { mobi.destroy(); } catch { /* ignore */ }
+      }
+    }
+  }
+
+  private async getMobiChapterContent(filePath: string, chapterIndex: number): Promise<{ title: string; content: string }> {
+    const fullPath = join(this.nasEbookPath, filePath);
+    if (!existsSync(fullPath)) {
+      throw new NotFoundException('MOBI/AZW3 file not found');
+    }
+
+    let mobi: any;
+    try {
+      const parser = await getMobiParser();
+      mobi = await parser.initMobiFile(fullPath);
+      const spine = mobi.getSpine();
+
+      if (chapterIndex < 0 || chapterIndex >= spine.length) {
+        throw new NotFoundException('Chapter not found');
+      }
+
+      const chapterId = spine[chapterIndex].id;
+      const chapter = mobi.loadChapter(chapterId);
+
+      if (!chapter) {
+        throw new NotFoundException('Failed to load chapter');
+      }
+
+      // Clean HTML for reading
+      const cleanContent = this.cleanEpubHtml(chapter.html, '');
+
+      // Try to get title from TOC
+      let title = `第 ${chapterIndex + 1} 章`;
+      const toc = mobi.getToc();
+      const resolved = mobi.resolveHref(chapterId);
+      if (resolved) {
+        const baseId = resolved.id;
+        const findTitle = (items: any[]): string | undefined => {
+          for (const item of items) {
+            // MOBI TOC href may be internal IDs like "_123" or "html#anchor"
+            const itemBase = item.href.split('#')[0];
+            if (itemBase === baseId || item.href === baseId) {
+              return item.label;
+            }
+            if (item.children && item.children.length > 0) {
+              const found = findTitle(item.children);
+              if (found) return found;
+            }
+          }
+          return undefined;
+        };
+        const tocTitle = findTitle(toc);
+        if (tocTitle) title = tocTitle;
+      }
+
+      return {
+        title,
+        content: cleanContent || '(本章无内容)',
+      };
+    } catch (err) {
+      console.error('Failed to get MOBI/AZW3 chapter:', err);
+      throw new NotFoundException('Failed to read MOBI/AZW3 chapter');
+    } finally {
+      if (mobi) {
+        try { mobi.destroy(); } catch { /* ignore */ }
+      }
+    }
   }
 
   async findAll(query: BookQueryDto, userId?: string): Promise<PaginatedBooksDto> {

@@ -286,6 +286,9 @@ importers:
       '@bookdock/smb':
         specifier: workspace:^
         version: link:../../packages/smb
+      '@lingo-reader/mobi-parser':
+        specifier: ^0.4.6
+        version: 0.4.6
       '@nestjs/common':
         specifier: ^10.3.0
         version: 10.4.22(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -331,6 +334,9 @@ importers:
       domhandler:
         specifier: ^5.0.3
         version: 5.0.3
+      epub:
+        specifier: ^2.1.1
+        version: 2.1.1
       express:
         specifier: ^4.18.2
         version: 4.22.1
@@ -1787,6 +1793,12 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@lingo-reader/mobi-parser@0.4.6':
+    resolution: {integrity: sha512-/TDhO4IuKI04Ci5Bg8294GBhg5tnYzRM+RDlZQFE4HW2hvQHYb03dObZsOIE5gg7huwRovxpso/sWTWoZVHD7A==}
+
+  '@lingo-reader/shared@0.4.6':
+    resolution: {integrity: sha512-h3PhmidyYabbO5k74H9bUkMJS9Zy2YqCTod8ssZ+/oQ48+/hhS3KSqOkwQks2hrDY7nHqjniNysvzJzukedEkA==}
 
   '@ljharb/through@2.3.14':
     resolution: {integrity: sha512-ajBvlKpWucBB17FuQYUShqpqy8GRgYEpJW0vWJbUu1CV9lWyrDCapy0lScU8T8Z6qn49sSwJB3+M+evYIdGg+A==}
@@ -3997,6 +4009,11 @@ packages:
     resolution: {integrity: sha512-dtJUTepzMW3Lm/NPxRf3wP4642UWhjL2sQxc+ym2YMj1m/H2zDNQOlezafzkHwn6sMstjHTwG6iQQsctDW/b1A==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
+  epub@2.1.1:
+    resolution: {integrity: sha512-A8taDkr1fnQU5oF3Nb/2NTfJW97Hd/PxGugRhl2LIODB6cIh2Q5y8emib5f9JXSqDBvmxiT+OlnfH8W904OL+g==}
+    engines: {node: '>=22.6.0'}
+    hasBin: true
+
   epubjs@0.3.93:
     resolution: {integrity: sha512-c06pNSdBxcXv3dZSbXAVLE1/pmleRhOT6mXNZo6INKmvuKpYB65MwU/lO7830czCtjIiK9i+KR+3S+p0wtljrw==}
 
@@ -6009,6 +6026,9 @@ packages:
   passport@0.7.0:
     resolution: {integrity: sha512-cPLl+qZpSc+ireUvt+IzqbED1cHHkDoVYMo30jbJIdOOjQ1MQYZBPiNvmi8UM6lJuOpTPXJGZQk0DtC4y61MYQ==}
     engines: {node: '>= 0.4.0'}
+
+  path-browserify@1.0.1:
+    resolution: {integrity: sha512-b7uo2UCUOYZcnF/3ID0lulOJi/bafxa1xPe7ZPsammBSpjSWQkjNxlt635YGS2MiR9GjvuXCtz2emr3jbsz98g==}
 
   path-exists@3.0.0:
     resolution: {integrity: sha512-bpC7GYwiDYQ4wYLe+FA8lhRjhQCMcQGuSgGGqDkg/QerRWw9CmGRT0iSOVRSZJ29NMLZgIzqaljJ63oaL4NIJQ==}
@@ -9311,6 +9331,17 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
+  '@lingo-reader/mobi-parser@0.4.6':
+    dependencies:
+      '@lingo-reader/shared': 0.4.6
+      fflate: 0.8.2
+
+  '@lingo-reader/shared@0.4.6':
+    dependencies:
+      events: 3.3.0
+      path-browserify: 1.0.1
+      sax: 1.6.0
+
   '@ljharb/through@2.3.14':
     dependencies:
       call-bind: 1.0.8
@@ -11918,6 +11949,11 @@ snapshots:
 
   env-paths@3.0.0: {}
 
+  epub@2.1.1:
+    dependencies:
+      fast-xml-parser: 5.7.3
+      jszip: 3.10.1
+
   epubjs@0.3.93:
     dependencies:
       '@types/localforage': 0.0.34
@@ -14355,6 +14391,8 @@ snapshots:
       passport-strategy: 1.0.0
       pause: 0.0.1
       utils-merge: 1.0.1
+
+  path-browserify@1.0.1: {}
 
   path-exists@3.0.0: {}
 
