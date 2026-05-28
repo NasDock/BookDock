@@ -316,6 +316,9 @@ export function ReaderScreen() {
   const [currentChapter, setCurrentChapter] = useState(0);
   const [readingProgress, setReadingProgress] = useState(book.readingProgress ?? 0);
   const [pdfSource, setPdfSource] = useState<{ uri: string; cache?: boolean } | null>(null);
+  const [pdfTotalPages, setPdfTotalPages] = useState(0);
+  const [pdfCurrentPage, setPdfCurrentPage] = useState(1);
+  const [pdfOutline, setPdfOutline] = useState<Array<{ title: string; page: number }>>([]);
   const localChaptersRef = useRef<Array<{ title: string; content: string }>>([]);
   const webViewRef = useRef<WebView>(null);
   const latestPositionRef = useRef<ReaderPosition>({ percentage: book.readingProgress ?? 0, scrollOffset: 0 });
@@ -526,10 +529,24 @@ export function ReaderScreen() {
         }
       } else if (book.fileType === 'pdf') {
         // Use react-native-pdf for PDF rendering
+        // Download PDF to local file to avoid SSL/cert issues with remote URL
         const token = useAuthStore.getState().token || '';
         const baseUrl = apiClient.baseURL.replace(/\/api$/, '');
         const pdfUrl = `${baseUrl}/books/${book.id}/download?token=${encodeURIComponent(token)}`;
-        setPdfSource({ uri: pdfUrl, cache: true });
+        const localPdfPath = `${FileSystem.cacheDirectory}book_${book.id}.pdf`;
+        try {
+          const downloadRes = await FileSystem.downloadAsync(pdfUrl, localPdfPath, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (downloadRes.status === 200) {
+            setPdfSource({ uri: localPdfPath });
+          } else {
+            throw new Error(`下载 PDF 失败: ${downloadRes.status}`);
+          }
+        } catch (downloadErr: any) {
+          console.warn('PDF download failed, fallback to remote URL:', downloadErr);
+          setPdfSource({ uri: pdfUrl, cache: true });
+        }
       } else {
         const arrayBuffer = await apiClient.downloadBookFile(book.id);
         const html = generateReaderHtml(book.title, book.author, '', book.fileType || book.format || 'epub', readerConfigRef.current);
@@ -756,6 +773,9 @@ export function ReaderScreen() {
     setShowChapters(false);
     if (book.fileType === 'txt') {
       loadChapter(chapterIndex, 0);
+    } else if (book.fileType === 'pdf') {
+      setPdfCurrentPage(chapterIndex + 1);
+      setCurrentChapter(chapterIndex);
     } else {
       webViewRef.current?.injectJavaScript(`
         (function() {
@@ -781,6 +801,13 @@ export function ReaderScreen() {
       } else {
         Alert.alert('提示', '已经是第一章了');
       }
+    } else if (book.fileType === 'pdf') {
+      if (pdfCurrentPage > 1) {
+        setPdfCurrentPage((p) => p - 1);
+        setCurrentChapter((p) => p - 1);
+      } else {
+        Alert.alert('提示', '已经是第一页了');
+      }
     } else {
       webViewRef.current?.injectJavaScript(`
         (function() {
@@ -789,7 +816,7 @@ export function ReaderScreen() {
         true;
       `);
     }
-  }, [book.fileType, currentChapter, loadChapter]);
+  }, [book.fileType, currentChapter, loadChapter, pdfCurrentPage]);
 
   const handleNextPage = useCallback(() => {
     if (book.fileType === 'txt') {
@@ -797,6 +824,13 @@ export function ReaderScreen() {
         loadChapter(currentChapter + 1, 0);
       } else {
         Alert.alert('提示', '已经是最后一章了');
+      }
+    } else if (book.fileType === 'pdf') {
+      if (pdfCurrentPage < pdfTotalPages) {
+        setPdfCurrentPage((p) => p + 1);
+        setCurrentChapter((p) => p + 1);
+      } else {
+        Alert.alert('提示', '已经是最后一页了');
       }
     } else {
       webViewRef.current?.injectJavaScript(`
@@ -806,7 +840,7 @@ export function ReaderScreen() {
         true;
       `);
     }
-  }, [book.fileType, currentChapter, chapters.length, loadChapter]);
+  }, [book.fileType, currentChapter, chapters.length, loadChapter, pdfCurrentPage, pdfTotalPages]);
 
   const handleTTS = useCallback(async () => {
     const token = await AsyncStorage.getItem('bookdock_plus_token');
@@ -921,10 +955,13 @@ export function ReaderScreen() {
         <Pdf
           source={pdfSource}
           style={styles.webview}
-          onLoadProgress={(percent) => {
-            setReadingProgress(Math.round(percent * 100));
+          page={pdfCurrentPage}
+          onLoadComplete={(numberOfPages) => {
+            setPdfTotalPages(numberOfPages);
           }}
           onPageChanged={(page, numberOfPages) => {
+            setPdfCurrentPage(page);
+            setCurrentChapter(page - 1);
             setReadingProgress(Math.round((page / numberOfPages) * 100));
             latestPositionRef.current = {
               percentage: Math.round((page / numberOfPages) * 100),
@@ -1137,18 +1174,26 @@ export function ReaderScreen() {
                 <Ionicons name="close" size={24} color={theme.colors.text} />
               </TouchableOpacity>
             </View>
-            {chapters.length === 0 ? (
-              <View style={styles.chaptersEmpty}>
-                <Text style={{ color: theme.colors.textSecondary }}>暂无章节信息</Text>
-              </View>
-            ) : (
-              <ChapterList
-                chapters={chapters}
-                currentChapter={currentChapter}
-                theme={theme}
-                onChapterPress={handleChapterPress}
-              />
-            )}
+            {(() => {
+              const displayChapters = book.fileType === 'pdf' && pdfOutline.length > 0
+                ? pdfOutline.map((item, i) => ({ index: item.page - 1, title: item.title }))
+                : chapters;
+              if (displayChapters.length === 0) {
+                return (
+                  <View style={styles.chaptersEmpty}>
+                    <Text style={{ color: theme.colors.textSecondary }}>暂无章节信息</Text>
+                  </View>
+                );
+              }
+              return (
+                <ChapterList
+                  chapters={displayChapters}
+                  currentChapter={currentChapter}
+                  theme={theme}
+                  onChapterPress={handleChapterPress}
+                />
+              );
+            })()}
           </View>
         </View>
       </Modal>
