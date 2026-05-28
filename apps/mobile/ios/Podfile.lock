@@ -24,6 +24,8 @@ PODS:
     - ExpoModulesCore
   - ExpoKeepAwake (14.0.3):
     - ExpoModulesCore
+  - ExpoLinearGradient (14.0.2):
+    - ExpoModulesCore
   - ExpoModulesCore (2.2.3):
     - DoubleConversion
     - glog
@@ -1340,7 +1342,51 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - Yoga
+  - react-native-alipay (5.0.2):
+    - React-Core
+  - react-native-blob-util (0.24.9):
+    - DoubleConversion
+    - glog
+    - hermes-engine
+    - RCT-Folly (= 2024.10.14.00)
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - Yoga
   - react-native-netinfo (12.0.1):
+    - DoubleConversion
+    - glog
+    - hermes-engine
+    - RCT-Folly (= 2024.10.14.00)
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-rendererdebug
+    - React-utils
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - Yoga
+  - react-native-pdf (7.0.4):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -1850,6 +1896,7 @@ DEPENDENCIES:
   - "ExpoFileSystem (from `../../../node_modules/.pnpm/expo-file-system@18.0.12_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babe_fb4bb0a638b1739f514d5cede251db5c/node_modules/expo-file-system/ios`)"
   - "ExpoFont (from `../../../node_modules/.pnpm/expo-font@13.0.4_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7_62c91e13165fe4e7305c20cdf48274da/node_modules/expo-font/ios`)"
   - "ExpoKeepAwake (from `../../../node_modules/.pnpm/expo-keep-awake@14.0.3_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+_db919d6e9cb9acbff9755fad0b5ebe61/node_modules/expo-keep-awake/ios`)"
+  - "ExpoLinearGradient (from `../../../node_modules/.pnpm/expo-linear-gradient@14.0.2_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@b_3e9057eb35f9db64af12b42366dbfbe5/node_modules/expo-linear-gradient/ios`)"
   - "ExpoModulesCore (from `../../../node_modules/.pnpm/expo-modules-core@2.2.3_patch_hash=0ea2d91d19a1349032be21b04bafcb08c333f548f7a400355bd09ae914820255/node_modules/expo-modules-core`)"
   - "ExpoSecureStore (from `../../../node_modules/.pnpm/expo-secure-store@14.0.1_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babe_e191f140ef2e1b985fbcc1989d03ca93/node_modules/expo-secure-store/ios`)"
   - "ExpoSharing (from `../../../node_modules/.pnpm/expo-sharing@13.0.1_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+cor_5af23e5167c7e29238c6dde0ed109bbd/node_modules/expo-sharing/ios`)"
@@ -1891,7 +1938,10 @@ DEPENDENCIES:
   - "React-logger (from `../../../node_modules/.pnpm/react-native@0.76.9_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7.29.0__@ty_5b47f4191fccc6326c7433113200ce36/node_modules/react-native/ReactCommon/logger`)"
   - "React-Mapbuffer (from `../../../node_modules/.pnpm/react-native@0.76.9_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7.29.0__@ty_5b47f4191fccc6326c7433113200ce36/node_modules/react-native/ReactCommon`)"
   - "React-microtasksnativemodule (from `../../../node_modules/.pnpm/react-native@0.76.9_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7.29.0__@ty_5b47f4191fccc6326c7433113200ce36/node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)"
+  - "react-native-alipay (from `../node_modules/@uiw/react-native-alipay`)"
+  - react-native-blob-util (from `../node_modules/react-native-blob-util`)
   - "react-native-netinfo (from `../node_modules/@react-native-community/netinfo`)"
+  - react-native-pdf (from `../node_modules/react-native-pdf`)
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
   - "react-native-slider (from `../node_modules/@react-native-community/slider`)"
   - react-native-webview (from `../node_modules/react-native-webview`)
@@ -1956,6 +2006,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/.pnpm/expo-font@13.0.4_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7_62c91e13165fe4e7305c20cdf48274da/node_modules/expo-font/ios"
   ExpoKeepAwake:
     :path: "../../../node_modules/.pnpm/expo-keep-awake@14.0.3_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+_db919d6e9cb9acbff9755fad0b5ebe61/node_modules/expo-keep-awake/ios"
+  ExpoLinearGradient:
+    :path: "../../../node_modules/.pnpm/expo-linear-gradient@14.0.2_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@b_3e9057eb35f9db64af12b42366dbfbe5/node_modules/expo-linear-gradient/ios"
   ExpoModulesCore:
     :path: "../../../node_modules/.pnpm/expo-modules-core@2.2.3_patch_hash=0ea2d91d19a1349032be21b04bafcb08c333f548f7a400355bd09ae914820255/node_modules/expo-modules-core"
   ExpoSecureStore:
@@ -2035,8 +2087,14 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/.pnpm/react-native@0.76.9_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7.29.0__@ty_5b47f4191fccc6326c7433113200ce36/node_modules/react-native/ReactCommon"
   React-microtasksnativemodule:
     :path: "../../../node_modules/.pnpm/react-native@0.76.9_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7.29.0__@ty_5b47f4191fccc6326c7433113200ce36/node_modules/react-native/ReactCommon/react/nativemodule/microtasks"
+  react-native-alipay:
+    :path: "../node_modules/@uiw/react-native-alipay"
+  react-native-blob-util:
+    :path: "../node_modules/react-native-blob-util"
   react-native-netinfo:
     :path: "../node_modules/@react-native-community/netinfo"
+  react-native-pdf:
+    :path: "../node_modules/react-native-pdf"
   react-native-safe-area-context:
     :path: "../node_modules/react-native-safe-area-context"
   react-native-slider:
@@ -2117,6 +2175,7 @@ SPEC CHECKSUMS:
   ExpoFileSystem: 42d363d3b96f9afab980dcef60d5657a4443c655
   ExpoFont: f354e926f8feae5e831ec8087f36652b44a0b188
   ExpoKeepAwake: b0171a73665bfcefcfcc311742a72a956e6aa680
+  ExpoLinearGradient: 35ebd83b16f80b3add053a2fd68cc328ed927f60
   ExpoModulesCore: c25d77625038b1968ea1afefc719862c0d8dd993
   ExpoSecureStore: 9a3665d7161dd1031be386e278bffd623658f316
   ExpoSharing: 849a5ce9985c22598c16ec027e32969be8062e8e
@@ -2156,7 +2215,10 @@ SPEC CHECKSUMS:
   React-logger: c4052eb941cca9a097ef01b59543a656dc088559
   React-Mapbuffer: 33546a3ebefbccb8770c33a1f8a5554fa96a54de
   React-microtasksnativemodule: d80ff86c8902872d397d9622f1a97aadcc12cead
+  react-native-alipay: ef6e1a2fc00744978a63919a4a1c10355001e891
+  react-native-blob-util: b542dd5c7a3e0cf5e111485313e352e8e856c2fa
   react-native-netinfo: 34b579039ac48c585cf30f14e02e65473d8120aa
+  react-native-pdf: 1f4d418f1408001468263a7638f668593dad144d
   react-native-safe-area-context: cd916088cac5300c3266876218377518987b995e
   react-native-slider: 18a34929dbeb86db5375b56ef28551299a3fa89c
   react-native-webview: 6b9fc65c1951203a3e958ff3cc0a858d4b6be901
@@ -2193,6 +2255,6 @@ SPEC CHECKSUMS:
   Yoga: feb4910aba9742cfedc059e2b2902e22ffe9954a
   ZXingObjC: 8898711ab495761b2dbbdec76d90164a6d7e14c5
 
-PODFILE CHECKSUM: 1b90d56b335be00e18b08dbcf6c67047429a9ec0
+PODFILE CHECKSUM: 5b55a485d2a45f8b3596cfdbb2cff6bcc9cf62a6
 
 COCOAPODS: 1.16.2

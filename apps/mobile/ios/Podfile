@@ -52,8 +52,23 @@ target 'BookDock' do
       :ccache_enabled => podfile_properties['apple.ccacheEnabled'] == 'true',
     )
 
-    # This is necessary for Xcode 14, because it signs resource bundles by default
-    # when building for devices.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        # 只给 fmt 和 Folly 相关 target 降级到 C++17 并禁用 consteval
+        if target.name == 'fmt' || target.name.include?('Folly')
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FMT_CONSTEVAL='
+          config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'
+        end
+        
+        # 修复 iOS 部署目标警告
+        if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 12.0
+          config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '12.0'
+        end
+      end
+    end
+
+    # Xcode 14 签名资源包
     installer.target_installation_results.pod_target_installation_results
       .each do |pod_name, target_installation_result|
       target_installation_result.resource_bundle_targets.each do |resource_bundle_target|

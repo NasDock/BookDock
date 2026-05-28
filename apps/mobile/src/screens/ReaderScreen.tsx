@@ -16,7 +16,6 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
-import Pdf from 'react-native-pdf';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
@@ -198,6 +197,234 @@ const FONT_OPTIONS = [
   { label: '黑体', value: '"Noto Sans SC", "PingFang SC", sans-serif' },
 ];
 
+// Generate HTML for PDF.js viewer
+// pdfDataUrl is a data URL like "data:application/pdf;base64,JVBERi0x..."
+function generatePdfViewerHtml(
+  pdfDataUrl: string,
+  config: ReaderConfig,
+  initialPage: number = 1
+): string {
+  const isDark = config.theme === 'dark';
+  const bgColor = isDark ? '#1a1a1a' : '#ffffff';
+  const textColor = isDark ? '#e0e0e0' : '#1a1a1a';
+  const canvasBg = isDark ? '#2a2a2a' : '#f0f0f0';
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
+  <title>PDF Viewer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs" type="module"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: ${bgColor};
+      color: ${textColor};
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    #pages-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 8px;
+      padding-top: 56px;
+      padding-bottom: 56px;
+      gap: 8px;
+    }
+    .page-wrapper {
+      position: relative;
+      background: ${canvasBg};
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      max-width: 100vw;
+      height: auto;
+    }
+    .page-number {
+      position: absolute;
+      bottom: 4px;
+      right: 8px;
+      font-size: 12px;
+      color: #999;
+      background: rgba(255,255,255,0.8);
+      padding: 2px 6px;
+      border-radius: 4px;
+      pointer-events: none;
+    }
+    #loading {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 16px;
+      color: ${textColor};
+    }
+    #error {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 16px;
+      color: #ff4444;
+      text-align: center;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">正在加载 PDF...</div>
+  <div id="error" style="display:none"></div>
+  <div id="pages-container"></div>
+
+  <script type="module">
+    import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+
+    const pdfDataUrl = ${JSON.stringify(pdfDataUrl)};
+    const initialPage = ${initialPage};
+    const container = document.getElementById('pages-container');
+    const loadingEl = document.getElementById('loading');
+    const errorEl = document.getElementById('error');
+
+    let pdfDoc = null;
+    let currentPage = initialPage;
+    let renderedPages = new Set();
+
+    function postMessage(data) {
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify(data));
+      }
+    }
+
+    function showError(msg) {
+      loadingEl.style.display = 'none';
+      errorEl.style.display = 'block';
+      errorEl.textContent = msg;
+      postMessage({ type: 'error', message: msg });
+    }
+
+    async function renderPage(pageNum, canvas, wrapper) {
+      if (renderedPages.has(pageNum)) return;
+      renderedPages.add(pageNum);
+
+      try {
+        const page = await pdfDoc.getPage(pageNum);
+        const containerWidth = window.innerWidth - 16;
+        const viewport = page.getViewport({ scale: 1 });
+        const scale = containerWidth / viewport.width;
+        const scaledViewport = page.getViewport({ scale: Math.min(scale, 2) });
+
+        canvas.width = scaledViewport.width;
+        canvas.height = scaledViewport.height;
+        canvas.style.width = scaledViewport.width + 'px';
+        canvas.style.height = scaledViewport.height + 'px';
+
+        const ctx = canvas.getContext('2d');
+        await page.render({ canvasContext: ctx, viewport: scaledViewport }).promise;
+      } catch (e) {
+        console.error('Render page error:', e);
+      }
+    }
+
+    async function loadPdf() {
+      try {
+        // Fetch the data URL and convert to ArrayBuffer for PDF.js
+        const response = await fetch(pdfDataUrl);
+        const pdfData = new Uint8Array(await response.arrayBuffer());
+        pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
+        loadingEl.style.display = 'none';
+        postMessage({ type: 'loadComplete', total: pdfDoc.numPages });
+
+        // Build page placeholders
+        for (let i = 1; i <= pdfDoc.numPages; i++) {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'page-wrapper';
+          wrapper.id = 'page-' + i;
+
+          const canvas = document.createElement('canvas');
+          canvas.dataset.page = i;
+          wrapper.appendChild(canvas);
+
+          const pageNumEl = document.createElement('span');
+          pageNumEl.className = 'page-number';
+          pageNumEl.textContent = i + ' / ' + pdfDoc.numPages;
+          wrapper.appendChild(pageNumEl);
+
+          container.appendChild(wrapper);
+        }
+
+        // IntersectionObserver for lazy rendering
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting) {
+              const wrapper = entry.target;
+              const canvas = wrapper.querySelector('canvas');
+              const pageNum = parseInt(canvas.dataset.page);
+              renderPage(pageNum, canvas, wrapper);
+
+              // Report current visible page
+              currentPage = pageNum;
+              postMessage({ type: 'pageChanged', page: currentPage, total: pdfDoc.numPages });
+            }
+          });
+        }, { rootMargin: '200px 0px', threshold: 0.1 });
+
+        document.querySelectorAll('.page-wrapper').forEach(el => observer.observe(el));
+
+        // Scroll to initial page
+        if (initialPage > 1 && initialPage <= pdfDoc.numPages) {
+          setTimeout(() => {
+            const el = document.getElementById('page-' + initialPage);
+            if (el) el.scrollIntoView({ behavior: 'instant', block: 'start' });
+          }, 300);
+        }
+
+        // Extract outline (bookmarks)
+        try {
+          const outline = await pdfDoc.getOutline();
+          if (outline && outline.length > 0) {
+            const flatOutline = [];
+            function flatten(items) {
+              items.forEach(item => {
+                if (item.dest) {
+                  flatOutline.push({ title: item.title, dest: item.dest });
+                }
+                if (item.items) flatten(item.items);
+              });
+            }
+            flatten(outline);
+            const resolved = [];
+            for (const item of flatOutline) {
+              try {
+                const dest = await pdfDoc.getDestination(item.dest);
+                if (dest && dest[0]) {
+                  const ref = dest[0];
+                  const pageIndex = await pdfDoc.getPageIndex(ref);
+                  resolved.push({ title: item.title, page: pageIndex + 1 });
+                }
+              } catch (e) { /* ignore */ }
+            }
+            postMessage({ type: 'outline', outline: resolved });
+          }
+        } catch (e) { /* ignore outline errors */ }
+
+      } catch (err) {
+        showError('无法加载 PDF: ' + (err.message || '未知错误'));
+      }
+    }
+
+    loadPdf();
+  </script>
+</body>
+</html>`;
+}
+
 // Generate HTML reader based on file type and content
 function generateReaderHtml(
   bookTitle: string,
@@ -212,11 +439,6 @@ function generateReaderHtml(
   const bgColor = isDark ? '#1a1a1a' : isSepia ? '#f4ecd8' : '#ffffff';
   const textColor = isDark ? '#e0e0e0' : '#1a1a1a';
   const linkColor = isDark ? '#6b9fff' : '#0066cc';
-
-  // PDF is now rendered with react-native-pdf, not WebView
-  if (fileType === 'pdf') {
-    return '';
-  }
 
   if (fileType === 'txt' || fileType === 'text') {
     const safeContent = content
@@ -351,10 +573,10 @@ export function ReaderScreen() {
   const [chapters, setChapters] = useState<Array<{ index: number; title: string }>>([]);
   const [currentChapter, setCurrentChapter] = useState(0);
   const [readingProgress, setReadingProgress] = useState(book.readingProgress ?? 0);
-  const [pdfSource, setPdfSource] = useState<{ uri: string; cache?: boolean } | null>(null);
   const [pdfTotalPages, setPdfTotalPages] = useState(0);
   const [pdfCurrentPage, setPdfCurrentPage] = useState(1);
   const [pdfOutline, setPdfOutline] = useState<Array<{ title: string; page: number }>>([]);
+  const [pdfHtmlContent, setPdfHtmlContent] = useState<string>('');
   const localChaptersRef = useRef<Array<{ title: string; content: string }>>([]);
   const webViewRef = useRef<WebView>(null);
   const latestPositionRef = useRef<ReaderPosition>({ percentage: book.readingProgress ?? 0, scrollOffset: 0 });
@@ -526,8 +748,15 @@ export function ReaderScreen() {
               scrollOffset: initialScrollOffset,
             };
           } else if (book.fileType === 'pdf') {
-            // Use react-native-pdf for local PDF files
-            setPdfSource({ uri: localPath });
+            // Use WebView + PDF.js for local PDF files (embed as Base64)
+            const pdfBase64Raw = await FileSystem.readAsStringAsync(localPath, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+            console.log("Local PDF base64 length:", pdfBase64Raw.length);
+            console.log("Local PDF base64 first 100 chars:", pdfBase64Raw.substring(0, 100));
+            const pdfDataUrl = 'data:application/pdf;base64,' + pdfBase64Raw.replace(/[\r\n\s]/g, '');
+            const html = generatePdfViewerHtml(pdfDataUrl, readerConfigRef.current, pdfCurrentPage);
+            setPdfHtmlContent(html);
           } else if (book.fileType === 'epub' || book.fileType === 'mobi' || book.fileType === 'azw3') {
             // EPUB/MOBI/AZW3 is loaded chapter by chapter from server, same as remote
             const apiClient = getApiClient();
@@ -584,11 +813,58 @@ export function ReaderScreen() {
           throw new Error(chaptersRes.error || '获取章节目录失败');
         }
       } else if (book.fileType === 'pdf') {
-        // Use react-native-pdf for PDF rendering
+        // Download remote PDF - same approach as desktop: token in query string
         const token = useAuthStore.getState().token || '';
-        const baseUrl = apiClient.baseURL.replace(/\/api$/, '');
-        const pdfUrl = `${baseUrl}/books/${book.id}/download?token=${encodeURIComponent(token)}`;
-        setPdfSource({ uri: pdfUrl, cache: true });
+        const baseUrl = `${apiClient.baseURL}/books/${book.id}/download`;
+        const pdfUrl = `${baseUrl}?token=${encodeURIComponent(token)}`;
+        const cacheDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+        if (!cacheDir) {
+          throw new Error('无法获取缓存目录');
+        }
+        const localPdfPath = cacheDir + `book_${book.id}.pdf`;
+        // Always re-download to avoid stale/corrupted cache during debugging
+        const fileInfo = await FileSystem.getInfoAsync(localPdfPath);
+        if (fileInfo.exists) {
+          await FileSystem.deleteAsync(localPdfPath);
+        }
+        console.log('Downloading PDF from:', pdfUrl);
+        const response = await fetch(pdfUrl);
+        console.log('Download response status:', response.status);
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => '');
+          console.error('Download error response:', errorText.substring(0, 500));
+          throw new Error(`下载 PDF 失败: HTTP ${response.status}`);
+        }
+        const blob = await response.blob();
+        console.log('Download blob size:', blob.size, 'type:', blob.type);
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve, reject) => {
+          reader.onloadend = () => {
+            const base64 = reader.result as string;
+            console.log('FileReader result prefix:', base64.substring(0, 50));
+            resolve(base64.split(',')[1]);
+          };
+          reader.onerror = reject;
+        });
+        reader.readAsDataURL(blob);
+        const base64Data = await base64Promise;
+        console.log('Base64 data length:', base64Data.length);
+        console.log('Base64 data first 100 chars:', base64Data.substring(0, 100));
+        await FileSystem.writeAsStringAsync(localPdfPath, base64Data, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        // Read PDF as Base64 and embed into HTML
+        const pdfBase64Raw = await FileSystem.readAsStringAsync(localPdfPath, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        // Verify it's actually a PDF (base64 of "%PDF" is "JVBERi")
+        if (!pdfBase64Raw.startsWith('JVBERi')) {
+          console.error('Downloaded file is not a PDF. First 200 chars:', pdfBase64Raw.substring(0, 200));
+          throw new Error('下载的文件不是有效的 PDF');
+        }
+        const pdfDataUrl = 'data:application/pdf;base64,' + pdfBase64Raw.replace(/[\r\n\s]/g, '');
+        const html = generatePdfViewerHtml(pdfDataUrl, readerConfigRef.current, pdfCurrentPage);
+        setPdfHtmlContent(html);
       } else {
         const arrayBuffer = await apiClient.downloadBookFile(book.id);
         const html = generateReaderHtml(book.title, book.author, '', book.fileType || book.format || 'epub', readerConfigRef.current);
@@ -993,33 +1269,50 @@ export function ReaderScreen() {
             <Text style={{ color: theme.colors.primary }}>重试</Text>
           </TouchableOpacity>
         </View>
-      ) : book.fileType === 'pdf' && pdfSource ? (
-        <Pdf
-          source={pdfSource}
+      ) : book.fileType === 'pdf' && pdfHtmlContent ? (
+        <WebView
+          ref={webViewRef}
+          source={{ html: pdfHtmlContent }}
           style={styles.webview}
-          page={pdfCurrentPage}
-          onLoadComplete={(numberOfPages) => {
-            setPdfTotalPages(numberOfPages);
-          }}
-          onPageChanged={(page, numberOfPages) => {
-            setPdfCurrentPage(page);
-            setCurrentChapter(page - 1);
-            setReadingProgress(Math.round((page / numberOfPages) * 100));
-            latestPositionRef.current = {
-              percentage: Math.round((page / numberOfPages) * 100),
-              currentPage: page,
-              scrollOffset: 0,
-            };
-            if (readerStore.autoSaveProgress) {
-              libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
+          originWhitelist={['*']}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          allowFileAccess={true}
+          allowFileAccessFromFileURLs={true}
+          allowUniversalAccessFromFileURLs={true}
+          allowingReadAccessToURL={FileSystem.cacheDirectory || FileSystem.documentDirectory || ''}
+          onMessage={(event) => {
+            try {
+              const data = JSON.parse(event.nativeEvent.data);
+              if (data.type === 'pageChanged') {
+                const page = data.page;
+                const total = data.total;
+                setPdfCurrentPage(page);
+                setCurrentChapter(page - 1);
+                setReadingProgress(Math.round((page / total) * 100));
+                latestPositionRef.current = {
+                  percentage: Math.round((page / total) * 100),
+                  currentPage: page,
+                  scrollOffset: 0,
+                };
+                if (readerStore.autoSaveProgress) {
+                  libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
+                }
+              } else if (data.type === 'loadComplete') {
+                setPdfTotalPages(data.total);
+              } else if (data.type === 'error') {
+                console.error('PDF error:', data.message);
+                setError('加载 PDF 失败: ' + data.message);
+              } else if (data.type === 'outline') {
+                setPdfOutline(data.outline || []);
+              }
+            } catch {
+              // ignore
             }
           }}
-          onError={(err) => {
-            console.error('PDF error:', err);
-            setError('加载 PDF 失败: ' + err);
-          }}
-          onPressLink={(uri) => {
-            // Ignore link taps in PDF
+          onError={(e) => {
+            console.error('WebView error:', e.nativeEvent);
+            setError('渲染 PDF 失败');
           }}
         />
       ) : (
