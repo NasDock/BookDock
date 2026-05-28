@@ -529,24 +529,10 @@ export function ReaderScreen() {
         }
       } else if (book.fileType === 'pdf') {
         // Use react-native-pdf for PDF rendering
-        // Download PDF to local file to avoid SSL/cert issues with remote URL
         const token = useAuthStore.getState().token || '';
         const baseUrl = apiClient.baseURL.replace(/\/api$/, '');
         const pdfUrl = `${baseUrl}/books/${book.id}/download?token=${encodeURIComponent(token)}`;
-        const localPdfPath = `${FileSystem.cacheDirectory}book_${book.id}.pdf`;
-        try {
-          const downloadRes = await FileSystem.downloadAsync(pdfUrl, localPdfPath, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (downloadRes.status === 200) {
-            setPdfSource({ uri: localPdfPath });
-          } else {
-            throw new Error(`下载 PDF 失败: ${downloadRes.status}`);
-          }
-        } catch (downloadErr: any) {
-          console.warn('PDF download failed, fallback to remote URL:', downloadErr);
-          setPdfSource({ uri: pdfUrl, cache: true });
-        }
+        setPdfSource({ uri: pdfUrl, cache: true });
       } else {
         const arrayBuffer = await apiClient.downloadBookFile(book.id);
         const html = generateReaderHtml(book.title, book.author, '', book.fileType || book.format || 'epub', readerConfigRef.current);
