@@ -64,15 +64,14 @@ export default function Recommend() {
   const hasContent = inProgress.length > 0 || recentlyRead.length > 0;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <Sparkles className="w-6 h-6 text-amber-500" />
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            推荐
-          </h1>
-        </div>
+    <div className="space-y-10">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <Sparkles className="w-6 h-6 text-amber-500" />
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+          推荐
+        </h1>
+      </div>
 
         {!hasContent ? (
           <div className="text-center py-20">
@@ -94,10 +93,10 @@ export default function Recommend() {
                   {inProgress.map((book) => (
                     <div
                       key={book.id}
-                      className="flex-shrink-0 w-48 cursor-pointer"
+                      className="flex-shrink-0 w-36 cursor-pointer"
                       onClick={() => handleBookSelect(book)}
                     >
-                      <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden relative">
+                      <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden relative shadow-sm hover:shadow-md transition-shadow">
                         {book.coverUrl ? (
                           <img
                             src={getCoverImageUrl(book.coverUrl)}
@@ -108,7 +107,7 @@ export default function Recommend() {
                           <div
                             className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}
                           >
-                            <span className="text-3xl text-white font-bold">
+                            <span className="text-5xl text-white font-bold">
                               {book.title.charAt(0)}
                             </span>
                           </div>
@@ -143,10 +142,10 @@ export default function Recommend() {
                   {recentlyRead.map((book) => (
                     <div
                       key={book.id}
-                      className="flex-shrink-0 w-48 cursor-pointer"
+                      className="flex-shrink-0 w-36 cursor-pointer"
                       onClick={() => handleBookSelect(book)}
                     >
-                      <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden">
+                      <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
                         {book.coverUrl ? (
                           <img
                             src={getCoverImageUrl(book.coverUrl)}
@@ -157,7 +156,7 @@ export default function Recommend() {
                           <div
                             className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}
                           >
-                            <span className="text-3xl text-white font-bold">
+                            <span className="text-5xl text-white font-bold">
                               {book.title.charAt(0)}
                             </span>
                           </div>
@@ -176,7 +175,6 @@ export default function Recommend() {
             )}
           </>
         )}
-      </div>
     </div>
   );
 }

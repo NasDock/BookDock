@@ -44,7 +44,7 @@ function formatDate(dateStr?: string): string {
   return `${d.getMonth() + 1}月${d.getDate()}日 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-const CARD_WIDTH = 140;
+const CARD_WIDTH = 110;
 const CARD_HEIGHT = CARD_WIDTH * 1.5;
 
 export function RecommendScreen() {
@@ -94,12 +94,6 @@ export function RecommendScreen() {
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Ionicons name="sparkles" size={24} color={theme.colors.primary} />
-        <Text style={styles.headerTitle}>推荐</Text>
-      </View>
-
       {!hasContent ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="book-outline" size={64} color={theme.colors.textSecondary} />
@@ -221,20 +215,8 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       justifyContent: 'center',
       alignItems: 'center',
     },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      paddingHorizontal: spacing.md,
-      paddingTop: spacing.lg,
-      paddingBottom: spacing.md,
-    },
-    headerTitle: {
-      fontSize: fontSizes.xl,
-      fontWeight: '700',
-      color: theme.colors.text,
-    },
     content: {
+      paddingTop: spacing.md,
       paddingBottom: spacing.xl,
     },
     section: {
@@ -274,7 +256,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       alignItems: 'center',
     },
     coverLetter: {
-      fontSize: 40,
+      fontSize: 28,
       fontWeight: 'bold',
       color: '#fff',
     },

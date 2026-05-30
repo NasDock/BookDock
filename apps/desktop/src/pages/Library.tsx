@@ -5,6 +5,7 @@ import {
   ArrowDown,
   ArrowUp,
   BookOpen,
+  Clock,
   Cloud,
   FolderOpen,
   LayoutGrid,

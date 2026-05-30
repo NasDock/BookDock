@@ -207,8 +207,8 @@ function AppLayout({ children }: { children: React.ReactNode }) {
     location.pathname === "/login" || location.pathname === "/member-login";
 
   const navItems = [
-    { path: "/recommend", label: "推荐", icon: Sparkles },
-    { path: "/", label: "书库", icon: BookOpen },
+    { path: "/", label: "推荐", icon: Sparkles },
+    { path: "/library", label: "书库", icon: BookOpen },
     { path: "/profile", label: "我的", icon: User },
   ];
 
@@ -222,7 +222,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
             <div className="flex items-center h-16">
               {/* Left: Logo */}
               <div className="flex-shrink-0 w-48">
-                <Link to="/" className="flex items-center space-x-2">
+                <Link to="/library" className="flex items-center space-x-2">
                   <BookOpen className="w-6 h-6 text-gray-900 dark:text-white" />
                   <span className="text-xl font-bold text-gray-900 dark:text-white">
                     书仓
@@ -447,15 +447,15 @@ function AppRoutes() {
           path="/"
           element={
             <ProtectedRoute>
-              <Library />
+              <Recommend />
             </ProtectedRoute>
           }
         />
         <Route
-          path="/recommend"
+          path="/library"
           element={
             <ProtectedRoute>
-              <Recommend />
+              <Library />
             </ProtectedRoute>
           }
         />

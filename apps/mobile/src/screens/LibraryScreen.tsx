@@ -290,6 +290,14 @@ export function LibraryScreen() {
 
   const renderHeader = () => (
     <View>
+      {/* Title */}
+      <View style={styles.titleSection}>
+        <Text style={{ fontSize: fontSizes.xl, fontWeight: '700', color: theme.colors.text }}>我的书仓</Text>
+        <Text style={styles.statsText}>
+          {stats.unread} 未读 · {stats.completed} 已读完 · <Text style={{ color: theme.colors.primary }}>{stats.reading} 在读</Text>
+        </Text>
+      </View>
+
       {/* Search */}
       <View style={[styles.searchContainer, { backgroundColor: theme.colors.surface }]}>
         <Ionicons name="search" size={18} color={theme.colors.textSecondary} />
@@ -356,9 +364,6 @@ export function LibraryScreen() {
       {/* Count & Stats */}
       <View style={styles.countRow}>
         <Text style={styles.countText}>共 {filteredBooks.length} 本书</Text>
-        <Text style={styles.statsText}>
-          {stats.unread} 未读 · {stats.completed} 已读完 · <Text style={{ color: theme.colors.primary }}>{stats.reading} 在读</Text>
-        </Text>
       </View>
     </View>
   );
@@ -377,6 +382,7 @@ export function LibraryScreen() {
       <FlatList
         ref={flatListRef}
         data={filteredBooks}
+        key={String(gridColumns)}
         keyExtractor={(item) => item.id}
         numColumns={gridColumns}
         renderItem={renderBookItem}

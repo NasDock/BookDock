@@ -254,6 +254,7 @@ export class DoubanScraperService {
         const tag = $(el).text().trim();
         if (tag) tags.push(tag);
       });
+      this.logger.log(`[DoubanScraper] tags scraped for "${title}": ${JSON.stringify(tags)} (selector matched ${tags.length} tags)`);
 
       // 内容简介：#link-report .intro（排除 h2 标题）
       let summary: string | undefined;
@@ -298,7 +299,7 @@ export class DoubanScraperService {
         }
       });
 
-      return {
+      const result = {
         title,
         authors,
         publisher,
@@ -314,6 +315,8 @@ export class DoubanScraperService {
         summary,
         authorIntro,
       };
+      this.logger.log(`[DoubanScraper] fetchBookDetail result for "${title}": ${JSON.stringify(result)}`);
+      return result;
     } catch (err) {
       this.logRequestError('fetchBookDetail', doubanUrl, err);
       return null;

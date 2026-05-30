@@ -103,20 +103,24 @@ export class BooksService implements OnModuleInit {
   }
 
   async createFromUpload(file: Express.Multer.File): Promise<BookResponseDto> {
-    const ext = file.originalname.split('.').pop()?.toLowerCase() || '';
+    // Fix multer encoding issue: originalname may be incorrectly encoded as Latin1
+    const originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    console.log(`[BooksService] createFromUpload: raw originalname="${file.originalname}", fixed originalname="${originalname}"`);
+
+    const ext = originalname.split('.').pop()?.toLowerCase() || '';
     const ebookExts = ['txt', 'epub', 'pdf', 'mobi', 'azw3', 'fb2', 'djvu'];
     if (!ebookExts.includes(ext)) {
       throw new Error(`不支持的文件格式: ${ext}`);
     }
 
-    const destPath = join(this.nasEbookPath, file.originalname);
+    const destPath = join(this.nasEbookPath, originalname);
 
     // If file already exists, append a number
-    let finalFileName = file.originalname;
+    let finalFileName = originalname;
     let finalDestPath = destPath;
     let counter = 1;
     while (existsSync(finalDestPath)) {
-      const nameWithoutExt = file.originalname.replace(/\.[^/.]+$/, '');
+      const nameWithoutExt = originalname.replace(/\.[^/.]+$/, '');
       finalFileName = `${nameWithoutExt} (${counter}).${ext}`;
       finalDestPath = join(this.nasEbookPath, finalFileName);
       counter++;
@@ -126,6 +130,7 @@ export class BooksService implements OnModuleInit {
 
     const fileStat = statSync(finalDestPath);
     const title = finalFileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+    console.log(`[BooksService] createFromUpload: finalFileName="${finalFileName}", title="${title}"`);
 
     const existing = await this.prisma.book.findFirst({
       where: { filePath: finalFileName, isDeleted: false },
@@ -620,9 +625,9 @@ export class BooksService implements OnModuleInit {
     const where: Record<string, unknown> = { isDeleted: false };
     if (format) where.format = format;
     if (language) where.language = language;
-    if (author) where.author = { contains: author, mode: 'insensitive' };
+    if (author) where.author = { contains: author };
     if (search) {
-      where.title = { contains: search, mode: 'insensitive' };
+      where.title = { contains: search };
     }
 
     const [books, total] = await Promise.all([
@@ -883,20 +888,20 @@ export class BooksService implements OnModuleInit {
   }
 
   async search(query: string, limit = 50, userId?: string): Promise<BookResponseDto[]> {
-    const books = await this.prisma.$queryRaw<
-      Array<{
-        id: string; title: string; author: string | null; description: string | null;
-        cover_url: string | null; format: string; language: string;
-      }>
-    >`
-      SELECT id, title, author, description, cover_url, format, language
-      FROM books
-      WHERE is_deleted = false
-        AND (title ILIKE ${'%' + query + '%'}
-          OR author ILIKE ${'%' + query + '%'}
-          OR description ILIKE ${'%' + query + '%'})
-      LIMIT ${limit}
-    `;
+    const books = await this.prisma.book.findMany({
+      where: {
+        isDeleted: false,
+        OR: [
+          { title: { contains: query } },
+          { author: { contains: query } },
+          { description: { contains: query } },
+        ],
+      },
+      take: limit,
+      include: {
+        bookTags: { include: { tag: true } },
+      },
+    });
 
     const bookIds = books.map((b) => b.id);
     const progresses = userId && bookIds.length > 0
@@ -906,27 +911,7 @@ export class BooksService implements OnModuleInit {
       : [];
     const progressMap = new Map(progresses.map((p) => [p.bookId, p]));
 
-    return books.map((b) => {
-      const p = progressMap.get(b.id);
-      return {
-        id: b.id,
-        title: b.title,
-        author: b.author || undefined,
-        description: b.description || undefined,
-        coverUrl: b.cover_url || undefined,
-        format: b.format as BookFormat,
-        language: b.language,
-        filePath: '',
-        metadata: {},
-        readCount: 0,
-        downloadCount: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        readingProgress: p ? p.progressPct : undefined,
-        currentPage: p ? p.currentChapter : undefined,
-        lastReadAt: p ? p.lastReadAt : undefined,
-      };
-    });
+    return books.map((b) => this.toBookResponse(b, progressMap.get(b.id)));
   }
 
   async getStats(): Promise<BookStatsDto> {

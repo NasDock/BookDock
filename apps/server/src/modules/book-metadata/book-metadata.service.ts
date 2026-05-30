@@ -51,6 +51,7 @@ export class BookMetadataService {
     }
 
     const data = metadata.data;
+    console.log(`[BookMetadataService] aggregated data for bookId=${bookId}:`, JSON.stringify(data));
 
     // 3. 下载封面（如果有 coverUrl）
     let coverUrl: string | undefined = existingBook.coverUrl || undefined;
@@ -76,6 +77,7 @@ export class BookMetadataService {
     });
 
     // 5. 同步 tags 到 Tag 表（如果豆瓣抓取了 tags）
+    console.log(`[BookMetadataService] tags to sync for bookId=${bookId}:`, data.tags);
     if (data.tags && data.tags.length > 0) {
       for (const tagName of data.tags) {
         const tag = await this.prisma.tag.upsert({
@@ -107,7 +109,9 @@ export class BookMetadataService {
       include: { bookTags: { include: { tag: true } } },
     });
 
-    return this.toBookResponse(updatedBook);
+    const response = this.toBookResponse(updatedBook);
+    console.log(`[BookMetadataService] final response for bookId=${bookId}:`, JSON.stringify(response));
+    return response;
   }
 
   private toBookResponse(book: any): BookResponseDto {

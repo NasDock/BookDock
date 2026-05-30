@@ -123,6 +123,8 @@ export class MetadataAggregatorService {
       sources.push({ name: 'wikipedia', info: wikipediaResult });
     }
 
+    this.logger.log(`[MetadataAggregator] raw sources for "${title}": douban=${JSON.stringify(doubanResult)}, wikipedia=${JSON.stringify(wikipediaResult)}`);
+
     if (sources.length === 0) {
       return { success: false, error: `No metadata found for "${title}"` };
     }
@@ -162,6 +164,7 @@ export class MetadataAggregatorService {
       }
     }
 
+    this.logger.log(`[MetadataAggregator] aggregated result for "${title}": ${JSON.stringify(result)}`);
     return { success: true, data: result };
   }
 
