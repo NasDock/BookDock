@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { Book } from "@bookdock/api-client";
-import { BookOpen, Clock, Sparkles } from "lucide-react";
-import React, { useEffect, useMemo } from "react";
+import { BookOpen, Clock, Sparkles, ThumbsUp } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   selectBooksByProgress,
@@ -9,6 +9,7 @@ import {
   useLibraryStore,
 } from "../stores/libraryStore";
 import { getCoverImageUrl } from "../utils/network";
+import { getApiClient } from "@bookdock/api-client";
 
 function getBookGradient(title: string): string {
   const gradients = [
@@ -41,10 +42,33 @@ function formatDate(dateStr?: string): string {
 export default function Recommend() {
   const navigate = useNavigate();
   const { books, fetchBooks, isLoading } = useLibraryStore();
+  const [recommended, setRecommended] = useState<Book[]>([]);
+  const [recLoading, setRecLoading] = useState(false);
 
   useEffect(() => {
     fetchBooks();
   }, [fetchBooks]);
+
+  // 获取推荐数据
+  useEffect(() => {
+    let cancelled = false;
+    async function loadRecommendations() {
+      setRecLoading(true);
+      try {
+        const api = getApiClient();
+        const res = await api.getRecommendations(12);
+        if (!cancelled && res.success && res.data) {
+          setRecommended(res.data.books);
+        }
+      } catch (err) {
+        console.error("Failed to load recommendations:", err);
+      } finally {
+        if (!cancelled) setRecLoading(false);
+      }
+    }
+    loadRecommendations();
+    return () => { cancelled = true; };
+  }, []);
 
   const inProgress = useMemo(() => selectBooksByProgress(books), [books]);
   const recentlyRead = useMemo(() => selectRecentlyRead(books, 5), [books]);
@@ -61,7 +85,7 @@ export default function Recommend() {
     );
   }
 
-  const hasContent = inProgress.length > 0 || recentlyRead.length > 0;
+  const hasContent = inProgress.length > 0 || recentlyRead.length > 0 || recommended.length > 0;
 
   return (
     <div className="space-y-10">
@@ -73,76 +97,87 @@ export default function Recommend() {
         </h1>
       </div>
 
-        {!hasContent ? (
-          <div className="text-center py-20">
-            <BookOpen className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-            <p className="text-gray-500 dark:text-gray-400">
-              开始阅读书籍后，这里会显示你的阅读推荐
-            </p>
-          </div>
-        ) : (
-          <>
-            {/* Continue Reading */}
-            {inProgress.length > 0 && (
-              <section>
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <BookOpen className="w-5 h-5 text-blue-500" />
-                  继续阅读
-                </h2>
-                <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4">
-                  {inProgress.map((book) => (
-                    <div
-                      key={book.id}
-                      className="flex-shrink-0 w-36 cursor-pointer"
-                      onClick={() => handleBookSelect(book)}
-                    >
-                      <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden relative shadow-sm hover:shadow-md transition-shadow">
-                        {book.coverUrl ? (
-                          <img
-                            src={getCoverImageUrl(book.coverUrl)}
-                            alt={book.title}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div
-                            className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}
-                          >
-                            <span className="text-5xl text-white font-bold">
-                              {book.title.charAt(0)}
-                            </span>
-                          </div>
-                        )}
-                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-300 dark:bg-gray-600">
-                          <div
-                            className="h-full bg-blue-500"
-                            style={{ width: `${book.readingProgress}%` }}
-                          />
+      {!hasContent ? (
+        <div className="text-center py-20">
+          <BookOpen className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+          <p className="text-gray-500 dark:text-gray-400">
+            开始阅读书籍后，这里会显示你的阅读推荐
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Continue Reading */}
+          {inProgress.length > 0 && (
+            <section>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-blue-500" />
+                继续阅读
+              </h2>
+              <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4">
+                {inProgress.map((book) => (
+                  <div
+                    key={book.id}
+                    className="flex-shrink-0 w-36 cursor-pointer"
+                    onClick={() => handleBookSelect(book)}
+                  >
+                    <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden relative shadow-sm hover:shadow-md transition-shadow">
+                      {book.coverUrl ? (
+                        <img
+                          src={getCoverImageUrl(book.coverUrl)}
+                          alt={book.title}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div
+                          className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}
+                        >
+                          <span className="text-5xl text-white font-bold">
+                            {book.title.charAt(0)}
+                          </span>
                         </div>
+                      )}
+                      <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-300 dark:bg-gray-600">
+                        <div
+                          className="h-full bg-blue-500"
+                          style={{ width: `${book.readingProgress}%` }}
+                        />
                       </div>
-                      <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white truncate">
-                        {book.title}
-                      </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        已读 {book.readingProgress}%
-                      </p>
+                    </div>
+                    <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white truncate">
+                      {book.title}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      已读 {book.readingProgress}%
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 为你推荐 —— flex-wrap 自动换行布局 */}
+          {(recommended.length > 0 || recLoading) && (
+            <section>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <ThumbsUp className="w-5 h-5 text-amber-500" />
+                为你推荐
+              </h2>
+              {recLoading && recommended.length === 0 ? (
+                <div className="flex gap-4 flex-wrap">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="w-36">
+                      <div className="aspect-[2/3] bg-gray-200 dark:bg-gray-700 rounded-xl animate-pulse" />
+                      <div className="mt-2 h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 animate-pulse" />
+                      <div className="mt-1 h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2 animate-pulse" />
                     </div>
                   ))}
                 </div>
-              </section>
-            )}
-
-            {/* Recently Read */}
-            {recentlyRead.length > 0 && (
-              <section>
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-green-500" />
-                  最近阅读
-                </h2>
-                <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4">
-                  {recentlyRead.map((book) => (
+              ) : (
+                <div className="flex gap-4 flex-wrap">
+                  {recommended.map((book) => (
                     <div
                       key={book.id}
-                      className="flex-shrink-0 w-36 cursor-pointer"
+                      className="w-36 cursor-pointer"
                       onClick={() => handleBookSelect(book)}
                     >
                       <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
@@ -165,16 +200,60 @@ export default function Recommend() {
                       <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white truncate">
                         {book.title}
                       </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {formatDate(book.lastReadAt)}
+                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                        {book.author || "未知作者"}
                       </p>
                     </div>
                   ))}
                 </div>
-              </section>
-            )}
-          </>
-        )}
+              )}
+            </section>
+          )}
+
+          {/* Recently Read */}
+          {recentlyRead.length > 0 && (
+            <section>
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+                <Clock className="w-5 h-5 text-green-500" />
+                最近阅读
+              </h2>
+              <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4">
+                {recentlyRead.map((book) => (
+                  <div
+                    key={book.id}
+                    className="flex-shrink-0 w-36 cursor-pointer"
+                    onClick={() => handleBookSelect(book)}
+                  >
+                    <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                      {book.coverUrl ? (
+                        <img
+                          src={getCoverImageUrl(book.coverUrl)}
+                          alt={book.title}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div
+                          className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}
+                        >
+                          <span className="text-5xl text-white font-bold">
+                            {book.title.charAt(0)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white truncate">
+                      {book.title}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {formatDate(book.lastReadAt)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </>
+      )}
     </div>
   );
 }

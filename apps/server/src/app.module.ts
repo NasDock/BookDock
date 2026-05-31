@@ -11,6 +11,7 @@ import { BookmarkModule } from './modules/bookmark/bookmark.module';
 import { BooksModule } from './modules/books/books.module';
 import { CollectionModule } from './modules/collection/collection.module';
 import { FavoriteModule } from './modules/favorite/favorite.module';
+import { RecommendationModule } from './modules/recommendation/recommendation.module';
 import { MembershipModule } from './modules/membership/membership.module';
 import { VipModule } from './modules/vip/vip.module';
 import { ReadingProgressModule } from './modules/reading-progress/reading-progress.module';
@@ -43,6 +44,7 @@ import { HealthController } from './health.controller';
     BookmarkModule,
     CollectionModule,
     FavoriteModule,
+    RecommendationModule,
   ],
   controllers: [HealthController],
 })

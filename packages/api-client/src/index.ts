@@ -345,6 +345,12 @@ class ApiClient {
     return data;
   }
 
+  // Recommendation APIs
+  async getRecommendations(limit?: number): Promise<ApiResponse<{ books: Book[] }>> {
+    const { data } = await this.client.get('/recommendations', { params: { limit } });
+    return data;
+  }
+
   // Favorite APIs
   async getFavorites(): Promise<ApiResponse<Book[]>> {
     const { data } = await this.client.get('/favorites');
