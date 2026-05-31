@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Image,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -52,12 +53,33 @@ export function RecommendScreen() {
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
   const { books, fetchBooks, isLoading } = useLibraryStore();
+  const [refreshing, setRefreshing] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
 
+  // 首次进入：优先展示缓存，后台静默刷新
   useFocusEffect(
     useCallback(() => {
-      fetchBooks();
-    }, [fetchBooks])
+      if (!hasLoaded) {
+        setHasLoaded(true);
+        // 有缓存数据时后台刷新，无缓存时显示 loading
+        if (books.length > 0) {
+          fetchBooks().catch(() => {});
+        } else {
+          fetchBooks();
+        }
+      }
+    }, [hasLoaded, books.length, fetchBooks])
   );
+
+  // 下拉刷新：强制从服务器获取并更新缓存
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await fetchBooks();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchBooks]);
 
   const inProgress = useMemo(
     () =>
@@ -82,7 +104,8 @@ export function RecommendScreen() {
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  if (isLoading) {
+  // 首次无缓存数据时显示 loading
+  if (isLoading && books.length === 0) {
     return (
       <View style={[styles.container, styles.center]}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -93,7 +116,17 @@ export function RecommendScreen() {
   const hasContent = inProgress.length > 0 || recentlyRead.length > 0;
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor={theme.colors.primary}
+        />
+      }
+    >
       {!hasContent ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="book-outline" size={64} color={theme.colors.textSecondary} />

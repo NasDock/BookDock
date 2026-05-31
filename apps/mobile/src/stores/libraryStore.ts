@@ -316,6 +316,7 @@ export const useLibraryStore = create<LibraryState>()(
       name: 'bookdock-library',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
+        books: state.books,
         localBooks: state.localBooks,
         viewMode: state.viewMode,
       }),
