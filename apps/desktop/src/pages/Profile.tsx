@@ -102,7 +102,7 @@ export default function Profile() {
     <div
       key={book.id}
       className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-      onClick={() => navigate(`/book/${book.id}`)}
+      onClick={() => navigate(`/book/${book.id}/detail`)}
     >
       <div className="w-12 h-18 rounded overflow-hidden flex-shrink-0">
         {book.coverUrl ? (

@@ -74,7 +74,7 @@ export default function Recommend() {
   const recentlyRead = useMemo(() => selectRecentlyRead(books, 5), [books]);
 
   const handleBookSelect = (book: Book) => {
-    navigate(`/book/${book.id}`);
+    navigate(`/book/${book.id}/detail`);
   };
 
   if (isLoading) {

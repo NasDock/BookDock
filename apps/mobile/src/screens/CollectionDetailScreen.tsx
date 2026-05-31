@@ -91,7 +91,7 @@ export function CollectionDetailScreen() {
   }, [collectionId, fetchCollection]);
 
   const handleBookPress = useCallback((book: Book) => {
-    navigation.navigate('Reader', { book });
+    navigation.navigate('BookDetails', { book });
   }, [navigation]);
 
   if (isLoading) {

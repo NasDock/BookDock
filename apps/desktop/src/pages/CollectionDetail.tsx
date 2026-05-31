@@ -109,7 +109,7 @@ export default function CollectionDetail() {
               >
                 <div
                   className="w-12 h-18 rounded overflow-hidden flex-shrink-0 cursor-pointer"
-                  onClick={() => navigate(`/book/${book.id}`)}
+                  onClick={() => navigate(`/book/${book.id}/detail`)}
                 >
                   {book.coverUrl ? (
                     <img
@@ -127,7 +127,7 @@ export default function CollectionDetail() {
                 </div>
                 <div
                   className="flex-1 min-w-0 cursor-pointer"
-                  onClick={() => navigate(`/book/${book.id}`)}
+                  onClick={() => navigate(`/book/${book.id}/detail`)}
                 >
                   <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
                     {book.title}

@@ -174,7 +174,7 @@ export function ProfileScreen() {
     <TouchableOpacity
       key={book.id}
       style={[styles.bookCard, { backgroundColor: theme.colors.surface }]}
-      onPress={() => navigation.navigate('Reader', { book })}
+      onPress={() => navigation.navigate('BookDetails', { book })}
       activeOpacity={0.8}
     >
       <View style={styles.coverContainer}>

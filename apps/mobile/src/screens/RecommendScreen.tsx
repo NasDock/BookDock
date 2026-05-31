@@ -146,7 +146,7 @@ export function RecommendScreen() {
   );
 
   const handleBookPress = (book: Book) => {
-    navigation.navigate('Reader', { book });
+    navigation.navigate('BookDetails', { book });
   };
 
   const styles = useMemo(() => createStyles(theme, recItemWidth, recItemHeight), [theme, recItemWidth, recItemHeight]);

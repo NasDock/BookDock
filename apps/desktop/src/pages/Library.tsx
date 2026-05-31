@@ -385,7 +385,7 @@ export default function Library() {
   };
 
   const handleBookSelect = (book: Book) => {
-    navigate(`/book/${book.id}`);
+    navigate(`/book/${book.id}/detail`);
   };
 
   const toggleSortOrder = () => {

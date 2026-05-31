@@ -150,7 +150,7 @@ export function LibraryScreen() {
   }, [books]);
 
   const handleBookPress = useCallback((book: Book) => {
-    navigation.navigate('Reader', { book });
+    navigation.navigate('BookDetails', { book });
   }, [navigation]);
 
   const handleTTSPress = useCallback(async (book: Book) => {

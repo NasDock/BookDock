@@ -36,6 +36,7 @@ import MemberPaymentSuccess from "./pages/MemberPaymentSuccess";
 import Membership from "./pages/Membership";
 import Reader from "./pages/Reader";
 import ReaderTTS from "./pages/Reader-TTS";
+import BookDetail from "./pages/BookDetail";
 import Settings from "./pages/Settings";
 
 // Stores
@@ -456,6 +457,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <Library />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/book/:id/detail"
+          element={
+            <ProtectedRoute>
+              <BookDetail />
             </ProtectedRoute>
           }
         />
