@@ -51,9 +51,25 @@ export class CollectionService {
     });
     if (!collection) throw new NotFoundException('Collection not found');
     if (collection.userId !== userId) throw new ForbiddenException('Access denied');
+    const books = (collection as any).items.map((item: any) => ({
+      ...item.book,
+      fileSize: item.book.fileSize ? Number(item.book.fileSize) : undefined,
+      readingProgress: item.book.readingProgress?.map((rp: any) => ({
+        ...rp,
+        timeSpentSecs: rp.timeSpentSecs ? Number(rp.timeSpentSecs) : undefined,
+      })),
+    }));
     return {
-      ...collection,
-      books: (collection as any).items.map((item: any) => item.book),
+      id: collection.id,
+      userId: collection.userId,
+      name: collection.name,
+      description: collection.description,
+      coverUrl: collection.coverUrl,
+      isPublic: collection.isPublic,
+      sortOrder: collection.sortOrder,
+      createdAt: collection.createdAt,
+      updatedAt: collection.updatedAt,
+      books,
     };
   }
 

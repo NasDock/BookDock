@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { Book } from "@bookdock/api-client";
-import { BookOpen, Clock, Sparkles, ThumbsUp } from "lucide-react";
-import React, { useEffect, useMemo, useState } from "react";
+import { BookOpen, Clock, RefreshCw, Sparkles, ThumbsUp } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   selectBooksByProgress,
@@ -50,25 +50,24 @@ export default function Recommend() {
   }, [fetchBooks]);
 
   // 获取推荐数据
-  useEffect(() => {
-    let cancelled = false;
-    async function loadRecommendations() {
-      setRecLoading(true);
-      try {
-        const api = getApiClient();
-        const res = await api.getRecommendations(12);
-        if (!cancelled && res.success && res.data) {
-          setRecommended(res.data.books);
-        }
-      } catch (err) {
-        console.error("Failed to load recommendations:", err);
-      } finally {
-        if (!cancelled) setRecLoading(false);
+  const loadRecommendations = useCallback(async () => {
+    setRecLoading(true);
+    try {
+      const api = getApiClient();
+      const res = await api.getRecommendations(12);
+      if (res.success && res.data) {
+        setRecommended(res.data.books);
       }
+    } catch (err) {
+      console.error("Failed to load recommendations:", err);
+    } finally {
+      setRecLoading(false);
     }
-    loadRecommendations();
-    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    loadRecommendations();
+  }, [loadRecommendations]);
 
   const inProgress = useMemo(() => selectBooksByProgress(books), [books]);
   const recentlyRead = useMemo(() => selectRecentlyRead(books, 5), [books]);
@@ -158,10 +157,20 @@ export default function Recommend() {
           {/* 为你推荐 —— flex-wrap 自动换行布局 */}
           {(recommended.length > 0 || recLoading) && (
             <section>
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                <ThumbsUp className="w-5 h-5 text-amber-500" />
-                为你推荐
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <ThumbsUp className="w-5 h-5 text-amber-500" />
+                  为你推荐
+                </h2>
+                <button
+                  onClick={loadRecommendations}
+                  disabled={recLoading}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors disabled:opacity-50"
+                  title="刷新推荐"
+                >
+                  <RefreshCw className={`w-4 h-4 text-gray-500 dark:text-gray-400 ${recLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
               {recLoading && recommended.length === 0 ? (
                 <div className="flex gap-4 flex-wrap">
                   {Array.from({ length: 6 }).map((_, i) => (

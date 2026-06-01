@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   Dimensions,
   Alert,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -17,7 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { getCoverImageUrl } from '../services/api';
-import { getApiClient, type Book } from '@bookdock/api-client';
+import { getApiClient, type Book, type Collection } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -68,6 +70,12 @@ export function BookDetailScreen() {
   const [isFavorite, setIsFavorite] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
   const [showAllChapters, setShowAllChapters] = useState(false);
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [showCollectionModal, setShowCollectionModal] = useState(false);
+  const [showCreateCollectionModal, setShowCreateCollectionModal] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState('');
+  const [addingCollectionId, setAddingCollectionId] = useState<string | null>(null);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   const metadata = useMemo(() => parseMetadata((book as any).metadata), [(book as any).metadata]);
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -136,6 +144,64 @@ export function BookDetailScreen() {
     navigation.goBack();
   }, [navigation]);
 
+  const handleOpenCollectionModal = useCallback(async () => {
+    try {
+      const api = getApiClient();
+      const res = await api.getCollections();
+      if (res.success && res.data) {
+        setCollections(res.data);
+      }
+      setShowCollectionModal(true);
+    } catch {
+      Alert.alert('错误', '获取书单失败');
+    }
+  }, []);
+
+  const handleAddToCollection = useCallback(async (collectionId: string) => {
+    setAddingCollectionId(collectionId);
+    try {
+      const api = getApiClient();
+      const res = await api.addBookToCollection(collectionId, book.id);
+      if (res.success) {
+        Alert.alert('成功', '已添加到书单');
+        setShowCollectionModal(false);
+      } else {
+        Alert.alert('提示', res.message || '添加失败');
+      }
+    } catch {
+      Alert.alert('错误', '添加失败');
+    } finally {
+      setAddingCollectionId(null);
+    }
+  }, [book.id]);
+
+  const handleCreateCollection = useCallback(async () => {
+    const name = newCollectionName.trim();
+    if (!name) {
+      Alert.alert('提示', '请输入书单名称');
+      return;
+    }
+    try {
+      const api = getApiClient();
+      const createRes = await api.createCollection({ name });
+      if (createRes.success && createRes.data) {
+        const addRes = await api.addBookToCollection(createRes.data.id, book.id);
+        if (addRes.success) {
+          Alert.alert('成功', '已创建书单并添加书籍');
+          setShowCreateCollectionModal(false);
+          setShowCollectionModal(false);
+          setNewCollectionName('');
+        } else {
+          Alert.alert('提示', addRes.message || '添加失败');
+        }
+      } else {
+        Alert.alert('提示', createRes.message || '创建失败');
+      }
+    } catch {
+      Alert.alert('错误', '操作失败');
+    }
+  }, [newCollectionName, book.id]);
+
   // 封面尺寸
   const coverWidth = IS_TABLET ? 200 : 160;
   const coverHeight = coverWidth * 1.5;
@@ -180,15 +246,9 @@ export function BookDetailScreen() {
         <TouchableOpacity onPress={handleBack} style={styles.headerButton}>
           <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <View style={styles.headerActions}>
-          <TouchableOpacity onPress={handleToggleFavorite} style={styles.headerButton}>
-            <Ionicons
-              name={isFavorite ? 'heart' : 'heart-outline'}
-              size={22}
-              color={isFavorite ? theme.colors.error : theme.colors.text}
-            />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity onPress={() => setShowMoreMenu(true)} style={styles.headerButton}>
+          <Ionicons name="ellipsis-vertical" size={22} color={theme.colors.text} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -207,17 +267,14 @@ export function BookDetailScreen() {
               {book.title}
             </Text>
 
-            {book.author && (
-              <TouchableOpacity style={styles.authorRow}>
-                <Text style={[styles.authorText, { color: theme.colors.primary }]}>
-                  {book.author}
-                </Text>
-                <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
-              </TouchableOpacity>
-            )}
-
             {/* 书籍信息 */}
             <View style={styles.bookMetaList}>
+              {book.author && (
+                <View style={styles.metaRow}>
+                  <Text style={[styles.metaLabel, { color: theme.colors.textSecondary }]}>作者</Text>
+                  <Text style={[styles.metaValue, { color: theme.colors.text }]}>{book.author}</Text>
+                </View>
+              )}
               {metadata.tags && metadata.tags.length > 0 && (
                 <View style={styles.metaRow}>
                   <Text style={[styles.metaLabel, { color: theme.colors.textSecondary }]}>标签</Text>
@@ -250,8 +307,12 @@ export function BookDetailScreen() {
                   <Text style={[styles.metaValue, { color: theme.colors.text }]}>
                     {(() => {
                       const date = (book as any).publishedDate || metadata.publishedDate || metadata.published || metadata.pub_date;
-                      if (typeof date === 'string') return date;
                       if (date instanceof Date) return date.toISOString().split('T')[0];
+                      if (typeof date === 'string') {
+                        const d = new Date(date);
+                        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+                        return date;
+                      }
                       return String(date);
                     })()}
                   </Text>
@@ -447,6 +508,146 @@ export function BookDetailScreen() {
 
         <View style={{ height: spacing.xl }} />
       </ScrollView>
+
+      {/* 添加到书单 Modal */}
+      <Modal
+        visible={showCollectionModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCollectionModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>添加到书单</Text>
+              <TouchableOpacity onPress={() => setShowCollectionModal(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} style={styles.modalList}>
+              {collections.length === 0 ? (
+                <Text style={[styles.modalEmpty, { color: theme.colors.textSecondary }]}>
+                  暂无书单，点击下方创建
+                </Text>
+              ) : (
+                collections.map((col) => (
+                  <TouchableOpacity
+                    key={col.id}
+                    style={[styles.modalItem, { borderBottomColor: theme.colors.border }]}
+                    onPress={() => handleAddToCollection(col.id)}
+                    disabled={addingCollectionId === col.id}
+                  >
+                    <View style={styles.modalItemLeft}>
+                      <Ionicons name="folder-open-outline" size={20} color={theme.colors.primary} />
+                      <Text style={[styles.modalItemText, { color: theme.colors.text }]}>
+                        {col.name}
+                      </Text>
+                    </View>
+                    {addingCollectionId === col.id ? (
+                      <ActivityIndicator size="small" color={theme.colors.primary} />
+                    ) : (
+                      <Text style={[styles.modalItemCount, { color: theme.colors.textSecondary }]}>
+                        {col.bookCount ?? 0} 本
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.modalCreateBtn, { backgroundColor: theme.colors.primary }]}
+              onPress={() => {
+                setShowCollectionModal(false);
+                setShowCreateCollectionModal(true);
+              }}
+            >
+              <Ionicons name="add" size={20} color="#fff" />
+              <Text style={styles.modalCreateBtnText}>新建书单</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 新建书单 Modal */}
+      <Modal
+        visible={showCreateCollectionModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCreateCollectionModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text }]}>新建书单</Text>
+              <TouchableOpacity onPress={() => setShowCreateCollectionModal(false)}>
+                <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <TextInput
+              style={[styles.modalInput, {
+                color: theme.colors.text,
+                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.surface,
+              }]}
+              placeholder="书单名称"
+              placeholderTextColor={theme.colors.textSecondary}
+              value={newCollectionName}
+              onChangeText={setNewCollectionName}
+              maxLength={50}
+            />
+            <TouchableOpacity
+              style={[styles.modalCreateBtn, { backgroundColor: theme.colors.primary }]}
+              onPress={handleCreateCollection}
+            >
+              <Text style={styles.modalCreateBtnText}>创建并添加</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 更多菜单 Modal */}
+      <Modal
+        visible={showMoreMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMoreMenu(false)}
+      >
+        <TouchableOpacity
+          style={styles.moreMenuOverlay}
+          activeOpacity={1}
+          onPress={() => setShowMoreMenu(false)}
+        >
+          <View style={[styles.moreMenuContainer, { backgroundColor: theme.colors.background }]}>
+            <TouchableOpacity
+              style={styles.moreMenuItem}
+              onPress={() => {
+                setShowMoreMenu(false);
+                handleToggleFavorite();
+              }}
+            >
+              <Ionicons
+                name={isFavorite ? 'heart' : 'heart-outline'}
+                size={20}
+                color={isFavorite ? theme.colors.error : theme.colors.text}
+              />
+              <Text style={[styles.moreMenuText, { color: theme.colors.text }]}>
+                {isFavorite ? '取消收藏' : '收藏'}
+              </Text>
+            </TouchableOpacity>
+            <View style={[styles.moreMenuDivider, { backgroundColor: theme.colors.border }]} />
+            <TouchableOpacity
+              style={styles.moreMenuItem}
+              onPress={() => {
+                setShowMoreMenu(false);
+                handleOpenCollectionModal();
+              }}
+            >
+              <Ionicons name="folder-open-outline" size={20} color={theme.colors.text} />
+              <Text style={[styles.moreMenuText, { color: theme.colors.text }]}>添加到书单</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -461,7 +662,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: spacing.md,
-      paddingTop: spacing.md,
+      paddingTop: spacing.xl,
       paddingBottom: spacing.sm,
     },
     headerButton: {
@@ -728,6 +929,112 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontSize: fontSizes.sm,
       flex: 1,
       lineHeight: 20,
+    },
+    // Modal
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
+    },
+    modalContent: {
+      borderTopLeftRadius: borderRadius.xl,
+      borderTopRightRadius: borderRadius.xl,
+      paddingHorizontal: spacing.md,
+      paddingBottom: spacing.xl,
+      maxHeight: '70%',
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: spacing.md,
+    },
+    modalTitle: {
+      fontSize: fontSizes.xl,
+      fontWeight: '600',
+    },
+    modalList: {
+      maxHeight: 300,
+    },
+    modalEmpty: {
+      textAlign: 'center',
+      paddingVertical: spacing.xl,
+      fontSize: fontSizes.md,
+    },
+    modalItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: spacing.md,
+      borderBottomWidth: 1,
+    },
+    modalItemLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    modalItemText: {
+      fontSize: fontSizes.md,
+      fontWeight: '500',
+    },
+    modalItemCount: {
+      fontSize: fontSizes.sm,
+    },
+    modalCreateBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.xs,
+      paddingVertical: spacing.md,
+      borderRadius: borderRadius.md,
+      marginTop: spacing.md,
+    },
+    modalCreateBtnText: {
+      color: '#fff',
+      fontSize: fontSizes.md,
+      fontWeight: '600',
+    },
+    modalInput: {
+      borderWidth: 1,
+      borderRadius: borderRadius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      fontSize: fontSizes.md,
+      marginVertical: spacing.md,
+    },
+    // 更多菜单
+    moreMenuOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.3)',
+      justifyContent: 'flex-start',
+      alignItems: 'flex-end',
+      paddingTop: 80,
+      paddingRight: spacing.md,
+    },
+    moreMenuContainer: {
+      borderRadius: borderRadius.lg,
+      paddingVertical: spacing.sm,
+      minWidth: 180,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 8,
+      elevation: 5,
+    },
+    moreMenuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.lg,
+    },
+    moreMenuText: {
+      fontSize: fontSizes.md,
+      fontWeight: '500',
+    },
+    moreMenuDivider: {
+      height: 1,
+      marginHorizontal: spacing.lg,
     },
   });
 }

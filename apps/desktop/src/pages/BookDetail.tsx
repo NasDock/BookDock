@@ -1,19 +1,22 @@
 // @ts-nocheck
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { getApiClient, type Book } from "@bookdock/api-client";
+import { getApiClient, type Book, type Collection } from "@bookdock/api-client";
 import { getCoverImageUrl } from "../utils/network";
 import {
   ArrowLeft,
   BookOpen,
   Headphones,
   Heart,
+  FolderOpen,
   ChevronRight,
   ChevronDown,
   ChevronUp,
   Tag,
   Building,
   Calendar,
+  X,
+  Plus,
 } from "lucide-react";
 
 function getBookGradient(title: string): string {
@@ -53,6 +56,12 @@ export default function BookDetail() {
   const [isFavorite, setIsFavorite] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
   const [showAllChapters, setShowAllChapters] = useState(false);
+  const [collections, setCollections] = useState<Collection[]>([]);
+  const [showCollectionModal, setShowCollectionModal] = useState(false);
+  const [showCreateCollectionModal, setShowCreateCollectionModal] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState("");
+  const [addingCollectionId, setAddingCollectionId] = useState<string | null>(null);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   // 加载书籍详情
   useEffect(() => {
@@ -112,6 +121,66 @@ export default function BookDetail() {
     }
   }, [book, isFavorite]);
 
+  const handleOpenCollectionModal = useCallback(async () => {
+    try {
+      const api = getApiClient();
+      const res = await api.getCollections();
+      if (res.success && res.data) {
+        setCollections(res.data);
+      }
+      setShowCollectionModal(true);
+    } catch {
+      alert("获取书单失败");
+    }
+  }, []);
+
+  const handleAddToCollection = useCallback(async (collectionId: string) => {
+    if (!book) return;
+    setAddingCollectionId(collectionId);
+    try {
+      const api = getApiClient();
+      const res = await api.addBookToCollection(collectionId, book.id);
+      if (res.success) {
+        alert("已添加到书单");
+        setShowCollectionModal(false);
+      } else {
+        alert(res.message || "添加失败");
+      }
+    } catch {
+      alert("添加失败");
+    } finally {
+      setAddingCollectionId(null);
+    }
+  }, [book]);
+
+  const handleCreateCollection = useCallback(async () => {
+    if (!book) return;
+    const name = newCollectionName.trim();
+    if (!name) {
+      alert("请输入书单名称");
+      return;
+    }
+    try {
+      const api = getApiClient();
+      const createRes = await api.createCollection({ name });
+      if (createRes.success && createRes.data) {
+        const addRes = await api.addBookToCollection(createRes.data.id, book.id);
+        if (addRes.success) {
+          alert("已创建书单并添加书籍");
+          setShowCreateCollectionModal(false);
+          setShowCollectionModal(false);
+          setNewCollectionName("");
+        } else {
+          alert(addRes.message || "添加失败");
+        }
+      } else {
+        alert(createRes.message || "创建失败");
+      }
+    } catch {
+      alert("操作失败");
+    }
+  }, [newCollectionName, book]);
+
   const metadata = useMemo(() => parseMetadata((book as any)?.metadata), [book]);
 
   if (isLoading) {
@@ -134,24 +203,55 @@ export default function BookDetail() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 relative">
           <button
             onClick={() => navigate(-1)}
             className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div className="flex items-center gap-2">
+          <div className="relative">
             <button
-              onClick={handleToggleFavorite}
-              className={`p-2 transition-colors ${
-                isFavorite
-                  ? "text-red-500"
-                  : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-              }`}
+              onClick={() => setShowMoreMenu(!showMoreMenu)}
+              className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
             >
-              <Heart className={`w-5 h-5 ${isFavorite ? "fill-current" : ""}`} />
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+              </svg>
             </button>
+            {showMoreMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowMoreMenu(false)}
+                />
+                <div className="absolute right-0 top-full mt-1 w-44 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50">
+                  <button
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      handleToggleFavorite();
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                  >
+                    <Heart className={`w-4 h-4 ${isFavorite ? "text-red-500 fill-current" : "text-gray-500 dark:text-gray-400"}`} />
+                    <span className="text-sm text-gray-700 dark:text-gray-200">
+                      {isFavorite ? "取消收藏" : "收藏"}
+                    </span>
+                  </button>
+                  <div className="border-t border-gray-100 dark:border-gray-700" />
+                  <button
+                    onClick={() => {
+                      setShowMoreMenu(false);
+                      handleOpenCollectionModal();
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                  >
+                    <FolderOpen className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                    <span className="text-sm text-gray-700 dark:text-gray-200">添加到书单</span>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -184,15 +284,14 @@ export default function BookDetail() {
               {book.title}
             </h1>
 
-            {book.author && (
-              <div className="flex items-center gap-1 text-blue-500 hover:text-blue-600 cursor-pointer">
-                <span className="text-lg">{book.author}</span>
-                <ChevronRight className="w-4 h-4" />
-              </div>
-            )}
-
             {/* 书籍信息 */}
             <div className="space-y-2 pt-1">
+              {book.author && (
+                <div className="flex items-start gap-3">
+                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">作者</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{book.author}</span>
+                </div>
+              )}
               {metadata.tags && metadata.tags.length > 0 && (
                 <div className="flex items-start gap-3">
                   <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">标签</span>
@@ -225,8 +324,12 @@ export default function BookDetail() {
                   <span className="text-sm text-gray-700 dark:text-gray-300">
                     {(() => {
                       const date = book.publishedDate || metadata.publishedDate || metadata.published || metadata.pub_date;
-                      if (typeof date === 'string') return date;
                       if (date instanceof Date) return date.toISOString().split('T')[0];
+                      if (typeof date === 'string') {
+                        const d = new Date(date);
+                        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+                        return date;
+                      }
                       return String(date);
                     })()}
                   </span>
@@ -405,6 +508,94 @@ export default function BookDetail() {
 
 
       </div>
+
+      {/* 添加到书单 Modal */}
+      {showCollectionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">添加到书单</h3>
+              <button
+                onClick={() => setShowCollectionModal(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="max-h-80 overflow-y-auto">
+              {collections.length === 0 ? (
+                <p className="text-center py-10 text-gray-500 dark:text-gray-400">
+                  暂无书单，点击下方创建
+                </p>
+              ) : (
+                <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {collections.map((col) => (
+                    <button
+                      key={col.id}
+                      className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors text-left"
+                      onClick={() => handleAddToCollection(col.id)}
+                      disabled={addingCollectionId === col.id}
+                    >
+                      <div className="flex items-center gap-3">
+                        <FolderOpen className="w-5 h-5 text-blue-500" />
+                        <span className="text-gray-900 dark:text-white font-medium">{col.name}</span>
+                      </div>
+                      {addingCollectionId === col.id ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent" />
+                      ) : (
+                        <span className="text-sm text-gray-400">{col.bookCount ?? 0} 本</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700">
+              <button
+                onClick={() => {
+                  setShowCollectionModal(false);
+                  setShowCreateCollectionModal(true);
+                }}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+                新建书单
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 新建书单 Modal */}
+      {showCreateCollectionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">新建书单</h3>
+              <button
+                onClick={() => setShowCreateCollectionModal(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <input
+              type="text"
+              placeholder="书单名称"
+              value={newCollectionName}
+              onChange={(e) => setNewCollectionName(e.target.value)}
+              maxLength={50}
+              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4"
+            />
+            <button
+              onClick={handleCreateCollection}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
+            >
+              创建并添加
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

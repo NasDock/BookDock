@@ -256,37 +256,34 @@ export class DoubanScraperService {
       });
       this.logger.log(`[DoubanScraper] tags scraped for "${title}": ${JSON.stringify(tags)} (selector matched ${tags.length} tags)`);
 
-      // 内容简介：#link-report .intro（排除 h2 标题）
+      // 内容简介 & 作者简介：从 .related_info 区块中按标题分别提取
       let summary: string | undefined;
-      $('#link-report .intro').each((_index: number, el: Element) => {
-        const $el = $(el);
-        // 排除 h2 标题本身，取段落文字
-        const text = $el
-          .find('p')
-          .map((_i: number, p: Element) => $(p).text().trim())
-          .get()
-          .join('\n');
-        if (text) {
-          summary = text;
-          return false; // break
-        }
-      });
-      // 如果 <p> 里没拿到，直接取文字
-      if (!summary) {
-        summary = $('#link-report .intro')
-          .first()
-          .text()
-          .replace(/^\s*内容简介\s*/g, '')
-          .trim();
-        if (!summary) summary = undefined;
-      }
-
-      // 作者简介：.related_info 中包含"作者简介"的 .indent .intro
       let authorIntro: string | undefined;
+
       $('.related_info').each((_index: number, section: Element) => {
         const $section = $(section);
-        const heading = $section.find('h2, .hd').text();
-        if (heading.includes('作者简介')) {
+        const heading = $section.find('h2, .hd').text().trim();
+
+        // 内容简介
+        if (heading.includes('内容简介') && !summary) {
+          const text = $section
+            .find('.indent .intro p')
+            .map((_i: number, p: Element) => $(p).text().trim())
+            .get()
+            .join('\n');
+          if (text) {
+            summary = text;
+          } else {
+            // fallback：直接取 .indent .intro 的文字
+            const fallback = $section.find('.indent .intro').first().text()
+              .replace(/^\s*内容简介\s*/g, '')
+              .trim();
+            if (fallback) summary = fallback;
+          }
+        }
+
+        // 作者简介
+        if (heading.includes('作者简介') && !authorIntro) {
           const text = $section
             .find('.indent .intro p')
             .map((_i: number, p: Element) => $(p).text().trim())
@@ -294,10 +291,43 @@ export class DoubanScraperService {
             .join('\n');
           if (text) {
             authorIntro = text;
-            return false;
+          } else {
+            const fallback = $section.find('.indent .intro').first().text()
+              .replace(/^\s*作者简介\s*/g, '')
+              .trim();
+            if (fallback) authorIntro = fallback;
           }
         }
+
+        // 两个都找到了就提前退出
+        if (summary && authorIntro) {
+          return false;
+        }
       });
+
+      // 兼容旧版页面结构：如果 .related_info 没找到内容简介，尝试 #link-report
+      if (!summary) {
+        $('#link-report .intro').each((_index: number, el: Element) => {
+          const $el = $(el);
+          const text = $el
+            .find('p')
+            .map((_i: number, p: Element) => $(p).text().trim())
+            .get()
+            .join('\n');
+          if (text) {
+            summary = text;
+            return false;
+          }
+        });
+        if (!summary) {
+          summary = $('#link-report .intro')
+            .first()
+            .text()
+            .replace(/^\s*内容简介\s*/g, '')
+            .trim();
+          if (!summary) summary = undefined;
+        }
+      }
 
       const result = {
         title,

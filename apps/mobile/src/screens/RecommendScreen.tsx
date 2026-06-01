@@ -185,7 +185,6 @@ export function RecommendScreen() {
           {inProgress.length > 0 && (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
-                <Ionicons name="book-outline" size={18} color={theme.colors.primary} />
                 <Text style={styles.sectionTitle}>继续阅读</Text>
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -238,9 +237,11 @@ export function RecommendScreen() {
           {/* 为你推荐 —— flexWrap 自动换行 */}
           {(recommended.length > 0 || recLoading) && (
             <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="thumbs-up" size={18} color={theme.colors.warning} />
+              <View style={[styles.sectionHeader, styles.sectionHeaderBetween]}>
                 <Text style={styles.sectionTitle}>为你推荐</Text>
+                <TouchableOpacity onPress={handleRefresh} disabled={recLoading}>
+                  <Ionicons name="refresh" size={18} color={theme.colors.primary} />
+                </TouchableOpacity>
               </View>
               {recLoading && recommended.length === 0 ? (
                 <View style={styles.recRow}>
@@ -296,7 +297,6 @@ export function RecommendScreen() {
           {recentlyRead.length > 0 && (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
-                <Ionicons name="time-outline" size={18} color={theme.colors.success} />
                 <Text style={styles.sectionTitle}>最近阅读</Text>
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -369,6 +369,9 @@ function createStyles(
       gap: spacing.xs,
       paddingHorizontal: spacing.md,
       marginBottom: spacing.sm,
+    },
+    sectionHeaderBetween: {
+      justifyContent: 'space-between',
     },
     sectionTitle: {
       fontSize: fontSizes.lg,

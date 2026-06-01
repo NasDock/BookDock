@@ -26,7 +26,10 @@ export class FavoriteService {
         },
       },
     });
-    return favorites.map((f) => f.book);
+    return favorites.map((f) => ({
+      ...f.book,
+      fileSize: f.book.fileSize ? Number(f.book.fileSize) : undefined,
+    }));
   }
 
   async checkFavorite(userId: string, bookId: string) {
