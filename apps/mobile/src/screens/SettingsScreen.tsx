@@ -8,6 +8,8 @@ import {
   Switch,
   Alert,
   ActivityIndicator,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -17,25 +19,28 @@ import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { notificationService, fileSystemService } from '../services';
 import { getApiClient } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export function SettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const themeMode = useThemeStore((state) => state.theme);
   const setThemeMode = useThemeStore((state) => state.setTheme);
-  const { user, isVip } = useAuthStore();
+  const { user, isVip, vipTier } = useAuthStore();
   const readerStore = useReaderStore();
   const ttsStore = useTTSStore();
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [readingReminder, setReadingReminder] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [themeModalVisible, setThemeModalVisible] = useState(false);
 
   const theme = getTheme(actualTheme === 'dark');
   const styles = useMemo(() => createStyles(theme), [theme]);
 
   const handleThemeChange = useCallback((newTheme: 'light' | 'dark' | 'system') => {
     setThemeMode(newTheme);
+    setThemeModalVisible(false);
   }, [setThemeMode]);
 
   const handleNotificationsToggle = useCallback(async (enabled: boolean) => {
@@ -144,8 +149,9 @@ export function SettingsScreen() {
     </TouchableOpacity>
   );
 
-  const handleMembershipPress = useCallback(() => {
-    if (!user) {
+  const handleMembershipPress = useCallback(async () => {
+    const plusToken = await AsyncStorage.getItem('bookdock_plus_token');
+    if (!plusToken) {
       navigation.navigate('MemberLogin');
       return;
     }
@@ -154,7 +160,7 @@ export function SettingsScreen() {
       return;
     }
     navigation.navigate('MemberBenefits');
-  }, [isVip, navigation, user]);
+  }, [isVip, navigation]);
 
   return (
     <ScrollView
@@ -168,7 +174,7 @@ export function SettingsScreen() {
           <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
           {renderRow('crown-outline', '会员类型',
             <View style={styles.rowValueRow}>
-              <Text style={styles.rowValueText}>{isVip ? '高级会员' : '免费用户'}</Text>
+              <Text style={styles.rowValueText}>{vipTier === 'LIFETIME' ? '永久卡' : vipTier === 'BASIC' ? '年卡' : '免费版'}</Text>
               <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
             </View>,
             handleMembershipPress
@@ -186,7 +192,7 @@ export function SettingsScreen() {
               </Text>
               <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
             </View>,
-            () => handleThemeChange(themeMode === 'light' ? 'dark' : 'light')
+            () => setThemeModalVisible(true)
           )}
           <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
           {renderRow('book-outline', '阅读设置',
@@ -229,6 +235,30 @@ export function SettingsScreen() {
           )}
         </>
       )}
+
+      {/* Theme Selection Modal */}
+      <Modal visible={themeModalVisible} transparent animationType="fade" onRequestClose={() => setThemeModalVisible(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }} onPress={() => setThemeModalVisible(false)}>
+          <View style={[styles.themeModal, { backgroundColor: theme.colors.surface }]}>
+            <Text style={[styles.themeModalTitle, { color: theme.colors.text }]}>选择外观</Text>
+            {[
+              { key: 'light' as const, label: '浅色', icon: 'sunny-outline' },
+              { key: 'dark' as const, label: '深色', icon: 'moon-outline' },
+              { key: 'system' as const, label: '跟随系统', icon: 'phone-portrait-outline' },
+            ].map((item) => (
+              <TouchableOpacity
+                key={item.key}
+                style={[styles.themeOption, themeMode === item.key && { backgroundColor: theme.colors.primary + '20' }]}
+                onPress={() => handleThemeChange(item.key)}
+              >
+                <Ionicons name={item.icon as any} size={22} color={themeMode === item.key ? theme.colors.primary : theme.colors.text} />
+                <Text style={[styles.themeOptionText, { color: themeMode === item.key ? theme.colors.primary : theme.colors.text }]}>{item.label}</Text>
+                {themeMode === item.key && <Ionicons name="checkmark" size={22} color={theme.colors.primary} />}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
 
       {/* Logout */}
       <TouchableOpacity style={styles.logoutButton} onPress={useAuthStore.getState().logout}>
@@ -298,6 +328,29 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontSize: fontSizes.md,
       color: theme.colors.error,
       fontWeight: '500',
+    },
+    themeModal: {
+      width: '80%',
+      borderRadius: borderRadius.lg,
+      padding: spacing.lg,
+      gap: spacing.sm,
+    },
+    themeModalTitle: {
+      fontSize: fontSizes.lg,
+      fontWeight: '600',
+      marginBottom: spacing.md,
+      textAlign: 'center',
+    },
+    themeOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      padding: spacing.md,
+      borderRadius: borderRadius.md,
+    },
+    themeOptionText: {
+      flex: 1,
+      fontSize: fontSizes.md,
     },
   });
 }

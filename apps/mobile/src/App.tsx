@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useColorScheme } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { RootNavigator } from './navigation';
 import { useAuthStore, useThemeStore } from './stores';
@@ -18,10 +19,13 @@ const DEFAULT_API_BASE_URL = 'http://localhost:8088/api';
 
 export default function App() {
   const actualTheme = useThemeStore((state) => state.actualTheme);
+  const themeMode = useThemeStore((state) => state.theme);
+  const setTheme = useThemeStore((state) => state.setTheme);
   const setLoading = useAuthStore((state) => state.setLoading);
   const restoreAuth = useAuthStore((state) => state.restoreAuth);
 
   const [appReady, setAppReady] = useState(false);
+  const systemColorScheme = useColorScheme();
 
   useEffect(() => {
     const initApp = async () => {
@@ -72,6 +76,13 @@ export default function App() {
 
     initApp();
   }, []);
+
+  // 监听系统主题变化，当设置为 'system' 时自动跟随
+  useEffect(() => {
+    if (themeMode === 'system' && systemColorScheme) {
+      setTheme('system');
+    }
+  }, [systemColorScheme, themeMode, setTheme]);
 
   // 同步导航栏主题与 App 主题（必须在所有条件 return 之前调用 Hook）
   const theme = getTheme(actualTheme === 'dark');

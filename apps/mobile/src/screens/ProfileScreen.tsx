@@ -21,6 +21,7 @@ import { useAuthStore, useLibraryStore, useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { getApiClient, type Book, type Collection } from '@bookdock/api-client';
 import { getCoverImageUrl } from '../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 function getBookGradient(title: string): string[] {
   const gradients = [
@@ -270,7 +271,14 @@ export function ProfileScreen() {
           </View>
           <View style={styles.usernameRow}>
             <Text style={styles.username}>{user?.username || '用户'}</Text>
-            <TouchableOpacity onPress={() => {}}>
+            <TouchableOpacity onPress={async () => {
+              const plusToken = await AsyncStorage.getItem('bookdock_plus_token');
+              if (!plusToken) {
+                navigation.navigate('MemberLogin');
+                return;
+              }
+              navigation.navigate(isVip ? 'MemberDetail' : 'MemberBenefits');
+            }}>
               <Ionicons name={isVip ? 'diamond' : 'diamond-outline'} size={20} color={isVip ? '#FFD700' : theme.colors.textSecondary} />
             </TouchableOpacity>
           </View>
