@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -76,6 +76,8 @@ export function BookDetailScreen() {
   const [newCollectionName, setNewCollectionName] = useState('');
   const [addingCollectionId, setAddingCollectionId] = useState<string | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showHeaderTitle, setShowHeaderTitle] = useState(false);
+  const titleRef = useRef<View>(null);
 
   const metadata = useMemo(() => parseMetadata((book as any).metadata), [(book as any).metadata]);
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -143,6 +145,11 @@ export function BookDetailScreen() {
   const handleBack = useCallback(() => {
     navigation.goBack();
   }, [navigation]);
+
+  const handleScroll = useCallback((event: { nativeEvent: { contentOffset: { y: number } } }) => {
+    const y = event.nativeEvent.contentOffset.y;
+    setShowHeaderTitle(y > 80);
+  }, []);
 
   const handleOpenCollectionModal = useCallback(async () => {
     try {
@@ -243,15 +250,26 @@ export function BookDetailScreen() {
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.background }]}>
-        <TouchableOpacity onPress={handleBack} style={styles.headerButton}>
-          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity onPress={handleBack} style={styles.headerButton}>
+            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+          </TouchableOpacity>
+          {showHeaderTitle && (
+            <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>
+              {book.title}
+            </Text>
+          )}
+        </View>
         <TouchableOpacity onPress={() => setShowMoreMenu(true)} style={styles.headerButton}>
           <Ionicons name="ellipsis-vertical" size={22} color={theme.colors.text} />
         </TouchableOpacity>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={100}
+      >
         {/* 书籍基本信息 */}
         <View style={[styles.bookInfoSection, IS_TABLET && styles.bookInfoSectionTablet]}>
           {/* 封面 */}
@@ -263,9 +281,11 @@ export function BookDetailScreen() {
 
           {/* 信息区 */}
           <View style={[styles.infoSection, IS_TABLET && styles.infoSectionTablet]}>
-            <Text style={[styles.bookTitle, { color: theme.colors.text }]} numberOfLines={2}>
-              {book.title}
-            </Text>
+            <View ref={titleRef}>
+              <Text style={[styles.bookTitle, { color: theme.colors.text }]} numberOfLines={2}>
+                {book.title}
+              </Text>
+            </View>
 
             {/* 书籍信息 */}
             <View style={styles.bookMetaList}>
@@ -682,11 +702,22 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       paddingTop: spacing.xl,
       paddingBottom: spacing.sm,
     },
+    headerLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+      gap: spacing.sm,
+    },
     headerButton: {
       width: 40,
       height: 40,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    headerTitle: {
+      fontSize: fontSizes.md,
+      fontWeight: '600',
+      flex: 1,
     },
     headerActions: {
       flexDirection: 'row',

@@ -44,6 +44,20 @@ function getItemWidth(screenWidth: number): number {
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+function SearchNavButton() {
+  const navigation = useNavigation<NavigationProp>();
+  const actualTheme = useThemeStore((state) => state.actualTheme);
+  const theme = getTheme(actualTheme === 'dark');
+  return (
+    <TouchableOpacity
+      onPress={() => navigation.navigate('Search')}
+      style={{ marginRight: 16 }}
+    >
+      <Ionicons name="search" size={22} color={theme.colors.text} />
+    </TouchableOpacity>
+  );
+}
+
 const FORMATS = ['all', 'txt', 'epub', 'pdf', 'mobi'] as const;
 const STATUSES = ['all', 'unread', 'reading', 'completed'] as const;
 
@@ -91,6 +105,7 @@ export function LibraryScreen() {
   const [filterFormat, setFilterFormat] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [showHeaderSearch, setShowHeaderSearch] = useState(false);
   const scrollY = useState(new Animated.Value(0))[0];
   const flatListRef = useRef<FlatList<Book>>(null);
 
@@ -178,7 +193,15 @@ export function LibraryScreen() {
   const handleScroll = useCallback((event: { nativeEvent: { contentOffset: { y: number } } }) => {
     const y = event.nativeEvent.contentOffset.y;
     setShowScrollTop(y > 400);
+    setShowHeaderSearch(y > 60);
   }, []);
+
+  // 同步 headerRight 搜索图标显示状态到导航栏
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => showHeaderSearch ? <SearchNavButton /> : null,
+    });
+  }, [showHeaderSearch, navigation]);
 
   const scrollToTop = useCallback(() => {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -288,24 +311,23 @@ export function LibraryScreen() {
     );
   }, [styles, theme, localBooks, downloadingId, handleBookPress, handleDownload]);
 
+  const handleSearchPress = useCallback(() => {
+    navigation.navigate('Search');
+  }, [navigation]);
+
   const renderHeader = () => (
     <View>
-      {/* Search */}
-      <View style={[styles.searchContainer, { backgroundColor: theme.colors.surface }]}>
+      {/* Search - 点击跳转到搜索页 */}
+      <TouchableOpacity
+        style={[styles.searchContainer, { backgroundColor: theme.colors.surface }]}
+        onPress={handleSearchPress}
+        activeOpacity={0.8}
+      >
         <Ionicons name="search" size={18} color={theme.colors.textSecondary} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="搜索书名或作者..."
-          placeholderTextColor={theme.colors.textSecondary}
-          value={localSearchQuery}
-          onChangeText={setLocalSearchQuery}
-        />
-        {localSearchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setLocalSearchQuery('')}>
-            <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
-          </TouchableOpacity>
-        )}
-      </View>
+        <Text style={[styles.searchPlaceholder, { color: theme.colors.textSecondary }]}>
+          搜索书名、作者或简介...
+        </Text>
+      </TouchableOpacity>
 
       {/* Format Filters */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
@@ -409,6 +431,7 @@ export function LibraryScreen() {
           <Ionicons name="arrow-up" size={20} color="#fff" />
         </TouchableOpacity>
       )}
+
     </View>
   );
 }
@@ -450,6 +473,10 @@ function createStyles(theme: ReturnType<typeof getTheme>, itemWidth: number) {
       flex: 1,
       fontSize: fontSizes.md,
       color: theme.colors.text,
+    },
+    searchPlaceholder: {
+      flex: 1,
+      fontSize: fontSizes.md,
     },
     filterRow: {
       flexDirection: 'row',
@@ -615,5 +642,6 @@ function createStyles(theme: ReturnType<typeof getTheme>, itemWidth: number) {
       shadowRadius: 4,
       elevation: 4,
     },
+
   });
 }

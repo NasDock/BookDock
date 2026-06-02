@@ -19,6 +19,7 @@ export type RootStackParamList = {
   Settings: undefined;
   AdminUsers: undefined;
   CollectionDetail: { collectionId: string };
+  Search: undefined;
 };
 
 // Tab navigator param list

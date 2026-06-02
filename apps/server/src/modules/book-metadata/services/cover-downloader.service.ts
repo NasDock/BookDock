@@ -39,8 +39,7 @@ export class CoverDownloaderService {
   getCoverPath(identifier: string): string {
     const nasPath = this.configService.get<string>('app.nasEbookPath') || '/data/ebooks';
     const coversDir = path.join(nasPath, 'covers');
-    const timestamp = Date.now();
-    const filename = `${identifier}_${timestamp}.jpg`;
+    const filename = `${identifier}.jpg`;
     return path.join(coversDir, filename);
   }
 
@@ -48,8 +47,7 @@ export class CoverDownloaderService {
    * 根据标识符获取可访问的 URL 路径
    */
   getCoverUrlPath(identifier: string): string {
-    const timestamp = Date.now();
-    const filename = `${identifier}_${timestamp}.jpg`;
+    const filename = `${identifier}.jpg`;
     return `/covers/${filename}`;
   }
 
@@ -72,9 +70,8 @@ export class CoverDownloaderService {
       // 1. 确保目录存在
       const coversDir = await this.ensureCoversDir();
 
-      // 2. 生成文件名和路径
-      const timestamp = Date.now();
-      const filename = `${identifier}_${timestamp}.jpg`;
+      // 2. 生成文件名和路径（固定文件名，复用同一本书的封面）
+      const filename = `${identifier}.jpg`;
       const localPath = path.join(coversDir, filename);
       const localUrl = `/covers/${filename}`;
 

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Dimensions,
+  Animated,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +23,20 @@ import type { Book } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+function SearchNavButton() {
+  const navigation = useNavigation<NavigationProp>();
+  const actualTheme = useThemeStore((state) => state.actualTheme);
+  const theme = getTheme(actualTheme === 'dark');
+  return (
+    <TouchableOpacity
+      onPress={() => navigation.navigate('Search')}
+      style={{ marginRight: 16 }}
+    >
+      <Ionicons name="search" size={22} color={theme.colors.text} />
+    </TouchableOpacity>
+  );
+}
 
 function getBookGradient(title: string): string[] {
   const gradients = [
@@ -71,6 +86,7 @@ export function RecommendScreen() {
   const [hasLoaded, setHasLoaded] = useState(false);
   const [recommended, setRecommended] = useState<Book[]>([]);
   const [recLoading, setRecLoading] = useState(false);
+  const [showHeaderSearch, setShowHeaderSearch] = useState(false);
 
   const screenWidth = Dimensions.get('window').width;
   const recItemWidth = useMemo(() => getRecItemWidth(screenWidth), [screenWidth]);
@@ -149,6 +165,22 @@ export function RecommendScreen() {
     navigation.navigate('BookDetails', { book });
   };
 
+  const handleSearchPress = useCallback(() => {
+    navigation.navigate('Search');
+  }, [navigation]);
+
+  const handleScroll = useCallback((event: { nativeEvent: { contentOffset: { y: number } } }) => {
+    const y = event.nativeEvent.contentOffset.y;
+    setShowHeaderSearch(y > 60);
+  }, []);
+
+  // 同步 headerRight 搜索图标显示状态到导航栏
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => showHeaderSearch ? <SearchNavButton /> : null,
+    });
+  }, [showHeaderSearch, navigation]);
+
   const styles = useMemo(() => createStyles(theme, recItemWidth, recItemHeight), [theme, recItemWidth, recItemHeight]);
 
   // 首次无缓存数据时显示 loading
@@ -163,18 +195,33 @@ export function RecommendScreen() {
   const hasContent = inProgress.length > 0 || recentlyRead.length > 0 || recommended.length > 0;
 
   return (
-    <ScrollView
-      style={styles.container}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          tintColor={theme.colors.primary}
-        />
-      }
-    >
-      {!hasContent ? (
+    <View style={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        onScroll={handleScroll}
+        scrollEventThrottle={100}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={theme.colors.primary}
+          />
+        }
+      >
+        {/* 页面内搜索框 */}
+        <TouchableOpacity
+          style={[styles.searchBar, { backgroundColor: theme.colors.surface }]}
+          onPress={handleSearchPress}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="search" size={18} color={theme.colors.textSecondary} />
+          <Text style={[styles.searchPlaceholder, { color: theme.colors.textSecondary }]}>
+            搜索书名、作者或简介...
+          </Text>
+        </TouchableOpacity>
+
+        {!hasContent ? (
         <View style={styles.emptyContainer}>
           <Ionicons name="book-outline" size={64} color={theme.colors.textSecondary} />
           <Text style={styles.emptyText}>开始阅读书籍后，这里会显示你的阅读推荐</Text>
@@ -338,7 +385,8 @@ export function RecommendScreen() {
           )}
         </View>
       )}
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -352,12 +400,31 @@ function createStyles(
       flex: 1,
       backgroundColor: theme.colors.background,
     },
+    scrollView: {
+      flex: 1,
+    },
+    searchBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginHorizontal: spacing.md,
+      marginTop: spacing.md,
+      marginBottom: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: borderRadius.lg,
+      gap: spacing.sm,
+    },
+    searchPlaceholder: {
+      flex: 1,
+      fontSize: fontSizes.md,
+    },
+
     center: {
       justifyContent: 'center',
       alignItems: 'center',
     },
     content: {
-      paddingTop: spacing.md,
+      paddingTop: spacing.sm,
       paddingBottom: spacing.xl,
     },
     section: {
