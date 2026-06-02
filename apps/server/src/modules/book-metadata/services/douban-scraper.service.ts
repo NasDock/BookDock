@@ -133,7 +133,7 @@ export class DoubanScraperService {
    */
   async searchBook(
     title: string,
-  ): Promise<{ url: string; title: string; coverUrl?: string; rating?: number } | null> {
+  ): Promise<{ url: string; title: string; coverUrl?: string; rating?: number; authorName?: string } | null> {
     await this.throttle();
 
     const cleanTitle = this.cleanTitle(title);
@@ -162,6 +162,7 @@ export class DoubanScraperService {
               title: first.title || first.name || '',
               coverUrl: first.pic ? this.enlargeCoverUrl(first.pic) : undefined,
               rating: first.rating ? Number(first.rating) : undefined,
+              authorName: first.author_name ? String(first.author_name).trim() : undefined,
             };
           }
         }
@@ -205,35 +206,8 @@ export class DoubanScraperService {
       const isbn = isbnMatch ? isbnMatch[1] : undefined;
       const series = this.extractInfoField(infoText, '丛书');
 
-      // 作者：#info 中标签文本包含"作者"的 <a>
-      const authors: string[] = [];
-      $('#info')
-        .contents()
-        .each((_index: number, node: AnyNode) => {
-          if (node.type === 'text' && 'data' in node && (node as Text).data.includes('作者')) {
-            // 找到作者标签后的兄弟 <a> 标签
-            let next = node.next;
-            while (next) {
-              if (next.type === 'tag' && (next as Element).name === 'a') {
-                const name = cheerio.load(next).text().trim();
-                if (name) authors.push(name);
-              }
-              next = next.next;
-            }
-          }
-        });
-      // 如果上面没取到，再尝试直接从 #info a 中过滤（只取作者链接）
-      if (authors.length === 0) {
-        $('#info a').each((_index: number, el: Element) => {
-          const $el = $(el);
-          const href = $el.attr('href') || '';
-          const t = $el.text().trim();
-          // 只取链接指向 /author/ 的，排除出版社(/press/)、丛书等
-          if (t && !t.includes('更多') && href.includes('/author/')) {
-            authors.push(t);
-          }
-        });
-      }
+      // 作者：多策略解析，兼容新旧页面结构
+      const authors = this.extractAuthors($, infoText);
 
       // 评分
       const ratingText = $('.rating_num').text().trim();
@@ -256,78 +230,9 @@ export class DoubanScraperService {
       });
       this.logger.log(`[DoubanScraper] tags scraped for "${title}": ${JSON.stringify(tags)} (selector matched ${tags.length} tags)`);
 
-      // 内容简介 & 作者简介：从 .related_info 区块中按标题分别提取
-      let summary: string | undefined;
-      let authorIntro: string | undefined;
-
-      $('.related_info').each((_index: number, section: Element) => {
-        const $section = $(section);
-        const heading = $section.find('h2, .hd').text().trim();
-
-        // 内容简介
-        if (heading.includes('内容简介') && !summary) {
-          const text = $section
-            .find('.indent .intro p')
-            .map((_i: number, p: Element) => $(p).text().trim())
-            .get()
-            .join('\n');
-          if (text) {
-            summary = text;
-          } else {
-            // fallback：直接取 .indent .intro 的文字
-            const fallback = $section.find('.indent .intro').first().text()
-              .replace(/^\s*内容简介\s*/g, '')
-              .trim();
-            if (fallback) summary = fallback;
-          }
-        }
-
-        // 作者简介
-        if (heading.includes('作者简介') && !authorIntro) {
-          const text = $section
-            .find('.indent .intro p')
-            .map((_i: number, p: Element) => $(p).text().trim())
-            .get()
-            .join('\n');
-          if (text) {
-            authorIntro = text;
-          } else {
-            const fallback = $section.find('.indent .intro').first().text()
-              .replace(/^\s*作者简介\s*/g, '')
-              .trim();
-            if (fallback) authorIntro = fallback;
-          }
-        }
-
-        // 两个都找到了就提前退出
-        if (summary && authorIntro) {
-          return false;
-        }
-      });
-
-      // 兼容旧版页面结构：如果 .related_info 没找到内容简介，尝试 #link-report
-      if (!summary) {
-        $('#link-report .intro').each((_index: number, el: Element) => {
-          const $el = $(el);
-          const text = $el
-            .find('p')
-            .map((_i: number, p: Element) => $(p).text().trim())
-            .get()
-            .join('\n');
-          if (text) {
-            summary = text;
-            return false;
-          }
-        });
-        if (!summary) {
-          summary = $('#link-report .intro')
-            .first()
-            .text()
-            .replace(/^\s*内容简介\s*/g, '')
-            .trim();
-          if (!summary) summary = undefined;
-        }
-      }
+      // 内容简介 & 作者简介
+      const summary = this.extractSummary($);
+      const authorIntro = this.extractAuthorIntro($);
 
       const result = {
         title,
@@ -411,6 +316,223 @@ export class DoubanScraperService {
     const regex = new RegExp(`${fieldName}[:：]\\s*([^\\n]+)`);
     const match = text.match(regex);
     return match ? match[1].trim() : undefined;
+  }
+
+  /**
+   * 多策略提取作者列表，兼容新旧页面结构
+   */
+  private extractAuthors($: cheerio.CheerioAPI, infoText: string): string[] {
+    const authors: string[] = [];
+
+    // 策略1：#info 中标签文本包含"作者"的 <a> 兄弟节点
+    $('#info')
+      .contents()
+      .each((_index: number, node: AnyNode) => {
+        if (node.type === 'text' && 'data' in node && (node as Text).data.includes('作者')) {
+          let next = node.next;
+          while (next) {
+            if (next.type === 'tag' && (next as Element).name === 'a') {
+              const name = cheerio.load(next).text().trim();
+              if (name) authors.push(name);
+            }
+            next = next.next;
+          }
+        }
+      });
+    if (authors.length > 0) return authors;
+
+    // 策略2：#info a 中 href 包含 /author/ 的链接
+    $('#info a').each((_index: number, el: Element) => {
+      const $el = $(el);
+      const href = $el.attr('href') || '';
+      const t = $el.text().trim();
+      if (t && !t.includes('更多') && href.includes('/author/')) {
+        authors.push(t);
+      }
+    });
+    if (authors.length > 0) return authors;
+
+    // 策略3：从 #info 纯文本中用正则提取（处理无链接的情况）
+    // 匹配 "作者: xxx" 或 "作者：xxx"，支持中英文作者名
+    const authorMatch = infoText.match(/作者[:：]\s*([^\n]+)/);
+    if (authorMatch) {
+      const raw = authorMatch[1].trim();
+      // 按 / 或 空格 分割多个作者
+      const splitAuthors = raw.split(/\s*\/\s*|\s+/).filter((s) => s.length > 0 && !s.match(/^(更多|…)$/));
+      if (splitAuthors.length > 0) return splitAuthors;
+    }
+
+    // 策略4：从页面 meta 或 script 数据中提取（部分新版页面）
+    const scriptData = $('script[type="application/ld+json"]').html();
+    if (scriptData) {
+      try {
+        const json = JSON.parse(scriptData);
+        if (json.author) {
+          const authorList = Array.isArray(json.author) ? json.author : [json.author];
+          const names = authorList
+            .map((a: any) => (typeof a === 'string' ? a : a.name))
+            .filter((s: string) => s && s.trim())
+            .map((s: string) => s.trim());
+          if (names.length > 0) return names;
+        }
+      } catch {
+        // ignore JSON parse error
+      }
+    }
+
+    return authors;
+  }
+
+  /**
+   * 提取内容简介，兼容多种页面结构
+   */
+  private extractSummary($: cheerio.CheerioAPI): string | undefined {
+    let summary: string | undefined;
+
+    // 策略1：从 .related_info 区块按标题匹配
+    // 页面结构：每个 .related_info 包含 h2(标题) + .indent > .intro(内容)
+    // 必须严格限定在当前 section 的直接子 .indent 中查找
+    $('.related_info').each((_index: number, section: Element) => {
+      const $section = $(section);
+      const heading = $section.children('h2, .hd').first().text().trim();
+      if (heading.includes('内容简介') && !summary) {
+        // 限定在当前 section 的直接子 .indent 中查找 .intro
+        const $indent = $section.children('.indent').first();
+        const text = $indent
+          .find('.intro > p')
+          .map((_i: number, p: Element) => $(p).text().trim())
+          .get()
+          .join('\n');
+        if (text) {
+          summary = text;
+        } else {
+          const fallback = $indent.children('.intro').first().text()
+            .replace(/^\s*内容简介\s*/g, '')
+            .trim();
+          if (fallback) summary = fallback;
+        }
+      }
+      if (summary) return false;
+    });
+    if (summary) return summary;
+
+    // 策略2：兼容旧版 #link-report 结构
+    $('#link-report .intro').each((_index: number, el: Element) => {
+      const $el = $(el);
+      const text = $el
+        .find('p')
+        .map((_i: number, p: Element) => $(p).text().trim())
+        .get()
+        .join('\n');
+      if (text) {
+        summary = text;
+        return false;
+      }
+    });
+    if (!summary) {
+      summary = $('#link-report .intro')
+        .first()
+        .text()
+        .replace(/^\s*内容简介\s*/g, '')
+        .trim();
+    }
+    if (summary) return summary;
+
+    // 策略3：从 meta description 中提取
+    const metaDesc = $('meta[name="description"]').attr('content');
+    if (metaDesc) {
+      const desc = metaDesc.trim();
+      if (desc.length > 20) return desc;
+    }
+
+    // 策略4：从 script ld+json 中提取
+    const scriptData = $('script[type="application/ld+json"]').html();
+    if (scriptData) {
+      try {
+        const json = JSON.parse(scriptData);
+        if (json.description && typeof json.description === 'string') {
+          return json.description.trim();
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    return summary;
+  }
+
+  /**
+   * 提取作者简介，兼容多种页面结构
+   */
+  private extractAuthorIntro($: cheerio.CheerioAPI): string | undefined {
+    let authorIntro: string | undefined;
+
+    // 策略1：从 .related_info 区块按标题匹配
+    // 关键：必须用 children() 限定在当前 section 内，避免跨 section 查找
+    $('.related_info').each((_index: number, section: Element) => {
+      const $section = $(section);
+      const heading = $section.children('h2, .hd').first().text().trim();
+      if (heading.includes('作者简介') && !authorIntro) {
+        const $indent = $section.children('.indent').first();
+        const text = $indent
+          .find('.intro > p')
+          .map((_i: number, p: Element) => $(p).text().trim())
+          .get()
+          .join('\n');
+        if (text) {
+          authorIntro = text;
+        } else {
+          const fallback = $indent.children('.intro').first().text()
+            .replace(/^\s*作者简介\s*/g, '')
+            .trim();
+          if (fallback) authorIntro = fallback;
+        }
+      }
+      if (authorIntro) return false;
+    });
+    if (authorIntro) return authorIntro;
+
+    // 策略2：查找独立的作者简介区块（非 .related_info 结构）
+    $('section, div').each((_index: number, el: Element) => {
+      const $el = $(el);
+      const heading = $el.children('h2, h3, .hd').first().text().trim();
+      if (heading.includes('作者简介') && !authorIntro) {
+        const text = $el.find('> .indent > .intro > p, > p')
+          .map((_i: number, p: Element) => $(p).text().trim())
+          .get()
+          .join('\n');
+        if (text) {
+          authorIntro = text;
+          return false;
+        }
+        const fallback = $el.text().replace(/^\s*作者简介\s*/g, '').trim();
+        if (fallback) {
+          authorIntro = fallback;
+          return false;
+        }
+      }
+    });
+    if (authorIntro) return authorIntro;
+
+    // 策略3：从 script ld+json 中提取
+    const scriptData = $('script[type="application/ld+json"]').html();
+    if (scriptData) {
+      try {
+        const json = JSON.parse(scriptData);
+        const graph = json['@graph'];
+        if (Array.isArray(graph)) {
+          for (const item of graph) {
+            if (item['@type'] === 'Person' && item.description) {
+              return item.description.trim();
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    return authorIntro;
   }
 
   /**
