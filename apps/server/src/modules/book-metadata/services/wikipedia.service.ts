@@ -102,9 +102,22 @@ export class WikipediaService {
       const source = this.getRevisionContent(detail);
       const infobox = source ? this.extractInfoboxFields(source) : new Map<string, string>();
 
+      // 判断信息框类型：图书信息框 vs 人物信息框
+      const isWriterInfobox = source ? /\{\{\s*Infobox\s+(Writer|作家|Author|作者)/i.test(source) : false;
+
+      // 如果是人物页面（如作家），把页面标题或姓名作为作者
+      let authors: string[] | undefined;
+      if (isWriterInfobox) {
+        // 优先使用信息框中的 name/姓名/原名，否则用页面标题
+        const writerName = this.getInfoboxValue(infobox, ['name', '姓名', '原名', 'name_original']) || detail.title || page.title;
+        authors = toStringArray(writerName);
+      } else {
+        authors = toStringArray(this.getInfoboxValue(infobox, ['author', '作者']));
+      }
+
       return {
         title: detail.title || page.title || title,
-        authors: toStringArray(this.getInfoboxValue(infobox, ['author', '作者'])),
+        authors,
         publisher: this.getInfoboxValue(infobox, ['publisher', '出版社']),
         publishedDate: this.getInfoboxValue(infobox, ['published', 'pub_date', '出版日期', '出版']),
         summary: detail.extract,
@@ -182,6 +195,7 @@ export class WikipediaService {
 
   private extractInfoboxFields(source: string): Map<string, string> {
     const result = new Map<string, string>();
+    // 匹配图书信息框，也匹配人物信息框（如 Infobox Writer）
     const infoboxStart = source.search(/\{\{\s*(Infobox|信息框|圖書資訊|图书信息)/i);
     if (infoboxStart < 0) {
       return result;
