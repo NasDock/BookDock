@@ -12,6 +12,7 @@ import { TTSScreen } from "../screens/TTSScreen";
 import { AdminUsersScreen } from "../screens/AdminUsersScreen";
 import { CollectionDetailScreen } from "../screens/CollectionDetailScreen";
 import { BookDetailScreen } from "../screens/BookDetailScreen";
+import { AuthorDetailScreen } from "../screens/AuthorDetailScreen";
 import { useAuthStore, useThemeStore } from "../stores";
 import { getTheme } from "../utils/theme";
 import { setNavigationBarAuto } from "../utils/navigationBar";
@@ -124,6 +125,11 @@ export function RootNavigator() {
             <Stack.Screen
               name="CollectionDetail"
               component={CollectionDetailScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="AuthorDetail"
+              component={AuthorDetailScreen}
               options={{ headerShown: false }}
             />
           </>

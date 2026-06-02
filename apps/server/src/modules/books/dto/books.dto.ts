@@ -135,6 +135,11 @@ export class BookQueryDto {
   @IsOptional()
   author?: string;
 
+  @ApiPropertyOptional({ description: 'Filter by author ID' })
+  @IsUUID()
+  @IsOptional()
+  authorId?: string;
+
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()
@@ -160,6 +165,9 @@ export class BookResponseDto {
 
   @ApiPropertyOptional()
   author?: string;
+
+  @ApiPropertyOptional({ type: () => [Object], description: 'Associated authors' })
+  authors?: { id: string; name: string; nameSort?: string; avatarUrl?: string }[];
 
   @ApiPropertyOptional()
   description?: string;

@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { PRISMA_CLIENT } from '../../config/database.module';
 import { MetadataAggregatorService } from './services/metadata-aggregator.service';
 import { CoverDownloaderService } from './services/cover-downloader.service';
+import { AuthorService } from '../author/author.service';
 import { BookMetadataResponseDto } from './dto/book-metadata.dto';
 import { BookResponseDto } from '../books/dto/books.dto';
 
@@ -11,6 +12,7 @@ export class BookMetadataService {
   constructor(
     private readonly aggregator: MetadataAggregatorService,
     private readonly coverDownloader: CoverDownloaderService,
+    private readonly authorService: AuthorService,
     @Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient,
   ) {}
 
@@ -109,16 +111,53 @@ export class BookMetadataService {
       include: { bookTags: { include: { tag: true } } },
     });
 
-    const response = this.toBookResponse(updatedBook);
+    // 7. 创建/关联 Author 记录
+    if (data.authors && data.authors.length > 0) {
+      await this.authorService.setBookAuthors(bookId, data.authors);
+      // 如果有 authorIntro，更新第一个作者的 bio
+      if (data.authorIntro) {
+        const firstAuthor = await this.prisma.author.findUnique({
+          where: { name: data.authors[0].trim() },
+        });
+        if (firstAuthor && !firstAuthor.bio) {
+          await this.prisma.author.update({
+            where: { id: firstAuthor.id },
+            data: { bio: data.authorIntro, source: 'douban' },
+          });
+        }
+      }
+    }
+
+    // 8. 重新查询以获取关联数据
+    const bookWithAuthors = await this.prisma.book.findUnique({
+      where: { id: bookId },
+      include: {
+        bookTags: { include: { tag: true } },
+        bookAuthors: {
+          include: { author: true },
+          orderBy: { sortOrder: 'asc' },
+        },
+      },
+    });
+
+    const response = this.toBookResponse(bookWithAuthors || updatedBook);
     console.log(`[BookMetadataService] final response for bookId=${bookId}:`, JSON.stringify(response));
     return response;
   }
 
   private toBookResponse(book: any): BookResponseDto {
+    const authors = book.bookAuthors?.map((ba: any) => ({
+      id: ba.author.id,
+      name: ba.author.name,
+      nameSort: ba.author.nameSort,
+      avatarUrl: ba.author.avatarUrl,
+    })) || [];
+
     return {
       id: book.id,
       title: book.title,
       author: book.author || undefined,
+      authors: authors.length > 0 ? authors : undefined,
       description: book.description || undefined,
       isbn: book.isbn || undefined,
       publisher: book.publisher || undefined,

@@ -94,6 +94,7 @@ model Book {
   ttsJobs        TtsJob[]
   ttsAudioFiles  TtsAudioFile[]
   bookTags       BookTag[]
+  bookAuthors    BookAuthor[]
 
   @@index([title])
   @@index([author])
@@ -103,6 +104,40 @@ model Book {
   @@index([createdAt(sort: Desc)])
   @@index([fileHash])
   @@map("books")
+}
+
+model Author {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  nameSort    String?   @map("name_sort")
+  bio         String?   
+  avatarUrl   String?   @map("avatar_url")
+  birthDate   String?   @map("birth_date")
+  deathDate   String?   @map("death_date")
+  nationality String?   
+  source      String?   
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  books BookAuthor[]
+
+  @@index([name])
+  @@map("authors")
+}
+
+model BookAuthor {
+  bookId    String @map("book_id")
+  authorId  String @map("author_id")
+  sortOrder Int    @default(0) @map("sort_order")
+
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  author Author @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@id([bookId, authorId])
+  @@index([bookId])
+  @@index([authorId])
+  @@map("book_authors")
 }
 
 model Collection {

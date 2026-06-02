@@ -7,10 +7,26 @@ export interface ApiResponse<T = unknown> {
   message?: string;
 }
 
+export interface Author {
+  id: string;
+  name: string;
+  nameSort?: string;
+  bio?: string;
+  avatarUrl?: string;
+  birthDate?: string;
+  deathDate?: string;
+  nationality?: string;
+  source?: string;
+  bookCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Book {
   id: string;
   title: string;
   author: string;
+  authors?: Author[];
   coverUrl?: string;
   format?: string;
   fileType?: 'epub' | 'pdf' | 'mobi' | 'azw3' | 'txt';
@@ -342,6 +358,22 @@ class ApiClient {
 
   async removeBookFromCollection(collectionId: string, bookId: string): Promise<ApiResponse<void>> {
     const { data } = await this.client.delete(`/collections/${collectionId}/books/${bookId}`);
+    return data;
+  }
+
+  // Author APIs
+  async getAuthors(search?: string): Promise<ApiResponse<Author[]>> {
+    const { data } = await this.client.get('/authors', { params: { search } });
+    return data;
+  }
+
+  async getAuthor(id: string): Promise<ApiResponse<Author>> {
+    const { data } = await this.client.get(`/authors/${id}`);
+    return data;
+  }
+
+  async getAuthorBooks(id: string): Promise<ApiResponse<Book[]>> {
+    const { data } = await this.client.get(`/authors/${id}/books`);
     return data;
   }
 

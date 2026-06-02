@@ -1,4 +1,4 @@
-import type { Book } from '@bookdock/api-client';
+import type { Book, Author } from '@bookdock/api-client';
 import type { EbookSource } from '../services/api';
 
 // Root stack param list
@@ -8,6 +8,7 @@ export type RootStackParamList = {
   TTSScreen: { book: Book };
   TTSReader: { book: Book };
   BookDetails: { book: Book };
+  AuthorDetail: { author: Author };
   Login: undefined;
   MemberLogin: { initialMode?: 'scan' } | undefined;
   ScanLogin: undefined;

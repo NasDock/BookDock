@@ -613,7 +613,7 @@ export class BooksService implements OnModuleInit {
   }
 
   async findAll(query: BookQueryDto, userId?: string): Promise<PaginatedBooksDto> {
-    const { page = 1, limit = 20, search, format, author, language, sortBy = 'createdAt', order = 'desc' } = query;
+    const { page = 1, limit = 20, search, format, author, authorId, language, sortBy = 'createdAt', order = 'desc' } = query;
     const skip = (page - 1) * limit;
 
     // Auto-scan local books if DB is empty
@@ -630,15 +630,27 @@ export class BooksService implements OnModuleInit {
       where.title = { contains: search };
     }
 
+    const include: any = {
+      bookTags: { include: { tag: true } },
+    };
+    if (authorId) {
+      include.bookAuthors = {
+        where: { authorId },
+        include: { author: true },
+      };
+    } else {
+      include.bookAuthors = {
+        include: { author: true },
+      };
+    }
+
     const [books, total] = await Promise.all([
       this.prisma.book.findMany({
         where,
         skip,
         take: limit,
         orderBy: { [sortBy]: order },
-        include: {
-          bookTags: { include: { tag: true } },
-        },
+        include,
       }),
       this.prisma.book.count({ where }),
     ]);
@@ -665,6 +677,10 @@ export class BooksService implements OnModuleInit {
       where: { id, isDeleted: false },
       include: {
         bookTags: { include: { tag: true } },
+        bookAuthors: {
+          include: { author: true },
+          orderBy: { sortOrder: 'asc' },
+        },
       },
     });
 
@@ -975,10 +991,18 @@ export class BooksService implements OnModuleInit {
   }
 
   private toBookResponse(book: any, progress?: any): BookResponseDto & { fileType: string; addedAt: Date } {
+    const authors = book.bookAuthors?.map((ba: any) => ({
+      id: ba.author.id,
+      name: ba.author.name,
+      nameSort: ba.author.nameSort,
+      avatarUrl: ba.author.avatarUrl,
+    })) || [];
+
     return {
       id: book.id,
       title: book.title,
       author: book.author || undefined,
+      authors: authors.length > 0 ? authors : undefined,
       description: book.description || undefined,
       isbn: book.isbn || undefined,
       publisher: book.publisher || undefined,

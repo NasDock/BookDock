@@ -269,12 +269,29 @@ export function BookDetailScreen() {
 
             {/* 书籍信息 */}
             <View style={styles.bookMetaList}>
-              {book.author && (
+              {/* 作者 - 优先使用 authors 数组 */}
+              {(book as any).authors?.length > 0 ? (
+                <View style={styles.metaRow}>
+                  <Text style={[styles.metaLabel, { color: theme.colors.textSecondary }]}>作者</Text>
+                  <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+                    {(book as any).authors.map((a: any) => (
+                      <TouchableOpacity
+                        key={a.id}
+                        onPress={() => navigation.navigate('AuthorDetail', { author: a })}
+                      >
+                        <Text style={[styles.metaValue, { color: theme.colors.primary }]}>
+                          {a.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              ) : book.author ? (
                 <View style={styles.metaRow}>
                   <Text style={[styles.metaLabel, { color: theme.colors.textSecondary }]}>作者</Text>
                   <Text style={[styles.metaValue, { color: theme.colors.text }]}>{book.author}</Text>
                 </View>
-              )}
+              ) : null}
               {metadata.tags && metadata.tags.length > 0 && (
                 <View style={styles.metaRow}>
                   <Text style={[styles.metaLabel, { color: theme.colors.textSecondary }]}>标签</Text>

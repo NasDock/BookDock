@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../../config/database.module';
+import { AuthorModule } from '../author/author.module';
 import { DoubanScraperService } from './services/douban-scraper.service';
 import { WikipediaService } from './services/wikipedia.service';
 import { MetadataAggregatorService } from './services/metadata-aggregator.service';
@@ -8,7 +9,7 @@ import { BookMetadataService } from './book-metadata.service';
 import { BookMetadataController } from './book-metadata.controller';
 
 @Module({
-  imports: [DatabaseModule],
+  imports: [DatabaseModule, AuthorModule],
   providers: [
     DoubanScraperService,
     WikipediaService,

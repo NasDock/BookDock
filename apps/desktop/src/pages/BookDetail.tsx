@@ -286,12 +286,28 @@ export default function BookDetail() {
 
             {/* 书籍信息 */}
             <div className="space-y-2 pt-1">
-              {book.author && (
+              {/* 作者 - 优先使用 authors 数组 */}
+              {(book as any).authors?.length > 0 ? (
+                <div className="flex items-start gap-3">
+                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">作者</span>
+                  <div className="flex flex-wrap gap-2">
+                    {(book as any).authors.map((a: any) => (
+                      <button
+                        key={a.id}
+                        onClick={() => navigate(`/author/${a.id}`)}
+                        className="text-sm text-blue-500 hover:text-blue-600 transition-colors"
+                      >
+                        {a.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : book.author ? (
                 <div className="flex items-start gap-3">
                   <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">作者</span>
                   <span className="text-sm text-gray-700 dark:text-gray-300">{book.author}</span>
                 </div>
-              )}
+              ) : null}
               {metadata.tags && metadata.tags.length > 0 && (
                 <div className="flex items-start gap-3">
                   <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">标签</span>
