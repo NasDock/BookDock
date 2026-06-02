@@ -16,8 +16,12 @@ async function bootstrap() {
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // Serve cover images statically (before global prefix, before ServeStaticModule)
+  // 优先使用 CACHE_PATH，未设置时回退到 NAS_EBOOK_PATH/covers
+  const cachePath = process.env.CACHE_PATH;
   const nasEbookPath = resolve(process.env.NAS_EBOOK_PATH || '/data/ebooks');
-  const coversPath = join(nasEbookPath, 'covers');
+  const coversPath = cachePath
+    ? join(resolve(cachePath), 'covers')
+    : join(nasEbookPath, 'covers');
   logger.log(`Serving covers from: ${coversPath}`);
   app.use('/covers', express.static(coversPath));
 

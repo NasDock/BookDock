@@ -18,10 +18,22 @@ export class CoverDownloaderService {
 
   /**
    * 获取封面存储目录的绝对路径
+   * 优先使用 CACHE_PATH，未设置时回退到 NAS_EBOOK_PATH/covers
+   */
+  private getCoversDir(): string {
+    const cachePath = this.configService.get<string>('app.cachePath');
+    if (cachePath) {
+      return path.join(cachePath, 'covers');
+    }
+    const nasPath = this.configService.get<string>('app.nasEbookPath') || '/data/ebooks';
+    return path.join(nasPath, 'covers');
+  }
+
+  /**
+   * 获取封面存储目录的绝对路径（确保目录存在）
    */
   async ensureCoversDir(): Promise<string> {
-    const nasPath = this.configService.get<string>('app.nasEbookPath') || '/data/ebooks';
-    const coversDir = path.join(nasPath, 'covers');
+    const coversDir = this.getCoversDir();
 
     try {
       await fs.mkdir(coversDir, { recursive: true });
@@ -37,8 +49,7 @@ export class CoverDownloaderService {
    * 根据标识符获取封面文件的绝对路径
    */
   getCoverPath(identifier: string): string {
-    const nasPath = this.configService.get<string>('app.nasEbookPath') || '/data/ebooks';
-    const coversDir = path.join(nasPath, 'covers');
+    const coversDir = this.getCoversDir();
     const filename = `${identifier}.jpg`;
     return path.join(coversDir, filename);
   }

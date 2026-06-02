@@ -19,11 +19,14 @@ services:
       DATABASE_URL: file:/data/db/bookdock.db
       # NAS / data paths inside container
       NAS_EBOOK_PATH: /data/ebooks
+      CACHE_PATH: /data/covers
     volumes:
       # Database persistence
       - bookdock-db:/data/db
       # E-book library (read-only recommended if scanning)
       - ${NAS_EBOOK_PATH:-./data/ebooks}:/data/ebooks
+      # Cover cache (read-only recommended)
+      - ${CACHE_PATH:-./data/covers}:/data/covers
 
 volumes:
   bookdock-db:

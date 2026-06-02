@@ -46,4 +46,5 @@ export const AppConfig = registerAs('app', () => ({
   nasEbookPath: process.env.NAS_EBOOK_PATH || '/data/ebooks',
   nasAudioPath: process.env.NAS_AUDIO_PATH || '/data/audio',
   sourceLocalPath: process.env.SOURCE_LOCAL_PATH || '/data/sources',
+  cachePath: process.env.CACHE_PATH || '',
 }));
