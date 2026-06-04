@@ -676,6 +676,17 @@ export function BookDetailScreen() {
               style={styles.moreMenuItem}
               onPress={() => {
                 setShowMoreMenu(false);
+                navigation.navigate('Notes', { bookId: book.id });
+              }}
+            >
+              <Ionicons name="document-text-outline" size={20} color={theme.colors.text} />
+              <Text style={[styles.moreMenuText, { color: theme.colors.text }]}>查看笔记</Text>
+            </TouchableOpacity>
+            <View style={[styles.moreMenuDivider, { backgroundColor: theme.colors.border }]} />
+            <TouchableOpacity
+              style={styles.moreMenuItem}
+              onPress={() => {
+                setShowMoreMenu(false);
                 handleOpenCollectionModal();
               }}
             >

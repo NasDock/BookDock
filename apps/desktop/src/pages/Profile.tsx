@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Plus,
   X,
+  StickyNote,
 } from "lucide-react";
 
 function getBookGradient(title: string): string {
@@ -214,6 +215,19 @@ export default function Profile() {
             <p className="text-lg font-semibold text-gray-900 dark:text-white">{user?.username || "用户"}</p>
             <p className="text-sm text-gray-500 dark:text-gray-400">{user?.role === "admin" ? "管理员" : "普通用户"}</p>
           </div>
+        </div>
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div
+          onClick={() => navigate("/notes")}
+          className="bg-white dark:bg-gray-800 rounded-xl p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex flex-col items-center gap-2"
+        >
+          <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+            <StickyNote className="w-5 h-5 text-amber-500" />
+          </div>
+          <span className="text-sm font-medium text-gray-900 dark:text-white">我的笔记</span>
         </div>
       </div>
 

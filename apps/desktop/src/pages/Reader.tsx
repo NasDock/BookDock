@@ -5,7 +5,7 @@ import { useReaderStore } from '../stores/themeStore';
 import { useAuthStore } from '../stores/authStore';
 import { Button } from '@bookdock/ui';
 import type { ReaderMode } from '@bookdock/ebook-reader';
-import { ArrowLeft, Settings, BookOpen, Bookmark, ChevronLeft, ChevronRight, Volume2, Timer, X, Sun, Moon, ScrollText, Plus } from 'lucide-react';
+import { ArrowLeft, Settings, BookOpen, Bookmark, ChevronLeft, ChevronRight, Volume2, Timer, X, Sun, Moon, ScrollText, Plus, Highlighter, MessageSquare, MessageSquarePlus } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -20,6 +20,128 @@ interface Bookmark {
   note?: string;
   createdAt: string;
   percentage: number;
+}
+
+// ==================== Note & Highlight ====================
+interface Note {
+  id: string;
+  bookId: string;
+  text: string;
+  note?: string;
+  cfi?: string;
+  percentage?: number;
+  author?: string;
+  bookTitle?: string;
+  createdAt: string;
+}
+
+interface Highlight {
+  id: string;
+  bookId: string;
+  cfi: string;
+  text: string;
+  color: string;
+  note?: string;
+  createdAt: string;
+}
+
+interface SelectionMenuProps {
+  position: { x: number; y: number };
+  selectedText: string;
+  onNote: () => void;
+  onHighlight: () => void;
+  onDismiss: () => void;
+}
+
+function SelectionMenu({ position, selectedText, onNote, onHighlight, onDismiss }: SelectionMenuProps) {
+  if (!selectedText) return null;
+
+  return (
+    <>
+      {/* Backdrop to dismiss */}
+      <div className="fixed inset-0 z-40" onClick={onDismiss} />
+      {/* Floating menu */}
+      <div
+        className="fixed z-50 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 p-1 flex gap-1"
+        style={{ left: position.x, top: position.y, transform: 'translate(-50%, -100%)', marginTop: '-8px' }}
+      >
+        <button
+          onClick={onNote}
+          className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-md transition-colors"
+        >
+          <MessageSquarePlus className="w-4 h-4 text-blue-500" />
+          记笔记
+        </button>
+        <button
+          onClick={onHighlight}
+          className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-yellow-50 dark:hover:bg-yellow-900/30 rounded-md transition-colors"
+        >
+          <Highlighter className="w-4 h-4 text-yellow-500" />
+          高亮
+        </button>
+      </div>
+    </>
+  );
+}
+
+interface NoteModalProps {
+  isOpen: boolean;
+  selectedText: string;
+  bookTitle: string;
+  onClose: () => void;
+  onSave: (note: string) => void;
+}
+
+function NoteModal({ isOpen, selectedText, bookTitle, onClose, onSave }: NoteModalProps) {
+  const [noteText, setNoteText] = useState('');
+
+  useEffect(() => {
+    if (isOpen) setNoteText('');
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full mx-4 p-6 z-50">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <MessageSquare className="w-5 h-5 text-blue-500" />
+          记笔记
+        </h3>
+        <div className="mb-4">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">选中的文本</p>
+          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 max-h-24 overflow-y-auto">
+            {selectedText}
+          </div>
+        </div>
+        <div className="mb-4">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">书籍</p>
+          <p className="text-sm text-gray-700 dark:text-gray-300">{bookTitle}</p>
+        </div>
+        <textarea
+          value={noteText}
+          onChange={(e) => setNoteText(e.target.value)}
+          placeholder="输入你的笔记..."
+          className="w-full h-24 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm mb-4"
+        />
+        <div className="flex gap-3 justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          >
+            取消
+          </button>
+          <button
+            onClick={() => { onSave(noteText); setNoteText(''); }}
+            className="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+          >
+            保存
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ==================== Chapter Drawer (TOC) - LEFT ====================
@@ -741,6 +863,16 @@ export default function Reader() {
   const [pdfOutline, setPdfOutline] = useState<Array<{ title: string; page: number }>>([]);
   const isPdf = book ? (book.fileType || book.format) === 'pdf' : false;
 
+  // ── Note & Highlight state ────────────────────────────────────────────
+  const [selectedText, setSelectedText] = useState('');
+  const [selectionMenuPos, setSelectionMenuPos] = useState({ x: 0, y: 0 });
+  const [showSelectionMenu, setShowSelectionMenu] = useState(false);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [highlights, setHighlights] = useState<Highlight[]>([]);
+  const [noteSavedToast, setNoteSavedToast] = useState(false);
+  const [highlightSavedToast, setHighlightSavedToast] = useState(false);
+
   const {
     mode,
     fontSize,
@@ -931,6 +1063,104 @@ export default function Reader() {
     resetScroll();
   }, [resetScroll]);
 
+  // ── Selection & Note/Highlight handlers ─────────────────────────────────
+  const handleSelectionChange = useCallback(() => {
+    if (isPdf) return; // PDF files disabled
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+      setShowSelectionMenu(false);
+      setSelectedText('');
+      return;
+    }
+    const text = selection.toString().trim();
+    if (!text || text.length < 2) {
+      setShowSelectionMenu(false);
+      setSelectedText('');
+      return;
+    }
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    setSelectedText(text);
+    setSelectionMenuPos({ x: rect.left + rect.width / 2, y: rect.top });
+    setShowSelectionMenu(true);
+  }, [isPdf]);
+
+  const handleDismissMenu = useCallback(() => {
+    setShowSelectionMenu(false);
+    window.getSelection()?.removeAllRanges();
+  }, []);
+
+  const handleNoteClick = useCallback(() => {
+    setShowSelectionMenu(false);
+    setShowNoteModal(true);
+  }, []);
+
+  const handleSaveNote = useCallback(async (noteText: string) => {
+    if (!book || !selectedText) return;
+    setShowNoteModal(false);
+    try {
+      const api = getApiClient();
+      const percentage = Math.round(((currentChapter + 1) / chapters.length) * 100);
+      const res = await api.createNote({
+        bookId: book.id,
+        text: selectedText,
+        note: noteText,
+        cfi: '',
+        percentage,
+        author: book.author || '',
+        bookTitle: book.title,
+      });
+      if (res.success && res.data) {
+        setNotes((prev) => [res.data as Note, ...prev]);
+        setNoteSavedToast(true);
+        setTimeout(() => setNoteSavedToast(false), 2000);
+      }
+    } catch (err) {
+      console.error('Failed to save note:', err);
+    }
+    window.getSelection()?.removeAllRanges();
+  }, [book, selectedText, currentChapter, chapters.length]);
+
+  const handleHighlightClick = useCallback(async () => {
+    if (!book || !selectedText) return;
+    setShowSelectionMenu(false);
+    try {
+      const api = getApiClient();
+      const res = await api.createHighlight({
+        bookId: book.id,
+        cfi: '',
+        text: selectedText,
+        color: 'yellow',
+      });
+      if (res.success && res.data) {
+        setHighlights((prev) => [res.data as Highlight, ...prev]);
+        setHighlightSavedToast(true);
+        setTimeout(() => setHighlightSavedToast(false), 2000);
+      }
+    } catch (err) {
+      console.error('Failed to save highlight:', err);
+    }
+    // Apply DOM highlight effect
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const mark = document.createElement('mark');
+      mark.style.backgroundColor = 'rgba(255, 235, 59, 0.6)';
+      mark.style.borderRadius = '2px';
+      mark.style.padding = '0 2px';
+      mark.style.boxDecorationBreak = 'clone';
+      mark.style.webkitBoxDecorationBreak = 'clone';
+      mark.className = 'highlight-mark';
+      try {
+        range.surroundContents(mark);
+      } catch (e) {
+        // Cross-element selection: fallback to no DOM highlight
+        console.warn('Cannot highlight cross-element selection');
+      }
+      selection.removeAllRanges();
+    }
+  }, [book, selectedText]);
+
   // Auto scroll
   useEffect(() => {
     if (isAutoScroll && contentRef.current) {
@@ -1075,6 +1305,16 @@ export default function Reader() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [nextPage, prevPage, chapters.length, handleAddBookmark, resetScroll, isPdf, pdfTotalPages]);
+
+  // Selection change listener (for text selection → note/highlight menu)
+  useEffect(() => {
+    if (isPdf) return; // PDF files disabled
+    const handleSelection = () => {
+      handleSelectionChange();
+    };
+    document.addEventListener('selectionchange', handleSelection);
+    return () => document.removeEventListener('selectionchange', handleSelection);
+  }, [isPdf, handleSelectionChange]);
 
   // Touch swipe handling
   useEffect(() => {
@@ -1275,6 +1515,40 @@ export default function Reader() {
           : 'bg-white text-gray-900'
       }`}
     >
+      {/* Selection menu (floating toolbar when text is selected) */}
+      {!isPdf && showSelectionMenu && (
+        <SelectionMenu
+          position={selectionMenuPos}
+          selectedText={selectedText}
+          onNote={handleNoteClick}
+          onHighlight={handleHighlightClick}
+          onDismiss={handleDismissMenu}
+        />
+      )}
+
+      {/* Note modal */}
+      <NoteModal
+        isOpen={showNoteModal}
+        selectedText={selectedText}
+        bookTitle={book?.title || ''}
+        onClose={() => setShowNoteModal(false)}
+        onSave={handleSaveNote}
+      />
+
+      {/* Note saved toast */}
+      {noteSavedToast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium animate-in fade-in slide-in-from-top-2">
+          ✅ 笔记已保存
+        </div>
+      )}
+
+      {/* Highlight saved toast */}
+      {highlightSavedToast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-yellow-500 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium animate-in fade-in slide-in-from-top-2">
+          ✅ 高亮已保存
+        </div>
+      )}
+
       <ReaderControls
         book={book}
         currentChapter={currentChapter}

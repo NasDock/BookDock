@@ -13,6 +13,7 @@ import {
   Animated,
   ScrollView,
   Dimensions,
+  TextInput,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
@@ -577,6 +578,11 @@ export function ReaderScreen() {
   const [pdfCurrentPage, setPdfCurrentPage] = useState(1);
   const [pdfOutline, setPdfOutline] = useState<Array<{ title: string; page: number }>>([]);
   const [pdfHtmlContent, setPdfHtmlContent] = useState<string>('');
+  const [selectedText, setSelectedText] = useState<string>('');
+  const [showActionSheet, setShowActionSheet] = useState(false);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [isSavingNote, setIsSavingNote] = useState(false);
   const localChaptersRef = useRef<Array<{ title: string; content: string }>>([]);
   const webViewRef = useRef<WebView>(null);
   const latestPositionRef = useRef<ReaderPosition>({ percentage: book.readingProgress ?? 0, scrollOffset: 0 });
@@ -911,6 +917,12 @@ export function ReaderScreen() {
         } else if (direction === 'up') {
           animateBars(true);
         }
+      } else if (data.type === 'textSelected') {
+        const text = data.text || '';
+        if (text.trim().length > 0) {
+          setSelectedText(text.trim());
+          setShowActionSheet(true);
+        }
       } else if (data.type === 'click') {
         const { x, y } = data;
         const screenHeight = Dimensions.get('window').height;
@@ -1039,6 +1051,51 @@ export function ReaderScreen() {
         }));
       });
 
+      // ── Text selection for notes/highlights ───────────────────────────────
+      let longPressTimer = null;
+      let isLongPress = false;
+
+      document.addEventListener('touchstart', function(e) {
+        isLongPress = false;
+        longPressTimer = setTimeout(function() {
+          isLongPress = true;
+          const selection = window.getSelection();
+          if (selection && selection.toString().trim().length > 0) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'textSelected',
+              text: selection.toString().trim()
+            }));
+          }
+        }, 400);
+      }, { passive: true });
+
+      document.addEventListener('touchend', function() {
+        if (longPressTimer) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+        if (!isLongPress) {
+          const selection = window.getSelection();
+          if (selection && selection.toString().trim().length > 0) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'textSelected',
+              text: selection.toString().trim()
+            }));
+          }
+        }
+      });
+
+      document.addEventListener('selectionchange', function() {
+        const selection = window.getSelection();
+        if (selection && selection.toString().trim().length > 0) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'textSelected',
+            text: selection.toString().trim()
+          }));
+        }
+      });
+      });
+
       requestAnimationFrame(() => {
         restorePosition();
         setTimeout(restorePosition, 250);
@@ -1111,6 +1168,83 @@ export function ReaderScreen() {
     requestCurrentPositionSave();
     Alert.alert('书签', '已保存当前阅读位置');
   }, [requestCurrentPositionSave]);
+
+  const handleCreateNote = useCallback(async () => {
+    if (!selectedText.trim()) return;
+    setShowActionSheet(false);
+    setShowNoteModal(true);
+  }, [selectedText]);
+
+  const handleSaveNote = useCallback(async () => {
+    if (!selectedText.trim() || !noteText.trim()) return;
+    setIsSavingNote(true);
+    try {
+      const api = getApiClient();
+      const percentage = latestPositionRef.current?.percentage ?? readingProgress;
+      await api.createNote({
+        bookId: book.id,
+        text: selectedText.trim(),
+        note: noteText.trim(),
+        percentage: percentage,
+        author: book.author || '',
+        bookTitle: book.title || '',
+      });
+      Alert.alert('成功', '笔记已保存');
+      setShowNoteModal(false);
+      setNoteText('');
+      setSelectedText('');
+    } catch (err) {
+      console.error('Failed to save note:', err);
+      Alert.alert('错误', '保存笔记失败');
+    } finally {
+      setIsSavingNote(false);
+    }
+  }, [selectedText, noteText, book, readingProgress]);
+
+  const handleCreateHighlight = useCallback(async () => {
+    if (!selectedText.trim()) return;
+    setShowActionSheet(false);
+    try {
+      const api = getApiClient();
+      const percentage = latestPositionRef.current?.percentage ?? readingProgress;
+      await api.createHighlight({
+        bookId: book.id,
+        text: selectedText.trim(),
+        color: 'yellow',
+        cfi: '',
+        startOffset: 0,
+        endOffset: selectedText.trim().length,
+      });
+      // Apply highlight in WebView
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          const selection = window.getSelection();
+          if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const span = document.createElement('span');
+            span.style.backgroundColor = '#FFEB3B';
+            span.style.padding = '2px 0';
+            span.style.borderRadius = '2px';
+            span.style.boxShadow = '0 1px 2px rgba(0,0,0,0.1)';
+            span.dataset.highlight = 'true';
+            try {
+              range.surroundContents(span);
+            } catch (e) {
+              // Complex selection, fallback to highlightColor
+              document.execCommand('HiliteColor', false, '#FFEB3B');
+            }
+            selection.removeAllRanges();
+          }
+        })();
+        true;
+      `);
+      Alert.alert('成功', '高亮已保存');
+      setSelectedText('');
+    } catch (err) {
+      console.error('Failed to save highlight:', err);
+      Alert.alert('错误', '保存高亮失败');
+    }
+  }, [selectedText, book, readingProgress]);
 
   const handlePrevPage = useCallback(() => {
     if (book.fileType === 'txt' || book.fileType === 'epub' || book.fileType === 'mobi' || book.fileType === 'azw3') {
@@ -1532,6 +1666,86 @@ export function ReaderScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ActionSheet for text selection */}
+      {showActionSheet && (
+        <View style={styles.actionSheetOverlay}>
+          <Pressable style={styles.actionSheetBackdrop} onPress={() => { setShowActionSheet(false); setSelectedText(''); }} />
+          <View style={[styles.actionSheet, { backgroundColor: theme.colors.surface }]}>
+            <Text style={[styles.actionSheetTitle, { color: theme.colors.text }]} numberOfLines={2}>
+              {selectedText.length > 60 ? selectedText.substring(0, 60) + '...' : selectedText}
+            </Text>
+            <TouchableOpacity style={styles.actionSheetButton} onPress={handleCreateNote}>
+              <Ionicons name="create-outline" size={22} color={theme.colors.primary} />
+              <Text style={[styles.actionSheetButtonText, { color: theme.colors.text }]}>记笔记</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionSheetButton} onPress={handleCreateHighlight}>
+              <Ionicons name="color-wand-outline" size={22} color="#FF9800" />
+              <Text style={[styles.actionSheetButtonText, { color: theme.colors.text }]}>高亮</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionSheetButton, styles.actionSheetCancel]}
+              onPress={() => { setShowActionSheet(false); setSelectedText(''); }}
+            >
+              <Text style={[styles.actionSheetCancelText, { color: theme.colors.error }]}>取消</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Note Input Modal */}
+      <Modal
+        visible={showNoteModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => { setShowNoteModal(false); setNoteText(''); }}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={styles.modalBackdrop} onPress={() => { setShowNoteModal(false); setNoteText(''); }} />
+          <View style={[styles.noteModalContent, { backgroundColor: theme.colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: theme.colors.text }]}>添加笔记</Text>
+            <View style={styles.noteSelectedTextBox}>
+              <Text style={[styles.noteSelectedTextLabel, { color: theme.colors.textSecondary }]}>选中文本：</Text>
+              <Text style={[styles.noteSelectedText, { color: theme.colors.text }]} numberOfLines={4}>
+                {selectedText}
+              </Text>
+            </View>
+            <TextInput
+              style={[styles.noteInput, {
+                borderColor: theme.colors.border,
+                color: theme.colors.text,
+                backgroundColor: theme.colors.background,
+              }]}
+              multiline={true}
+              numberOfLines={4}
+              placeholder="输入笔记内容..."
+              placeholderTextColor={theme.colors.textSecondary}
+              value={noteText}
+              onChangeText={setNoteText}
+              autoFocus={true}
+            />
+            <View style={styles.noteModalButtons}>
+              <TouchableOpacity
+                style={[styles.noteModalButton, { borderColor: theme.colors.border }]}
+                onPress={() => { setShowNoteModal(false); setNoteText(''); }}
+              >
+                <Text style={{ color: theme.colors.textSecondary }}>取消</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.noteModalButton, { backgroundColor: theme.colors.primary }]}
+                onPress={handleSaveNote}
+                disabled={isSavingNote || !noteText.trim()}
+              >
+                {isSavingNote ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={{ color: '#fff', fontWeight: '600' }}>保存</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1831,6 +2045,102 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     chapterName: {
       flex: 1,
       fontSize: fontSizes.md,
+    },
+    actionSheetOverlay: {
+      position: 'absolute',
+      top: 0, left: 0, right: 0, bottom: 0,
+      zIndex: 1000,
+      justifyContent: 'flex-end',
+    },
+    actionSheetBackdrop: {
+      position: 'absolute',
+      top: 0, left: 0, right: 0, bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.4)',
+    },
+    actionSheet: {
+      borderTopLeftRadius: borderRadius.lg,
+      borderTopRightRadius: borderRadius.lg,
+      padding: spacing.md,
+      paddingBottom: spacing.xl + 20,
+    },
+    actionSheetTitle: {
+      fontSize: fontSizes.sm,
+      fontWeight: '500',
+      marginBottom: spacing.md,
+      paddingBottom: spacing.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: '#E5E7EB',
+    },
+    actionSheetButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.sm,
+      gap: spacing.sm,
+    },
+    actionSheetButtonText: {
+      fontSize: fontSizes.md,
+      fontWeight: '500',
+    },
+    actionSheetCancel: {
+      marginTop: spacing.sm,
+      borderTopWidth: 1,
+      borderTopColor: '#E5E7EB',
+      justifyContent: 'center',
+    },
+    actionSheetCancelText: {
+      fontSize: fontSizes.md,
+      fontWeight: '500',
+    },
+    noteModalContent: {
+      backgroundColor: '#fff',
+      borderRadius: borderRadius.lg,
+      padding: spacing.lg,
+      margin: spacing.md,
+      maxHeight: '70%',
+      width: '90%',
+      alignSelf: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    noteSelectedTextBox: {
+      marginBottom: spacing.md,
+      padding: spacing.sm,
+      backgroundColor: 'rgba(0,0,0,0.03)',
+      borderRadius: borderRadius.md,
+    },
+    noteSelectedTextLabel: {
+      fontSize: fontSizes.xs,
+      marginBottom: spacing.xs,
+    },
+    noteSelectedText: {
+      fontSize: fontSizes.sm,
+      fontStyle: 'italic',
+    },
+    noteInput: {
+      borderWidth: 1,
+      borderRadius: borderRadius.md,
+      padding: spacing.md,
+      fontSize: fontSizes.md,
+      minHeight: 100,
+      textAlignVertical: 'top',
+      marginBottom: spacing.md,
+    },
+    noteModalButtons: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: spacing.md,
+    },
+    noteModalButton: {
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      borderRadius: borderRadius.md,
+      borderWidth: 1,
+      minWidth: 80,
+      alignItems: 'center',
     },
   });
 }

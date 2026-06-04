@@ -8,6 +8,9 @@ import {
   CreateHighlightDto,
   UpdateHighlightDto,
   HighlightResponseDto,
+  CreateNoteDto,
+  UpdateNoteDto,
+  NoteResponseDto,
 } from './dto/bookmark.dto';
 
 @Injectable()
@@ -115,6 +118,7 @@ export class BookmarkService {
         text: dto.text,
         highlightColor: dto.color,
         note: dto.note,
+        type: 'highlight',
       },
     });
 
@@ -174,6 +178,124 @@ export class BookmarkService {
     await this.prisma.bookmark.delete({ where: { id: highlightId } });
   }
 
+  // ── Note CRUD ──────────────────────────────────────────────────────────────
+
+  async createNote(
+    userId: string,
+    dto: CreateNoteDto,
+  ): Promise<NoteResponseDto> {
+    const note = await this.prisma.bookmark.create({
+      data: {
+        userId,
+        bookId: dto.bookId,
+        chapterId: dto.chapterId,
+        text: dto.text,
+        note: dto.note,
+        cfi: dto.cfi,
+        location: dto.cfi || '',
+        locationType: dto.cfi ? 'cfi' : 'percentage',
+        percentage: dto.percentage,
+        highlightColor: dto.color,
+        author: dto.author,
+        bookTitle: dto.bookTitle,
+        type: 'note',
+      },
+    });
+
+    return this.toNoteResponse(note);
+  }
+
+  async getNotes(
+    userId: string,
+    query: { page?: number; limit?: number; bookId?: string; author?: string },
+  ): Promise<{ items: NoteResponseDto[]; total: number; page: number; limit: number }> {
+    const page = query.page || 1;
+    const limit = query.limit || 50;
+    const skip = (page - 1) * limit;
+
+    const where: any = { userId, type: 'note' };
+    if (query.bookId) where.bookId = query.bookId;
+    if (query.author) where.author = { contains: query.author };
+
+    const [items, total] = await Promise.all([
+      this.prisma.bookmark.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.bookmark.count({ where }),
+    ]);
+
+    return {
+      items: items.map((n) => this.toNoteResponse(n)),
+      total,
+      page,
+      limit,
+    };
+  }
+
+  async getNotesByBook(
+    userId: string,
+    bookId: string,
+  ): Promise<NoteResponseDto[]> {
+    const notes = await this.prisma.bookmark.findMany({
+      where: { userId, bookId, type: 'note' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return notes.map((n) => this.toNoteResponse(n));
+  }
+
+  async getNotesByAuthor(
+    userId: string,
+    author: string,
+  ): Promise<NoteResponseDto[]> {
+    const notes = await this.prisma.bookmark.findMany({
+      where: { userId, type: 'note', author: { contains: author } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return notes.map((n) => this.toNoteResponse(n));
+  }
+
+  async updateNote(
+    userId: string,
+    noteId: string,
+    dto: UpdateNoteDto,
+  ): Promise<NoteResponseDto> {
+    const note = await this.prisma.bookmark.findUnique({
+      where: { id: noteId },
+    });
+
+    if (!note) throw new NotFoundException(`Note ${noteId} not found`);
+    if (note.userId !== userId) throw new ForbiddenException('Access denied');
+    if (note.type !== 'note') throw new NotFoundException('Not a note');
+
+    const updated = await this.prisma.bookmark.update({
+      where: { id: noteId },
+      data: {
+        ...(dto.note !== undefined && { note: dto.note }),
+        ...(dto.color !== undefined && { highlightColor: dto.color }),
+        ...(dto.text !== undefined && { text: dto.text }),
+      },
+    });
+
+    return this.toNoteResponse(updated);
+  }
+
+  async deleteNote(userId: string, noteId: string): Promise<void> {
+    const note = await this.prisma.bookmark.findUnique({
+      where: { id: noteId },
+    });
+
+    if (!note) throw new NotFoundException(`Note ${noteId} not found`);
+    if (note.userId !== userId) throw new ForbiddenException('Access denied');
+    if (note.type !== 'note') throw new NotFoundException('Not a note');
+
+    await this.prisma.bookmark.delete({ where: { id: noteId } });
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   private toBookmarkResponse(b: any): BookmarkResponseDto {
@@ -203,7 +325,26 @@ export class BookmarkService {
       text: h.text,
       color: h.highlightColor,
       note: h.note,
+      type: h.type,
       createdAt: h.createdAt,
+    };
+  }
+
+  private toNoteResponse(n: any): NoteResponseDto {
+    return {
+      id: n.id,
+      userId: n.userId,
+      bookId: n.bookId,
+      chapterId: n.chapterId,
+      text: n.text,
+      note: n.note,
+      color: n.highlightColor,
+      cfi: n.cfi,
+      percentage: n.percentage,
+      author: n.author,
+      bookTitle: n.bookTitle,
+      createdAt: n.createdAt,
+      updatedAt: n.updatedAt,
     };
   }
 }

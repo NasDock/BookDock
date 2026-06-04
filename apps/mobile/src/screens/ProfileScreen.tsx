@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore, useLibraryStore, useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
-import { getApiClient, type Book, type Collection } from '@bookdock/api-client';
+import { getApiClient, type Book, type Collection, type Note } from '@bookdock/api-client';
 import { getCoverImageUrl } from '../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -41,7 +41,7 @@ function getBookGradient(title: string): string[] {
   return gradients[Math.abs(hash) % gradients.length];
 }
 
-type TabKey = 'collections' | 'reading' | 'favorites' | 'downloads';
+type TabKey = 'collections' | 'reading' | 'favorites' | 'downloads' | 'notes';
 
 export function ProfileScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -53,6 +53,7 @@ export function ProfileScreen() {
   const [activeTab, setActiveTab] = useState<TabKey>('collections');
   const [collections, setCollections] = useState<Collection[]>([]);
   const [favorites, setFavorites] = useState<Book[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
@@ -65,12 +66,14 @@ export function ProfileScreen() {
     setIsLoading(true);
     try {
       const api = getApiClient();
-      const [colRes, favRes] = await Promise.all([
+      const [colRes, favRes, notesRes] = await Promise.all([
         api.getCollections(),
         api.getFavorites(),
+        api.getNotes(),
       ]);
       if (colRes.success && colRes.data) setCollections(colRes.data);
       if (favRes.success && favRes.data) setFavorites(favRes.data);
+      if (notesRes.success && notesRes.data) setNotes(notesRes.data.items || []);
     } catch (err) {
       console.error('Failed to fetch profile data:', err);
     } finally {
@@ -169,6 +172,7 @@ export function ProfileScreen() {
     { key: 'reading', label: '在读' },
     { key: 'favorites', label: '收藏' },
     { key: 'downloads', label: '下载' },
+    { key: 'notes', label: '笔记' },
   ];
 
   const renderBookCard = (book: Book) => (
@@ -255,6 +259,45 @@ export function ProfileScreen() {
               <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>暂无下载</Text>
             ) : (
               downloadedBooks.map((b) => renderBookCard(b as unknown as Book))
+            )}
+          </View>
+        );
+      case 'notes':
+        return (
+          <View style={styles.listContainer}>
+            {notes.length === 0 ? (
+              <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>暂无笔记</Text>
+            ) : (
+              notes.map((note) => (
+                <TouchableOpacity
+                  key={note.id}
+                  style={[styles.noteCard, { backgroundColor: theme.colors.surface }]}
+                  onPress={() => navigation.navigate('Reader', { book: { id: note.bookId, title: note.bookTitle || '未知书籍', author: note.author || '' } as Book })}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.noteHeader}>
+                    <Text style={[styles.noteBookTitle, { color: theme.colors.text }]} numberOfLines={1}>
+                      {note.bookTitle || '未知书籍'}
+                    </Text>
+                    <Text style={[styles.noteAuthor, { color: theme.colors.textSecondary }]}>
+                      {note.author || '未知作者'}
+                    </Text>
+                  </View>
+                  <View style={[styles.noteTextBox, { backgroundColor: theme.colors.background }]}>
+                    <Text style={[styles.noteText, { color: theme.colors.text }]} numberOfLines={2}>
+                      {note.text}
+                    </Text>
+                  </View>
+                  {note.note && (
+                    <Text style={[styles.noteContent, { color: theme.colors.textSecondary }]} numberOfLines={2}>
+                      {note.note}
+                    </Text>
+                  )}
+                  <Text style={[styles.noteDate, { color: theme.colors.textSecondary }]}>
+                    {new Date(note.createdAt).toLocaleString('zh-CN')}
+                  </Text>
+                </TouchableOpacity>
+              ))
             )}
           </View>
         );
@@ -535,6 +578,43 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       alignItems: 'center',
       padding: spacing.md,
       borderRadius: borderRadius.md,
+    },
+    noteCard: {
+      padding: spacing.md,
+      borderRadius: borderRadius.md,
+      gap: spacing.sm,
+    },
+    noteHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    noteBookTitle: {
+      fontSize: fontSizes.md,
+      fontWeight: '600',
+      flex: 1,
+    },
+    noteAuthor: {
+      fontSize: fontSizes.sm,
+    },
+    noteTextBox: {
+      padding: spacing.sm,
+      borderRadius: borderRadius.sm,
+      borderLeftWidth: 3,
+      borderLeftColor: theme.colors.primary,
+    },
+    noteText: {
+      fontSize: fontSizes.sm,
+      lineHeight: 20,
+      fontStyle: 'italic',
+    },
+    noteContent: {
+      fontSize: fontSizes.sm,
+      lineHeight: 20,
+    },
+    noteDate: {
+      fontSize: fontSizes.xs,
+      marginTop: spacing.xs,
     },
   });
 }

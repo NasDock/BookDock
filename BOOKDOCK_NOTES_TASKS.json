@@ -1,0 +1,17 @@
+{
+  "project": "BookDock",
+  "tasks": [
+    {
+      "id": "task-1",
+      "title": "扩展 Prisma schema，添加笔记功能所需的数据库字段",
+      "status": "completed",
+      "updatedAt": "2026-06-04T22:38:00+08:00"
+    },
+    {
+      "id": "task-7",
+      "title": "在桌面端添加笔记列表页面，并在 Profile 和 BookDetail 页面添加笔记入口",
+      "status": "completed",
+      "updatedAt": "2026-06-04T23:20:00+08:00"
+    }
+  ]
+}

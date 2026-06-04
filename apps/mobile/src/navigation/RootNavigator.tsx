@@ -13,6 +13,7 @@ import { AdminUsersScreen } from "../screens/AdminUsersScreen";
 import { CollectionDetailScreen } from "../screens/CollectionDetailScreen";
 import { BookDetailScreen } from "../screens/BookDetailScreen";
 import { AuthorDetailScreen } from "../screens/AuthorDetailScreen";
+import { NotesScreen } from "../screens/NotesScreen";
 import { SearchScreen } from "../screens/SearchScreen";
 import { useAuthStore, useThemeStore } from "../stores";
 import { getTheme } from "../utils/theme";
@@ -137,6 +138,14 @@ export function RootNavigator() {
               name="Search"
               component={SearchScreen}
               options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Notes"
+              component={NotesScreen}
+              options={{
+                title: "笔记",
+                headerBackTitle: "返回",
+              }}
             />
           </>
         )}

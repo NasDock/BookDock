@@ -22,6 +22,10 @@ import {
   UpdateHighlightDto,
   HighlightResponseDto,
   HighlightQueryDto,
+  CreateNoteDto,
+  UpdateNoteDto,
+  NoteResponseDto,
+  NoteQueryDto,
 } from './dto/bookmark.dto';
 import { BookmarkService } from './bookmark.service';
 
@@ -129,6 +133,70 @@ export class BookmarkController {
     @CurrentUser('sub') userId: string,
   ) {
     await this.bookmarkService.deleteHighlight(userId, highlightId);
+    return { success: true };
+  }
+
+  // ── Note Endpoints ───────────────────────────────────────────────────────────
+
+  @Post('notes')
+  @ApiOperation({ summary: 'Create a note' })
+  @ApiResponse({ status: 201, type: NoteResponseDto })
+  async createNote(
+    @Body() dto: CreateNoteDto,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.bookmarkService.createNote(userId, dto);
+  }
+
+  @Get('notes')
+  @ApiOperation({ summary: 'Get all notes with optional filters' })
+  @ApiResponse({ status: 200, type: [NoteResponseDto] })
+  async getNotes(
+    @CurrentUser('sub') userId: string,
+    @Query() query: NoteQueryDto,
+  ) {
+    return this.bookmarkService.getNotes(userId, query);
+  }
+
+  @Get('notes/book/:bookId')
+  @ApiOperation({ summary: 'Get notes for a specific book' })
+  @ApiResponse({ status: 200, type: [NoteResponseDto] })
+  async getNotesByBook(
+    @Param('bookId', ParseUUIDPipe) bookId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.bookmarkService.getNotesByBook(userId, bookId);
+  }
+
+  @Get('notes/author/:author')
+  @ApiOperation({ summary: 'Get notes by author' })
+  @ApiResponse({ status: 200, type: [NoteResponseDto] })
+  async getNotesByAuthor(
+    @Param('author') author: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.bookmarkService.getNotesByAuthor(userId, author);
+  }
+
+  @Put('notes/:noteId')
+  @ApiOperation({ summary: 'Update a note' })
+  @ApiResponse({ status: 200, type: NoteResponseDto })
+  async updateNote(
+    @Param('noteId', ParseUUIDPipe) noteId: string,
+    @Body() dto: UpdateNoteDto,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.bookmarkService.updateNote(userId, noteId, dto);
+  }
+
+  @Delete('notes/:noteId')
+  @ApiOperation({ summary: 'Delete a note' })
+  @ApiResponse({ status: 200 })
+  async deleteNote(
+    @Param('noteId', ParseUUIDPipe) noteId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    await this.bookmarkService.deleteNote(userId, noteId);
     return { success: true };
   }
 }

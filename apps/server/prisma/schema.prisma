@@ -22,6 +22,13 @@ datasource db {
 // Enums (map to PostgreSQL ENUMs)
 // =============================================================================
 
+// NOTE: SQLite does not support native enums in Prisma 5.x.
+// BookmarkType is modeled as String with constrained values in application code.
+// enum BookmarkType {
+//   bookmark
+//   note
+//   highlight
+// }
 
 
 
@@ -237,7 +244,10 @@ model Bookmark {
   // Legacy fields (kept for backwards compat)
   title          String?  
   location       String   
-  locationType   String    @default("cfi") @map("location_type")
+  locationType   String        @default("cfi") @map("location_type")
+  type           String        @default("bookmark")
+  author         String?
+  bookTitle      String?       @map("book_title")
   note           String?  
   highlightText  String?   @map("highlight_text")
   highlightColor String?   @map("highlight_color")
@@ -250,6 +260,9 @@ model Bookmark {
 
   @@index([userId])
   @@index([bookId])
+  @@index([userId, type])
+  @@index([author])
+  @@index([bookTitle])
   @@map("bookmarks")
 }
 

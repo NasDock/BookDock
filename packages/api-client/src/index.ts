@@ -98,6 +98,38 @@ export interface EbookSource {
   lastSyncAt?: string;
 }
 
+export interface Note {
+  id: string;
+  userId: string;
+  bookId: string;
+  chapterId?: string;
+  text: string;
+  note?: string;
+  color?: string;
+  cfi?: string;
+  percentage?: number;
+  author?: string;
+  bookTitle?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateHighlightDto {
+  bookId: string;
+  chapterId?: string;
+  cfi: string;
+  startOffset: number;
+  endOffset: number;
+  text: string;
+  color?: string;
+  note?: string;
+}
+
+export interface UpdateHighlightDto {
+  note?: string;
+  color?: string;
+}
+
 export interface ApiClientConfig {
   baseURL: string;
   timeout?: number;
@@ -401,6 +433,75 @@ class ApiClient {
 
   async removeFavorite(bookId: string): Promise<ApiResponse<void>> {
     const { data } = await this.client.delete(`/favorites/${bookId}`);
+    return data;
+  }
+
+  // ── Note APIs ────────────────────────────────────────────────────────────────
+
+  async createNote(dto: {
+    bookId: string;
+    chapterId?: string;
+    text: string;
+    note?: string;
+    cfi?: string;
+    percentage?: number;
+    color?: string;
+    author?: string;
+    bookTitle?: string;
+  }): Promise<ApiResponse<Note>> {
+    const { data } = await this.client.post('/notes', dto);
+    return data;
+  }
+
+  async getNotes(params?: {
+    page?: number;
+    limit?: number;
+    bookId?: string;
+    author?: string;
+  }): Promise<ApiResponse<{ items: Note[]; total: number; page: number; limit: number }>> {
+    const { data } = await this.client.get('/notes', { params });
+    return data;
+  }
+
+  async getNotesByBook(bookId: string): Promise<ApiResponse<Note[]>> {
+    const { data } = await this.client.get(`/notes/book/${bookId}`);
+    return data;
+  }
+
+  async getNotesByAuthor(author: string): Promise<ApiResponse<Note[]>> {
+    const { data } = await this.client.get(`/notes/author/${encodeURIComponent(author)}`);
+    return data;
+  }
+
+  async updateNote(noteId: string, dto: { note?: string; color?: string; text?: string }): Promise<ApiResponse<Note>> {
+    const { data } = await this.client.put(`/notes/${noteId}`, dto);
+    return data;
+  }
+
+  async deleteNote(noteId: string): Promise<ApiResponse<void>> {
+    const { data } = await this.client.delete(`/notes/${noteId}`);
+    return data;
+  }
+
+  // ── Highlight APIs ─────────────────────────────────────────────────────────
+
+  async createHighlight(dto: CreateHighlightDto): Promise<ApiResponse<any>> {
+    const { data } = await this.client.post('/highlights', dto);
+    return data;
+  }
+
+  async getHighlights(bookId: string): Promise<ApiResponse<any[]>> {
+    const { data } = await this.client.get(`/highlights/${bookId}`);
+    return data;
+  }
+
+  async updateHighlight(highlightId: string, dto: UpdateHighlightDto): Promise<ApiResponse<any>> {
+    const { data } = await this.client.put(`/highlights/${highlightId}`, dto);
+    return data;
+  }
+
+  async deleteHighlight(highlightId: string): Promise<ApiResponse<void>> {
+    const { data } = await this.client.delete(`/highlights/${highlightId}`);
     return data;
   }
 }

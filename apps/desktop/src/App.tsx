@@ -39,6 +39,7 @@ import ReaderTTS from "./pages/Reader-TTS";
 import BookDetail from "./pages/BookDetail";
 import AuthorDetail from "./pages/AuthorDetail";
 import Settings from "./pages/Settings";
+import Notes from "./pages/Notes";
 
 // Stores
 import { useAuthStore, useThemeStore } from "./stores/authStore";
@@ -514,6 +515,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <AuthorDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/notes"
+          element={
+            <ProtectedRoute>
+              <Notes />
             </ProtectedRoute>
           }
         />
