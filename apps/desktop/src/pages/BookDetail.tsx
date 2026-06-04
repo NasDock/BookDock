@@ -256,10 +256,10 @@ export default function BookDetail() {
           </div>
         </div>
 
-        {/* 书籍基本信息 — 响应式布局 */}
-        <div className="flex flex-col md:flex-row gap-8 mb-8">
+        {/* 书籍基本信息 */}
+        <div className="flex flex-row items-start gap-4 sm:gap-6 md:gap-8 mb-8">
           {/* 封面 */}
-          <div className="w-48 md:w-56 flex-shrink-0 mx-auto md:mx-0">
+          <div className="w-28 sm:w-40 md:w-56 flex-shrink-0">
             <div className="aspect-[2/3] rounded-xl overflow-hidden shadow-lg">
               {book.coverUrl ? (
                 <img
@@ -280,8 +280,8 @@ export default function BookDetail() {
           </div>
 
           {/* 信息 */}
-          <div className="flex-1 space-y-4">
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+          <div className="min-w-0 flex-1 space-y-4">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
               {book.title}
             </h1>
 
@@ -391,7 +391,7 @@ export default function BookDetail() {
             </div>
 
             {/* 操作按钮 */}
-            <div className="flex gap-3 pt-2">
+            <div className="flex flex-wrap gap-3 pt-2">
               <button
                 onClick={handleRead}
                 className="flex items-center gap-2 px-6 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"

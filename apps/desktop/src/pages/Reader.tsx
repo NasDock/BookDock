@@ -865,6 +865,7 @@ export default function Reader() {
 
   // ── Note & Highlight state ────────────────────────────────────────────
   const [selectedText, setSelectedText] = useState('');
+  const [noteSelectedText, setNoteSelectedText] = useState('');
   const [selectionMenuPos, setSelectionMenuPos] = useState({ x: 0, y: 0 });
   const [showSelectionMenu, setShowSelectionMenu] = useState(false);
   const [showNoteModal, setShowNoteModal] = useState(false);
@@ -1064,8 +1065,10 @@ export default function Reader() {
   }, [resetScroll]);
 
   // ── Selection & Note/Highlight handlers ─────────────────────────────────
-  const handleSelectionChange = useCallback(() => {
+  const handleTextSelection = useCallback(() => {
     if (isPdf) return; // PDF files disabled
+    if (showNoteModal) return;
+
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
       setShowSelectionMenu(false);
@@ -1079,31 +1082,57 @@ export default function Reader() {
       return;
     }
     const range = selection.getRangeAt(0);
+    const contentElement = contentRef.current;
+    const anchorNode = selection.anchorNode;
+    const focusNode = selection.focusNode;
+    if (
+      !contentElement ||
+      !anchorNode ||
+      !focusNode ||
+      !contentElement.contains(anchorNode) ||
+      !contentElement.contains(focusNode)
+    ) {
+      setShowSelectionMenu(false);
+      setSelectedText('');
+      return;
+    }
+
     const rect = range.getBoundingClientRect();
+    const firstRect = range.getClientRects()[0] || rect;
     setSelectedText(text);
-    setSelectionMenuPos({ x: rect.left + rect.width / 2, y: rect.top });
+    setSelectionMenuPos({ x: firstRect.left + firstRect.width / 2, y: firstRect.top });
     setShowSelectionMenu(true);
-  }, [isPdf]);
+  }, [isPdf, showNoteModal]);
 
   const handleDismissMenu = useCallback(() => {
     setShowSelectionMenu(false);
+    setSelectedText('');
     window.getSelection()?.removeAllRanges();
   }, []);
 
   const handleNoteClick = useCallback(() => {
+    setNoteSelectedText(selectedText);
     setShowSelectionMenu(false);
     setShowNoteModal(true);
+  }, [selectedText]);
+
+  const handleCloseNoteModal = useCallback(() => {
+    setShowNoteModal(false);
+    setSelectedText('');
+    setNoteSelectedText('');
+    window.getSelection()?.removeAllRanges();
   }, []);
 
   const handleSaveNote = useCallback(async (noteText: string) => {
-    if (!book || !selectedText) return;
+    const quotedText = noteSelectedText || selectedText;
+    if (!book || !quotedText) return;
     setShowNoteModal(false);
     try {
       const api = getApiClient();
       const percentage = Math.round(((currentChapter + 1) / chapters.length) * 100);
       const res = await api.createNote({
         bookId: book.id,
-        text: selectedText,
+        text: quotedText,
         note: noteText,
         cfi: '',
         percentage,
@@ -1118,18 +1147,23 @@ export default function Reader() {
     } catch (err) {
       console.error('Failed to save note:', err);
     }
+    setSelectedText('');
+    setNoteSelectedText('');
     window.getSelection()?.removeAllRanges();
-  }, [book, selectedText, currentChapter, chapters.length]);
+  }, [book, noteSelectedText, selectedText, currentChapter, chapters.length]);
 
   const handleHighlightClick = useCallback(async () => {
     if (!book || !selectedText) return;
+    const highlightedText = selectedText.trim();
     setShowSelectionMenu(false);
     try {
       const api = getApiClient();
       const res = await api.createHighlight({
         bookId: book.id,
         cfi: '',
-        text: selectedText,
+        startOffset: 0,
+        endOffset: highlightedText.length,
+        text: highlightedText,
         color: 'yellow',
       });
       if (res.success && res.data) {
@@ -1149,7 +1183,7 @@ export default function Reader() {
       mark.style.borderRadius = '2px';
       mark.style.padding = '0 2px';
       mark.style.boxDecorationBreak = 'clone';
-      mark.style.webkitBoxDecorationBreak = 'clone';
+      (mark.style as any).webkitBoxDecorationBreak = 'clone';
       mark.className = 'highlight-mark';
       try {
         range.surroundContents(mark);
@@ -1306,15 +1340,19 @@ export default function Reader() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [nextPage, prevPage, chapters.length, handleAddBookmark, resetScroll, isPdf, pdfTotalPages]);
 
-  // Selection change listener (for text selection → note/highlight menu)
+  // Show the note/highlight menu only after a drag selection completes.
   useEffect(() => {
     if (isPdf) return; // PDF files disabled
-    const handleSelection = () => {
-      handleSelectionChange();
+    const handleSelectionEnd = () => {
+      window.setTimeout(handleTextSelection, 0);
     };
-    document.addEventListener('selectionchange', handleSelection);
-    return () => document.removeEventListener('selectionchange', handleSelection);
-  }, [isPdf, handleSelectionChange]);
+    document.addEventListener('mouseup', handleSelectionEnd);
+    document.addEventListener('touchend', handleSelectionEnd);
+    return () => {
+      document.removeEventListener('mouseup', handleSelectionEnd);
+      document.removeEventListener('touchend', handleSelectionEnd);
+    };
+  }, [isPdf, handleTextSelection]);
 
   // Touch swipe handling
   useEffect(() => {
@@ -1529,9 +1567,9 @@ export default function Reader() {
       {/* Note modal */}
       <NoteModal
         isOpen={showNoteModal}
-        selectedText={selectedText}
+        selectedText={noteSelectedText}
         bookTitle={book?.title || ''}
-        onClose={() => setShowNoteModal(false)}
+        onClose={handleCloseNoteModal}
         onSave={handleSaveNote}
       />
 
