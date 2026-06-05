@@ -454,6 +454,11 @@ function generateReaderHtml(
   <meta charset="UTF-8">
   <style>
     * { box-sizing: border-box; }
+    html, body, pre, p, span, div {
+      -webkit-user-select: text !important;
+      user-select: text !important;
+      -webkit-touch-callout: default !important;
+    }
     body {
       font-family: ${config.fontFamily};
       font-size: ${config.fontSize}px;
@@ -465,6 +470,7 @@ function generateReaderHtml(
       padding-top: ${config.margin + 56}px;
       text-align: justify;
       word-wrap: break-word;
+      -webkit-touch-callout: default !important;
     }
     h1 { font-size: ${config.fontSize * 1.5}px; margin-bottom: 0.5em; color: ${textColor}; }
     h2 { font-size: ${config.fontSize * 1.3}px; margin-bottom: 0.5em; color: ${textColor}; }
@@ -486,6 +492,11 @@ function generateReaderHtml(
   <meta charset="UTF-8">
   <style>
     * { box-sizing: border-box; }
+    html, body, p, span, div, article, section {
+      -webkit-user-select: text !important;
+      user-select: text !important;
+      -webkit-touch-callout: default !important;
+    }
     body {
       font-family: ${config.fontFamily};
       font-size: ${config.fontSize}px;
@@ -497,6 +508,7 @@ function generateReaderHtml(
       padding-top: ${config.margin + 56}px;
       text-align: justify;
       word-wrap: break-word;
+      -webkit-touch-callout: default !important;
     }
     h1, h2, h3, h4, h5, h6 { color: ${textColor}; margin-top: 1em; margin-bottom: 0.5em; }
     h1 { font-size: ${config.fontSize * 1.5}px; }
@@ -1041,6 +1053,7 @@ export function ReaderScreen() {
       }, { passive: true });
 
       document.addEventListener('click', function(e) {
+        if (getSelectedText()) return;
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
         directionAnchor = scrollTop;
         lastScrollDirection = '';
@@ -1052,48 +1065,48 @@ export function ReaderScreen() {
       });
 
       // ── Text selection for notes/highlights ───────────────────────────────
-      let longPressTimer = null;
-      let isLongPress = false;
+      let selectionReportTimer = null;
+      let lastReportedSelection = '';
 
-      document.addEventListener('touchstart', function(e) {
-        isLongPress = false;
-        longPressTimer = setTimeout(function() {
-          isLongPress = true;
-          const selection = window.getSelection();
-          if (selection && selection.toString().trim().length > 0) {
+      function getSelectedText() {
+        const selection = window.getSelection && window.getSelection();
+        return selection ? selection.toString().trim() : '';
+      }
+
+      function reportSelectionAfterSettled(delay) {
+        if (selectionReportTimer) {
+          clearTimeout(selectionReportTimer);
+        }
+        selectionReportTimer = setTimeout(function() {
+          const text = getSelectedText();
+          if (text.length > 0 && text !== lastReportedSelection) {
+            lastReportedSelection = text;
             window.ReactNativeWebView.postMessage(JSON.stringify({
               type: 'textSelected',
-              text: selection.toString().trim()
+              text: text
             }));
           }
-        }, 400);
+        }, delay);
+      }
+
+      document.addEventListener('touchstart', function(e) {
+        lastReportedSelection = '';
+        if (selectionReportTimer) {
+          clearTimeout(selectionReportTimer);
+          selectionReportTimer = null;
+        }
       }, { passive: true });
 
       document.addEventListener('touchend', function() {
-        if (longPressTimer) {
-          clearTimeout(longPressTimer);
-          longPressTimer = null;
-        }
-        if (!isLongPress) {
-          const selection = window.getSelection();
-          if (selection && selection.toString().trim().length > 0) {
-            window.ReactNativeWebView.postMessage(JSON.stringify({
-              type: 'textSelected',
-              text: selection.toString().trim()
-            }));
-          }
-        }
+        reportSelectionAfterSettled(350);
+      });
+
+      document.addEventListener('mouseup', function() {
+        reportSelectionAfterSettled(250);
       });
 
       document.addEventListener('selectionchange', function() {
-        const selection = window.getSelection();
-        if (selection && selection.toString().trim().length > 0) {
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'textSelected',
-            text: selection.toString().trim()
-          }));
-        }
-      });
+        reportSelectionAfterSettled(500);
       });
 
       requestAnimationFrame(() => {

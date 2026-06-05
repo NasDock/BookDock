@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { getApiClient, Book, Collection } from "@bookdock/api-client";
 import { useAuthStore } from "../stores/authStore";
@@ -13,7 +13,23 @@ import {
   Plus,
   X,
   StickyNote,
+  Trash2,
+  Search,
+  Clock,
+  User,
 } from "lucide-react";
+
+function formatDate(dateStr: string): string {
+  if (!dateStr) return "-";
+  const d = new Date(dateStr);
+  return d.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 function getBookGradient(title: string): string {
   const gradients = [
@@ -33,7 +49,7 @@ function getBookGradient(title: string): string {
   return gradients[Math.abs(hash) % gradients.length];
 }
 
-type TabKey = "collections" | "reading" | "favorites" | "downloads";
+type TabKey = "collections" | "reading" | "favorites" | "downloads" | "notes";
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -42,6 +58,13 @@ export default function Profile() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [favorites, setFavorites] = useState<Book[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [notes, setNotes] = useState<any[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [notePage, setNotePage] = useState(1);
+  const [noteTotal, setNoteTotal] = useState(0);
+  const [authorSearch, setAuthorSearch] = useState("");
+  const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
+  const noteLimit = 20;
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
 
@@ -64,9 +87,73 @@ export default function Profile() {
     }
   }, []);
 
+  const fetchNotes = useCallback(async (page = 1) => {
+    setNotesLoading(true);
+    try {
+      const api = getApiClient();
+      let res;
+      if (authorSearch.trim()) {
+        res = await api.getNotesByAuthor(authorSearch.trim());
+        if (res.success && res.data) {
+          setNotes(res.data);
+          setNoteTotal(res.data.length);
+        }
+      } else {
+        res = await api.getNotes({ page, limit: noteLimit });
+        if (res.success && res.data) {
+          setNotes(res.data.items || []);
+          setNoteTotal(res.data.total || 0);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch notes:", err);
+    } finally {
+      setNotesLoading(false);
+    }
+  }, [authorSearch]);
+
+  const handleDeleteNote = useCallback(async (noteId: string) => {
+    if (!window.confirm("确定删除这条笔记吗？")) return;
+    setDeletingNoteId(noteId);
+    try {
+      const api = getApiClient();
+      const res = await api.deleteNote(noteId);
+      if (res.success) {
+        setNotes((prev) => prev.filter((n) => n.id !== noteId));
+        setNoteTotal((prev) => prev - 1);
+      } else {
+        alert(res.message || "删除失败");
+      }
+    } catch {
+      alert("删除失败");
+    } finally {
+      setDeletingNoteId(null);
+    }
+  }, []);
+
+  const handleJumpToBook = useCallback((note: any) => {
+    if (!note.bookId) return;
+    const params = new URLSearchParams();
+    if (note.cfi) params.set("cfi", note.cfi);
+    if (note.percentage !== undefined && note.percentage !== null) {
+      params.set("percentage", String(note.percentage));
+    }
+    const query = params.toString();
+    navigate(`/book/${note.bookId}${query ? "?" + query : ""}`);
+  }, [navigate]);
+
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Lazy load notes when tab is activated
+  const notesLoadedRef = useRef(false);
+  useEffect(() => {
+    if (activeTab === "notes" && !notesLoadedRef.current) {
+      notesLoadedRef.current = true;
+      fetchNotes(1);
+    }
+  }, [activeTab, fetchNotes]);
 
   const [books, setBooks] = useState<Book[]>([]);
 
@@ -96,6 +183,7 @@ export default function Profile() {
     { key: "collections", label: "书单", icon: FolderOpen },
     { key: "reading", label: "在读", icon: BookOpen },
     { key: "favorites", label: "收藏", icon: Heart },
+    { key: "notes", label: "笔记", icon: StickyNote },
     { key: "downloads", label: "下载", icon: Download },
   ];
 
@@ -121,8 +209,186 @@ export default function Profile() {
     </div>
   );
 
+  const renderNotesContent = () => {
+    const totalPages = Math.ceil(noteTotal / noteLimit);
+
+    return (
+      <div className="space-y-3">
+        {/* Search bar */}
+        <div className="flex items-center gap-2 mb-4">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="搜索作者..."
+              value={authorSearch}
+              onChange={(e) => setAuthorSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  setNotePage(1);
+                  fetchNotes(1);
+                }
+              }}
+              className="w-full pl-9 pr-9 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {authorSearch && (
+              <button
+                onClick={() => { setAuthorSearch(""); setNotePage(1); fetchNotes(1); }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => { setNotePage(1); fetchNotes(1); }}
+            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            搜索
+          </button>
+        </div>
+
+        {notesLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+          </div>
+        ) : notes.length === 0 ? (
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-8 text-center">
+            <StickyNote className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+            <p className="text-gray-500 dark:text-gray-400">
+              {authorSearch.trim() ? `未找到 ${authorSearch.trim()} 的笔记` : "暂无笔记，在阅读时选中文字即可添加笔记"}
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-3">
+              {notes.map((note) => (
+                <div
+                  key={note.id}
+                  className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm hover:shadow-md transition-shadow"
+                >
+                  <div className="flex items-start gap-4">
+                    <div
+                      className={`w-10 h-10 rounded-lg flex-shrink-0 flex items-center justify-center bg-gradient-to-br ${
+                        note.color ? "" : getBookGradient(note.bookTitle || "")
+                      }`}
+                      style={note.color ? { background: note.color } : undefined}
+                      onClick={() => handleJumpToBook(note)}
+                    >
+                      <BookOpen className="w-5 h-5 text-white" />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span
+                            className="text-sm font-medium text-gray-900 dark:text-white truncate cursor-pointer hover:text-blue-500"
+                            onClick={() => handleJumpToBook(note)}
+                          >
+                            {note.bookTitle || "未知名称"}
+                          </span>
+                          {note.author && (
+                            <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                              <User className="w-3 h-3" />
+                              {note.author}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="flex items-center gap-1 text-xs text-gray-400">
+                            <Clock className="w-3 h-3" />
+                            {formatDate(note.createdAt)}
+                          </span>
+                          <button
+                            onClick={() => handleDeleteNote(note.id)}
+                            disabled={deletingNoteId === note.id}
+                            className="p-1.5 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
+                            title="删除笔记"
+                          >
+                            {deletingNoteId === note.id ? (
+                              <div className="animate-spin rounded-full h-3 w-3 border-2 border-gray-400 border-t-transparent" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      {note.text && (
+                        <div className="mb-2">
+                          <p className="text-sm text-gray-700 dark:text-gray-300 italic line-clamp-2 border-l-2 border-amber-400 pl-3">
+                            {note.text}
+                          </p>
+                        </div>
+                      )}
+
+                      {note.note && (
+                        <div className="mb-2">
+                          <p className="text-sm text-gray-800 dark:text-gray-200">{note.note}</p>
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-between mt-2">
+                        <div className="flex items-center gap-3 text-xs text-gray-400">
+                          {(note.percentage !== undefined && note.percentage !== null) && (
+                            <span>位置 {Math.round(note.percentage)}%</span>
+                          )}
+                          {note.cfi && (
+                            <span className="truncate max-w-[200px]">CFI: {note.cfi}</span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleJumpToBook(note)}
+                          className="flex items-center gap-1 px-3 py-1 text-xs text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                        >
+                          <BookOpen className="w-3 h-3" />
+                          跳转到阅读位置
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {!authorSearch.trim() && totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 pt-4">
+                <button
+                  onClick={() => {
+                    const p = Math.max(1, notePage - 1);
+                    setNotePage(p);
+                    fetchNotes(p);
+                  }}
+                  disabled={notePage <= 1}
+                  className="px-3 py-1.5 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  上一页
+                </button>
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  {notePage} / {totalPages}
+                </span>
+                <button
+                  onClick={() => {
+                    const p = Math.min(totalPages, notePage + 1);
+                    setNotePage(p);
+                    fetchNotes(p);
+                  }}
+                  disabled={notePage >= totalPages}
+                  className="px-3 py-1.5 rounded-lg text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  下一页
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
+
   const renderContent = () => {
-    if (isLoading) {
+    if (isLoading && activeTab !== "notes") {
       return (
         <div className="flex items-center justify-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
@@ -184,6 +450,8 @@ export default function Profile() {
             )}
           </div>
         );
+      case "notes":
+        return renderNotesContent();
     }
   };
 
@@ -215,19 +483,6 @@ export default function Profile() {
             <p className="text-lg font-semibold text-gray-900 dark:text-white">{user?.username || "用户"}</p>
             <p className="text-sm text-gray-500 dark:text-gray-400">{user?.role === "admin" ? "管理员" : "普通用户"}</p>
           </div>
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div
-          onClick={() => navigate("/notes")}
-          className="bg-white dark:bg-gray-800 rounded-xl p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex flex-col items-center gap-2"
-        >
-          <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-            <StickyNote className="w-5 h-5 text-amber-500" />
-          </div>
-          <span className="text-sm font-medium text-gray-900 dark:text-white">我的笔记</span>
         </div>
       </div>
 
