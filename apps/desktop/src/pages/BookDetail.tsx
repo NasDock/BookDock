@@ -103,8 +103,8 @@ export default function BookDetail() {
   }, [navigate, book]);
 
   const handleTTS = useCallback(() => {
-    if (book) navigate(`/book/${book.id}/tts`);
-  }, [navigate, book]);
+    alert("功能正在开发中，敬请期待！");
+  }, []);
 
   const handleToggleFavorite = useCallback(async () => {
     if (!book) return;

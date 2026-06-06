@@ -122,12 +122,8 @@ export function BookDetailScreen() {
   }, [navigation, book]);
 
   const handleTTS = useCallback(async () => {
-    if (!isVip) {
-      Alert.alert('提示', '听书功能需要会员权限');
-      return;
-    }
-    navigation.navigate('TTSScreen', { book });
-  }, [navigation, book, isVip]);
+    Alert.alert('提示', '功能正在开发中，敬请期待！');
+  }, []);
 
   const handleToggleFavorite = useCallback(async () => {
     try {

@@ -180,7 +180,7 @@ export class BooksController {
       'Content-Type': contentType,
       'Content-Disposition': `${isInline ? 'inline' : 'attachment'}; filename="${encoded}"; filename*=UTF-8''${encoded}`,
     });
-    res.sendFile(path);
+    res.sendFile(path, { root: '/' });
   }
 
   @Post(':id/tags')
