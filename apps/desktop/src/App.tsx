@@ -220,146 +220,66 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {!isReaderPage && !isLoginPage && (
-        <header className="sticky top-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center h-16">
-              {/* Left: Logo */}
-              <div className="flex-shrink-0 w-48">
-                <Link to="/library" className="flex items-center space-x-2">
-                  <BookOpen className="w-6 h-6 text-gray-900 dark:text-white" />
-                  <span className="text-xl font-bold text-gray-900 dark:text-white">
-                    书仓
-                  </span>
-                </Link>
-              </div>
-
-              {/* Center: Navigation */}
-              <nav className="flex-1 flex justify-center space-x-1">
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        location.pathname === item.path
-                          ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300"
-                          : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      }`}
-                    >
-                      <Icon className="w-4 h-4 mr-1" />
-                      {item.label}
-                    </Link>
-                  );
-                })}
-              </nav>
-
-              {/* Right: Actions */}
-              <div className="flex-shrink-0 w-48 flex items-center justify-end space-x-3">
-                {/* Theme toggle */}
-                <button
-                  onClick={toggleTheme}
-                  className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  aria-label="Toggle theme"
-                >
-                  {theme === "dark" ? (
-                    <Sun className="w-5 h-5" />
-                  ) : (
-                    <Moon className="w-5 h-5" />
-                  )}
-                </button>
-
-                {/* User dropdown */}
-                <div className="relative group">
-                  <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                    <span className="text-sm text-gray-700 dark:text-gray-200 font-medium">
-                      {user?.username}
+        <>
+          {/* Desktop Header */}
+          <header className="hidden md:block sticky top-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-center h-16">
+                {/* Left: Logo */}
+                <div className="flex-shrink-0 w-48">
+                  <Link to="/library" className="flex items-center space-x-2">
+                    <BookOpen className="w-6 h-6 text-gray-900 dark:text-white" />
+                    <span className="text-xl font-bold text-gray-900 dark:text-white">
+                      书仓
                     </span>
-                    {isPremium && <PremiumBadge />}
-                    <svg
-                      className="w-4 h-4 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 9l-7 7-7-7"
-                      />
-                    </svg>
+                  </Link>
+                </div>
+
+                {/* Center: Navigation */}
+                <nav className="flex-1 flex justify-center space-x-1">
+                  {navItems.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          location.pathname === item.path
+                            ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300"
+                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        }`}
+                      >
+                        <Icon className="w-4 h-4 mr-1" />
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </nav>
+
+                {/* Right: Actions */}
+                <div className="flex-shrink-0 w-48 flex items-center justify-end space-x-3">
+                  {/* Theme toggle */}
+                  <button
+                    onClick={toggleTheme}
+                    className="p-2 rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    aria-label="Toggle theme"
+                  >
+                    {theme === "dark" ? (
+                      <Sun className="w-5 h-5" />
+                    ) : (
+                      <Moon className="w-5 h-5" />
+                    )}
                   </button>
 
-                  {/* Dropdown menu */}
-                  <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50 py-1">
-                    {/* Membership */}
-                    <Link
-                      to="/membership"
-                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      {vipChecked && isPlusVip ? (
-                        <>
-                          <Crown className="w-4 h-4 text-amber-500" />
-                          <span>会员中心</span>
-                        </>
-                      ) : (
-                        <>
-                          <Crown className="w-4 h-4 text-gray-400" />
-                          <span>开通会员</span>
-                        </>
-                      )}
-                    </Link>
-
-                    <button
-                      onClick={() => handleSync("incremental")}
-                      disabled={!!syncing}
-                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-                    >
-                      <Plus className="w-4 h-4" />
-                      <span>增量更新</span>
-                    </button>
-                    <button
-                      onClick={() => handleSync("full")}
-                      disabled={!!syncing}
-                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      <span>全量更新</span>
-                    </button>
-
-                    <div className="mx-3 my-1 border-t border-gray-100 dark:border-gray-700" />
-
-                    <Link
-                      to="/settings"
-                      className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      <Sparkles className="w-4 h-4" />
-                      <span>设置</span>
-                    </Link>
-
-                    {user?.role === "admin" && (
-                      <>
-                        <div className="mx-3 my-1 border-t border-gray-100 dark:border-gray-700" />
-                        <Link
-                          to="/admin"
-                          className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                        >
-                          <Shield className="w-4 h-4" />
-                          <span>管理后台</span>
-                        </Link>
-                      </>
-                    )}
-
-                    <div className="mx-3 my-1 border-t border-gray-100 dark:border-gray-700" />
-
-                    {/* Logout */}
-                    <button
-                      onClick={logout}
-                      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-                    >
+                  {/* User dropdown */}
+                  <div className="relative group">
+                    <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                      <span className="text-sm text-gray-700 dark:text-gray-200 font-medium">
+                        {user?.username}
+                      </span>
+                      {isPremium && <PremiumBadge />}
                       <svg
-                        className="w-4 h-4"
+                        className="w-4 h-4 text-gray-400"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -368,23 +288,130 @@ function AppLayout({ children }: { children: React.ReactNode }) {
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                          d="M19 9l-7 7-7-7"
                         />
                       </svg>
-                      <span>退出登录</span>
                     </button>
+
+                    {/* Dropdown menu */}
+                    <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50 py-1">
+                      {/* Membership */}
+                      <Link
+                        to="/membership"
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        {vipChecked && isPlusVip ? (
+                          <>
+                            <Crown className="w-4 h-4 text-amber-500" />
+                            <span>会员中心</span>
+                          </>
+                        ) : (
+                          <>
+                            <Crown className="w-4 h-4 text-gray-400" />
+                            <span>开通会员</span>
+                          </>
+                        )}
+                      </Link>
+
+                      <button
+                        onClick={() => handleSync("incremental")}
+                        disabled={!!syncing}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>增量更新</span>
+                      </button>
+                      <button
+                        onClick={() => handleSync("full")}
+                        disabled={!!syncing}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                        <span>全量更新</span>
+                      </button>
+
+                      <div className="mx-3 my-1 border-t border-gray-100 dark:border-gray-700" />
+
+                      <Link
+                        to="/settings"
+                        className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        <span>设置</span>
+                      </Link>
+
+                      {user?.role === "admin" && (
+                        <>
+                          <div className="mx-3 my-1 border-t border-gray-100 dark:border-gray-700" />
+                          <Link
+                            to="/admin"
+                            className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                          >
+                            <Shield className="w-4 h-4" />
+                            <span>管理后台</span>
+                          </Link>
+                        </>
+                      )}
+
+                      <div className="mx-3 my-1 border-t border-gray-100 dark:border-gray-700" />
+
+                      {/* Logout */}
+                      <button
+                        onClick={logout}
+                        className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                          />
+                        </svg>
+                        <span>退出登录</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        </header>
+          </header>
+
+          {/* Mobile Bottom Tab Bar */}
+          <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 safe-area-pb">
+            <div className="flex items-center justify-around h-16">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = location.pathname === item.path;
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`flex flex-col items-center justify-center gap-0.5 w-16 h-full ${
+                      isActive
+                        ? "text-blue-600 dark:text-blue-400"
+                        : "text-gray-500 dark:text-gray-400"
+                    }`}
+                  >
+                    <Icon className="w-5 h-5" />
+                    <span className="text-xs">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </nav>
+        </>
       )}
       <main
         className={
           isReaderPage || isLoginPage
             ? ""
-            : "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+            : "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8"
         }
       >
         {children}

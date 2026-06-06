@@ -273,9 +273,9 @@ export default function BookDetail() {
         </div>
 
         {/* 书籍基本信息 */}
-        <div className="flex flex-row items-start gap-4 sm:gap-6 md:gap-8 mb-8">
+        <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6 md:gap-8 mb-8">
           {/* 封面 */}
-          <div className="w-36 sm:w-44 md:w-52 flex-shrink-0 self-start">
+          <div className="w-32 sm:w-44 md:w-52 flex-shrink-0 self-center sm:self-start">
             <div className="aspect-[2/3] rounded-xl overflow-hidden shadow-lg">
               {book.coverUrl ? (
                 <img
@@ -410,8 +410,8 @@ export default function BookDetail() {
             <div className="flex flex-wrap gap-3 pt-2">
               <button
                 onClick={handleRead}
-                className="flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
-                style={{ width: 200 }}
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
+                style={{ maxWidth: 200 }}
               >
                 <BookOpen className="w-4 h-4" />
                 阅读
@@ -488,14 +488,14 @@ export default function BookDetail() {
         {metadata.authorIntro && (
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 mb-6 shadow-sm">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">作者简介</h2>
-            <div className="flex gap-4">
-              <div className="w-14 h-14 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
+            <div className="flex flex-col sm:flex-row gap-4">
+              <div className="w-14 h-14 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 self-center sm:self-start">
                 <span className="text-xl font-bold text-white">
                   {book.author?.charAt(0) || "?"}
                 </span>
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-gray-900 dark:text-white mb-1">{book.author}</h3>
+                <h3 className="font-semibold text-gray-900 dark:text-white mb-1 text-center sm:text-left">{book.author}</h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed line-clamp-4">
                   {metadata.authorIntro}
                 </p>

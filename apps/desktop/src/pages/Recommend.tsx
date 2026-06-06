@@ -112,11 +112,11 @@ export default function Recommend() {
                 <BookOpen className="w-5 h-5 text-blue-500" />
                 继续阅读
               </h2>
-              <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4">
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                 {inProgress.map((book) => (
                   <div
                     key={book.id}
-                    className="flex-shrink-0 w-36 cursor-pointer"
+                    className="cursor-pointer"
                     onClick={() => handleBookSelect(book)}
                   >
                     <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden relative shadow-sm hover:shadow-md transition-shadow">
@@ -172,9 +172,9 @@ export default function Recommend() {
                 </button>
               </div>
               {recLoading && recommended.length === 0 ? (
-                <div className="flex gap-4 flex-wrap">
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                   {Array.from({ length: 6 }).map((_, i) => (
-                    <div key={i} className="w-36">
+                    <div key={i}>
                       <div className="aspect-[2/3] bg-gray-200 dark:bg-gray-700 rounded-xl animate-pulse" />
                       <div className="mt-2 h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 animate-pulse" />
                       <div className="mt-1 h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2 animate-pulse" />
@@ -182,11 +182,11 @@ export default function Recommend() {
                   ))}
                 </div>
               ) : (
-                <div className="flex gap-4 flex-wrap">
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                   {recommended.map((book) => (
                     <div
                       key={book.id}
-                      className="w-36 cursor-pointer"
+                      className="cursor-pointer"
                       onClick={() => handleBookSelect(book)}
                     >
                       <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
@@ -226,11 +226,11 @@ export default function Recommend() {
                 <Clock className="w-5 h-5 text-green-500" />
                 最近阅读
               </h2>
-              <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4">
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
                 {recentlyRead.map((book) => (
                   <div
                     key={book.id}
-                    className="flex-shrink-0 w-36 cursor-pointer"
+                    className="cursor-pointer"
                     onClick={() => handleBookSelect(book)}
                   >
                     <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">

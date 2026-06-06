@@ -21,6 +21,7 @@ export interface DoubanBookInfo {
   tags?: string[];
   summary?: string;
   authorIntro?: string;
+  doubanUrl?: string;
 }
 
 @Injectable()
@@ -249,6 +250,7 @@ export class DoubanScraperService {
         tags: tags.length ? tags : undefined,
         summary,
         authorIntro,
+        doubanUrl,
       };
       this.logger.log(`[DoubanScraper] fetchBookDetail result for "${title}": ${JSON.stringify(result)}`);
       return result;
