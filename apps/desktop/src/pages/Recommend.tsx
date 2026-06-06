@@ -112,11 +112,11 @@ export default function Recommend() {
                 <BookOpen className="w-5 h-5 text-blue-500" />
                 继续阅读
               </h2>
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+              <div className="flex gap-4 overflow-x-auto pb-2 -mx-4 px-4">
                 {inProgress.map((book) => (
                   <div
                     key={book.id}
-                    className="cursor-pointer"
+                    className="flex-shrink-0 w-36 cursor-pointer"
                     onClick={() => handleBookSelect(book)}
                   >
                     <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden relative shadow-sm hover:shadow-md transition-shadow">

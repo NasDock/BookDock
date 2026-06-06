@@ -402,16 +402,26 @@ export default function BookDetail() {
               )}
               <div className="flex items-start gap-3">
                 <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">信息源</span>
-                <span className="text-sm text-gray-700 dark:text-gray-300">豆瓣</span>
+                {metadata.doubanUrl ? (
+                  <a
+                    href={metadata.doubanUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-500 hover:text-blue-600"
+                  >
+                    豆瓣 ↗
+                  </a>
+                ) : (
+                  <span className="text-sm text-gray-700 dark:text-gray-300">豆瓣</span>
+                )}
               </div>
             </div>
 
             {/* 操作按钮 */}
-            <div className="flex flex-wrap gap-3 pt-2">
+            <div className="flex gap-3 pt-2">
               <button
                 onClick={handleRead}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
-                style={{ maxWidth: 200 }}
+                className="flex-1 sm:flex-none sm:w-[200px] flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
               >
                 <BookOpen className="w-4 h-4" />
                 阅读

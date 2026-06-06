@@ -231,7 +231,7 @@ export function SettingsScreen() {
           )}
           <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
           {renderRow('information-circle-outline', '关于 BookDock',
-            <Text style={styles.rowValueText}>v1.0.0</Text>
+            <Text style={styles.rowValueText}>{require('../../package.json').version}</Text>
           )}
         </>
       )}

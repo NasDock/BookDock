@@ -723,7 +723,7 @@ export default function Settings() {
         <CardContent>
           <div className="space-y-2 text-sm text-gray-500 dark:text-gray-400">
             <p className="inline-flex items-center gap-1"><BookOpen className="w-4 h-4" /> BookDock 书仓</p>
-            <p>版本 1.0.0</p>
+            <p>版本 {import.meta.env.VITE_APP_VERSION || '0.0.0'}</p>
             <p>专为 NAS 用户打造的电子书阅读器</p>
           </div>
         </CardContent>

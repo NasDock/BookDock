@@ -24,6 +24,7 @@ export interface AggregatedBookMetadata {
     price?: string;
     ratingCount?: number;
     tags?: string[];
+    doubanUrl?: string;
   };
   error?: string;
 }
@@ -47,6 +48,7 @@ const FIELD_PRIORITY: Record<string, string[]> = {
   wikiUrl: ['wikipedia'],
   price: ['douban'],
   ratingCount: ['douban'],
+  doubanUrl: ['douban'],
 };
 
 interface SourceData {

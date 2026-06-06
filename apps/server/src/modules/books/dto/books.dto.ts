@@ -219,6 +219,15 @@ export class BookResponseDto {
 
   @ApiProperty()
   tags?: string[];
+
+  @ApiPropertyOptional()
+  readingProgress?: number;
+
+  @ApiPropertyOptional()
+  currentPage?: number;
+
+  @ApiPropertyOptional()
+  lastReadAt?: Date;
 }
 
 export class PaginatedBooksDto {

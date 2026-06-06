@@ -10,6 +10,7 @@ import {
   Alert,
   Modal,
   TextInput,
+  Linking,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -389,21 +390,27 @@ export function BookDetailScreen() {
               )}
               <View style={styles.metaRow}>
                 <Text style={[styles.metaLabel, { color: theme.colors.textSecondary }]}>信息源</Text>
-                <Text style={[styles.metaValue, { color: theme.colors.text }]}>豆瓣</Text>
+                {metadata.doubanUrl ? (
+                  <TouchableOpacity onPress={() => Linking.openURL(metadata.doubanUrl)}>
+                    <Text style={[styles.metaValue, { color: theme.colors.primary }]}>豆瓣 ↗</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={[styles.metaValue, { color: theme.colors.text }]}>豆瓣</Text>
+                )}
               </View>
             </View>
 
             {/* 操作按钮 */}
-            <View style={styles.actionButtons}>
+            <View style={[styles.actionButtons, !isLandscape && styles.actionButtonsPortrait]}>
               <TouchableOpacity
-                style={[styles.readButton, { backgroundColor: theme.colors.primary }]}
+                style={[styles.readButton, { backgroundColor: theme.colors.primary }, !isLandscape && styles.readButtonPortrait]}
                 onPress={handleRead}
               >
                 <Ionicons name="book-outline" size={18} color="#fff" />
                 <Text style={styles.readButtonText}>阅读</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.ttsButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
+                style={[styles.ttsButton, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }, !isLandscape && styles.ttsButtonPortrait]}
                 onPress={handleTTS}
               >
                 <Ionicons name="headset-outline" size={18} color={theme.colors.text} />
@@ -799,6 +806,9 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       gap: spacing.sm,
       marginTop: spacing.md,
     },
+    actionButtonsPortrait: {
+      width: '100%',
+    },
     readButton: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -808,6 +818,10 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       paddingHorizontal: spacing.xl,
       borderRadius: borderRadius.md,
       width: 200,
+    },
+    readButtonPortrait: {
+      flex: 1,
+      width: undefined,
     },
     readButtonText: {
       color: '#fff',
@@ -823,6 +837,10 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       paddingHorizontal: spacing.md,
       borderRadius: borderRadius.md,
       borderWidth: 1,
+    },
+    ttsButtonPortrait: {
+      width: 48,
+      paddingHorizontal: 0,
     },
     ttsButtonText: {
       fontSize: fontSizes.md,

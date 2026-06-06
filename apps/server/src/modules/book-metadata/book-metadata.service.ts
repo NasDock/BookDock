@@ -76,6 +76,7 @@ export class BookMetadataService {
       ...(data.wikiUrl !== undefined && { wikiUrl: data.wikiUrl }),
       ...(data.price !== undefined && { price: data.price }),
       ...(data.tags !== undefined && { tags: data.tags }),
+      ...(data.doubanUrl !== undefined && { doubanUrl: data.doubanUrl }),
     });
 
     // 5. 同步 tags 到 Tag 表（如果豆瓣抓取了 tags）
