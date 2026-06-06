@@ -65,7 +65,9 @@ export function AuthorDetailScreen() {
             setAuthor(authorRes.data);
           }
           if (booksRes.success && booksRes.data) {
-            setBooks(booksRes.data);
+            setBooks(Array.isArray(booksRes.data) ? booksRes.data : []);
+          } else {
+            setBooks([]);
           }
         }
       } catch (err) {

@@ -142,10 +142,7 @@ export function RootNavigator() {
             <Stack.Screen
               name="Notes"
               component={NotesScreen}
-              options={{
-                title: "笔记",
-                headerBackTitle: "返回",
-              }}
+              options={{ headerShown: false }}
             />
           </>
         )}

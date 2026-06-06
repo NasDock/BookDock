@@ -46,7 +46,9 @@ export default function AuthorDetail() {
             setAuthor(authorRes.data);
           }
           if (booksRes.success && booksRes.data) {
-            setBooks(booksRes.data);
+            setBooks(Array.isArray(booksRes.data) ? booksRes.data : []);
+          } else {
+            setBooks([]);
           }
         }
       } catch (err) {

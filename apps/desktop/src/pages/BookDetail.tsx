@@ -205,12 +205,17 @@ export default function BookDetail() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Header */}
         <div className="flex items-center justify-between mb-6 relative">
-          <button
-            onClick={() => navigate(-1)}
-            className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-3 min-w-0">
+            <button
+              onClick={() => navigate(-1)}
+              className="p-2 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors flex-shrink-0"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h1 className="text-lg font-semibold text-gray-900 dark:text-white truncate">
+              {book.title}
+            </h1>
+          </div>
           <div className="relative">
             <button
               onClick={() => setShowMoreMenu(!showMoreMenu)}
@@ -243,6 +248,17 @@ export default function BookDetail() {
                   <button
                     onClick={() => {
                       setShowMoreMenu(false);
+                      navigate(`/notes?bookId=${book.id}`);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                  >
+                    <StickyNote className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                    <span className="text-sm text-gray-700 dark:text-gray-200">查看笔记</span>
+                  </button>
+                  <div className="border-t border-gray-100 dark:border-gray-700" />
+                  <button
+                    onClick={() => {
+                      setShowMoreMenu(false);
                       handleOpenCollectionModal();
                     }}
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
@@ -259,7 +275,7 @@ export default function BookDetail() {
         {/* 书籍基本信息 */}
         <div className="flex flex-row items-start gap-4 sm:gap-6 md:gap-8 mb-8">
           {/* 封面 */}
-          <div className="w-28 sm:w-40 md:w-56 flex-shrink-0">
+          <div className="w-36 sm:w-44 md:w-52 flex-shrink-0 self-start">
             <div className="aspect-[2/3] rounded-xl overflow-hidden shadow-lg">
               {book.coverUrl ? (
                 <img
@@ -281,10 +297,6 @@ export default function BookDetail() {
 
           {/* 信息 */}
           <div className="min-w-0 flex-1 space-y-4">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
-              {book.title}
-            </h1>
-
             {/* 书籍信息 */}
             <div className="space-y-2 pt-1">
               {/* 作者 - 优先使用 authors 数组 */}
@@ -388,30 +400,28 @@ export default function BookDetail() {
                   <span className="text-sm text-gray-700 dark:text-gray-300">{(book.fileSize / 1024 / 1024).toFixed(1)} MB</span>
                 </div>
               )}
+              <div className="flex items-start gap-3">
+                <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">信息源</span>
+                <span className="text-sm text-gray-700 dark:text-gray-300">豆瓣</span>
+              </div>
             </div>
 
             {/* 操作按钮 */}
             <div className="flex flex-wrap gap-3 pt-2">
               <button
                 onClick={handleRead}
-                className="flex items-center gap-2 px-6 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
+                className="flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
+                style={{ width: 200 }}
               >
                 <BookOpen className="w-4 h-4" />
                 阅读
               </button>
               <button
                 onClick={handleTTS}
-                className="flex items-center gap-2 px-6 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition-colors border border-gray-200 dark:border-gray-600"
+                className="flex items-center justify-center px-3 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 rounded-lg font-medium transition-colors border border-gray-200 dark:border-gray-600"
+                title="听书"
               >
                 <Headphones className="w-4 h-4" />
-                听书
-              </button>
-              <button
-                onClick={() => navigate(`/notes?bookId=${book.id}`)}
-                className="flex items-center gap-2 px-6 py-2.5 bg-amber-50 dark:bg-gray-700 hover:bg-amber-100 dark:hover:bg-gray-600 text-amber-700 dark:text-amber-300 rounded-lg font-medium transition-colors border border-amber-200 dark:border-gray-600"
-              >
-                <StickyNote className="w-4 h-4" />
-                查看笔记
               </button>
             </div>
           </div>

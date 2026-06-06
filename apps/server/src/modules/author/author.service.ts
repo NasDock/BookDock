@@ -82,10 +82,38 @@ export class AuthorService {
       },
     });
     if (!author) throw new NotFoundException('Author not found');
-    return author.books.map((ba) => ({
+
+    // 通过 book_authors 关联获取的书籍
+    const linkedBooks = author.books.map((ba) => ({
       ...ba.book,
       fileSize: ba.book.fileSize ? Number(ba.book.fileSize) : undefined,
     }));
+
+    // 兜底：通过 book.author 字段匹配补充（兼容旧数据）
+    const fallbackBooks = await this.prisma.book.findMany({
+      where: {
+        isDeleted: false,
+        author: { contains: author.name },
+        NOT: { id: { in: linkedBooks.map((b) => b.id) } },
+      },
+      select: {
+        id: true,
+        title: true,
+        author: true,
+        coverUrl: true,
+        format: true,
+        fileSize: true,
+        readingProgress: true,
+      },
+    });
+
+    return [
+      ...linkedBooks,
+      ...fallbackBooks.map((b) => ({
+        ...b,
+        fileSize: b.fileSize ? Number(b.fileSize) : undefined,
+      })),
+    ];
   }
 
   async createAuthor(dto: {

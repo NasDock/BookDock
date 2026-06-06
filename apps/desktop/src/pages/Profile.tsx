@@ -131,17 +131,6 @@ export default function Profile() {
     }
   }, []);
 
-  const handleJumpToBook = useCallback((note: any) => {
-    if (!note.bookId) return;
-    const params = new URLSearchParams();
-    if (note.cfi) params.set("cfi", note.cfi);
-    if (note.percentage !== undefined && note.percentage !== null) {
-      params.set("percentage", String(note.percentage));
-    }
-    const query = params.toString();
-    navigate(`/book/${note.bookId}${query ? "?" + query : ""}`);
-  }, [navigate]);
-
   useEffect(() => {
     fetchData();
   }, [fetchData]);
@@ -273,7 +262,7 @@ export default function Profile() {
                         note.color ? "" : getBookGradient(note.bookTitle || "")
                       }`}
                       style={note.color ? { background: note.color } : undefined}
-                      onClick={() => handleJumpToBook(note)}
+
                     >
                       <BookOpen className="w-5 h-5 text-white" />
                     </div>
@@ -283,7 +272,7 @@ export default function Profile() {
                         <div className="flex items-center gap-2 min-w-0">
                           <span
                             className="text-sm font-medium text-gray-900 dark:text-white truncate cursor-pointer hover:text-blue-500"
-                            onClick={() => handleJumpToBook(note)}
+      
                           >
                             {note.bookTitle || "未知名称"}
                           </span>
@@ -316,7 +305,7 @@ export default function Profile() {
 
                       {note.text && (
                         <div className="mb-2">
-                          <p className="text-sm text-gray-700 dark:text-gray-300 italic line-clamp-2 border-l-2 border-amber-400 pl-3">
+                          <p className="text-sm text-gray-700 dark:text-gray-300 italic border-l-2 border-amber-400 pl-3">
                             {note.text}
                           </p>
                         </div>
@@ -328,22 +317,13 @@ export default function Profile() {
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between mt-2">
-                        <div className="flex items-center gap-3 text-xs text-gray-400">
-                          {(note.percentage !== undefined && note.percentage !== null) && (
-                            <span>位置 {Math.round(note.percentage)}%</span>
-                          )}
-                          {note.cfi && (
-                            <span className="truncate max-w-[200px]">CFI: {note.cfi}</span>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => handleJumpToBook(note)}
-                          className="flex items-center gap-1 px-3 py-1 text-xs text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-                        >
-                          <BookOpen className="w-3 h-3" />
-                          跳转到阅读位置
-                        </button>
+                      <div className="flex items-center gap-3 text-xs text-gray-400 mt-2">
+                        {(note.percentage !== undefined && note.percentage !== null) && (
+                          <span>位置 {Math.round(note.percentage)}%</span>
+                        )}
+                        {note.cfi && (
+                          <span className="truncate max-w-[200px]">CFI: {note.cfi}</span>
+                        )}
                       </div>
                     </div>
                   </div>

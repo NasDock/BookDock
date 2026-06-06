@@ -89,16 +89,6 @@ export function NotesScreen() {
     ]);
   }, []);
 
-  const handleNavigateToReader = useCallback((note: Note) => {
-    navigation.navigate('Reader', {
-      book: {
-        id: note.bookId,
-        title: note.bookTitle || '未知书籍',
-        author: note.author || '',
-      } as any,
-    });
-  }, [navigation]);
-
   const handleSearchByAuthor = useCallback(() => {
     if (!searchAuthor.trim()) {
       Alert.alert('提示', '请输入作者名称');
@@ -124,11 +114,9 @@ export function NotesScreen() {
   );
 
   const renderNoteItem = (note: Note) => (
-    <TouchableOpacity
+    <View
       key={note.id}
       style={[styles.noteCard, { backgroundColor: theme.colors.surface }]}
-      onPress={() => handleNavigateToReader(note)}
-      activeOpacity={0.8}
     >
       {/* 书名和作者 */}
       <View style={styles.noteHeader}>
@@ -145,7 +133,7 @@ export function NotesScreen() {
 
       {/* 选中的文本 */}
       <View style={[styles.quoteBox, { backgroundColor: theme.colors.background, borderLeftColor: theme.colors.primary }]}>
-        <Text style={[styles.quoteText, { color: theme.colors.text }]} numberOfLines={3}>
+        <Text style={[styles.quoteText, { color: theme.colors.text }]}>
           {note.text}
         </Text>
       </View>
@@ -154,7 +142,7 @@ export function NotesScreen() {
       {note.note && (
         <View style={styles.noteContentRow}>
           <Ionicons name="create-outline" size={14} color={theme.colors.textSecondary} />
-          <Text style={[styles.noteContent, { color: theme.colors.textSecondary }]} numberOfLines={2}>
+          <Text style={[styles.noteContent, { color: theme.colors.textSecondary }]}>
             {note.note}
           </Text>
         </View>
@@ -183,7 +171,7 @@ export function NotesScreen() {
           )}
         </TouchableOpacity>
       </View>
-    </TouchableOpacity>
+    </View>
   );
 
   return (

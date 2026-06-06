@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Image,
   ActivityIndicator,
-  Dimensions,
   Alert,
   Modal,
   TextInput,
@@ -18,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
+import { useOrientation } from '../hooks/useOrientation';
 import { getCoverImageUrl } from '../services/api';
 import { getApiClient, type Book, type Collection } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
@@ -53,8 +53,7 @@ function parseMetadata(metadata: string | object | undefined | any) {
   }
 }
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const IS_TABLET = SCREEN_WIDTH >= 700;
+
 
 export function BookDetailScreen() {
   const navigation = useNavigation<NavigationProp>();
@@ -76,8 +75,10 @@ export function BookDetailScreen() {
   const [newCollectionName, setNewCollectionName] = useState('');
   const [addingCollectionId, setAddingCollectionId] = useState<string | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
-  const [showHeaderTitle, setShowHeaderTitle] = useState(false);
   const titleRef = useRef<View>(null);
+
+  const orientation = useOrientation();
+  const isLandscape = orientation.isLandscape;
 
   const metadata = useMemo(() => parseMetadata((book as any).metadata), [(book as any).metadata]);
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -147,8 +148,7 @@ export function BookDetailScreen() {
   }, [navigation]);
 
   const handleScroll = useCallback((event: { nativeEvent: { contentOffset: { y: number } } }) => {
-    const y = event.nativeEvent.contentOffset.y;
-    setShowHeaderTitle(y > 80);
+    // scroll handler
   }, []);
 
   const handleOpenCollectionModal = useCallback(async () => {
@@ -210,7 +210,7 @@ export function BookDetailScreen() {
   }, [newCollectionName, book.id]);
 
   // 封面尺寸
-  const coverWidth = IS_TABLET ? 200 : 160;
+  const coverWidth = isLandscape ? 180 : 160;
   const coverHeight = coverWidth * 1.5;
 
   // 渲染封面
@@ -254,11 +254,9 @@ export function BookDetailScreen() {
           <TouchableOpacity onPress={handleBack} style={styles.headerButton}>
             <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
           </TouchableOpacity>
-          {showHeaderTitle && (
-            <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>
-              {book.title}
-            </Text>
-          )}
+          <Text style={[styles.headerTitle, { color: theme.colors.text }]} numberOfLines={1}>
+            {book.title}
+          </Text>
         </View>
         <TouchableOpacity onPress={() => setShowMoreMenu(true)} style={styles.headerButton}>
           <Ionicons name="ellipsis-vertical" size={22} color={theme.colors.text} />
@@ -271,22 +269,16 @@ export function BookDetailScreen() {
         scrollEventThrottle={100}
       >
         {/* 书籍基本信息 */}
-        <View style={[styles.bookInfoSection, IS_TABLET && styles.bookInfoSectionTablet]}>
+        <View style={[styles.bookInfoSection, isLandscape && styles.bookInfoSectionLandscape]}>
           {/* 封面 */}
-          {IS_TABLET ? (
+          {isLandscape ? (
             <View style={styles.coverWrapper}>{renderCover(coverWidth, coverHeight)}</View>
           ) : (
             <View style={styles.coverWrapperCenter}>{renderCover(coverWidth, coverHeight)}</View>
           )}
 
           {/* 信息区 */}
-          <View style={[styles.infoSection, IS_TABLET && styles.infoSectionTablet]}>
-            <View ref={titleRef}>
-              <Text style={[styles.bookTitle, { color: theme.colors.text }]} numberOfLines={2}>
-                {book.title}
-              </Text>
-            </View>
-
+          <View style={[styles.infoSection, isLandscape && styles.infoSectionLandscape]}>
             {/* 书籍信息 */}
             <View style={styles.bookMetaList}>
               {/* 作者 - 优先使用 authors 数组 */}
@@ -395,6 +387,10 @@ export function BookDetailScreen() {
                   </Text>
                 </View>
               )}
+              <View style={styles.metaRow}>
+                <Text style={[styles.metaLabel, { color: theme.colors.textSecondary }]}>信息源</Text>
+                <Text style={[styles.metaValue, { color: theme.colors.text }]}>豆瓣</Text>
+              </View>
             </View>
 
             {/* 操作按钮 */}
@@ -411,7 +407,6 @@ export function BookDetailScreen() {
                 onPress={handleTTS}
               >
                 <Ionicons name="headset-outline" size={18} color={theme.colors.text} />
-                <Text style={[styles.ttsButtonText, { color: theme.colors.text }]}>听书</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -741,7 +736,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       paddingVertical: spacing.md,
       gap: spacing.lg,
     },
-    bookInfoSectionTablet: {
+    bookInfoSectionLandscape: {
       flexDirection: 'row',
       alignItems: 'flex-start',
       gap: spacing.xl,
@@ -768,7 +763,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     infoSection: {
       gap: spacing.sm,
     },
-    infoSectionTablet: {
+    infoSectionLandscape: {
       flex: 1,
       gap: spacing.md,
     },
@@ -812,7 +807,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       paddingVertical: spacing.sm,
       paddingHorizontal: spacing.xl,
       borderRadius: borderRadius.md,
-      flex: 1,
+      width: 200,
     },
     readButtonText: {
       color: '#fff',
@@ -825,10 +820,9 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       justifyContent: 'center',
       gap: spacing.xs,
       paddingVertical: spacing.sm,
-      paddingHorizontal: spacing.xl,
+      paddingHorizontal: spacing.md,
       borderRadius: borderRadius.md,
       borderWidth: 1,
-      flex: 1,
     },
     ttsButtonText: {
       fontSize: fontSizes.md,

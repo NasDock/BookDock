@@ -269,11 +269,9 @@ export function ProfileScreen() {
               <Text style={[styles.emptyText, { color: theme.colors.textSecondary }]}>暂无笔记</Text>
             ) : (
               notes.map((note) => (
-                <TouchableOpacity
+                <View
                   key={note.id}
                   style={[styles.noteCard, { backgroundColor: theme.colors.surface }]}
-                  onPress={() => navigation.navigate('Reader', { book: { id: note.bookId, title: note.bookTitle || '未知书籍', author: note.author || '' } as Book })}
-                  activeOpacity={0.8}
                 >
                   <View style={styles.noteHeader}>
                     <Text style={[styles.noteBookTitle, { color: theme.colors.text }]} numberOfLines={1}>
@@ -284,19 +282,19 @@ export function ProfileScreen() {
                     </Text>
                   </View>
                   <View style={[styles.noteTextBox, { backgroundColor: theme.colors.background }]}>
-                    <Text style={[styles.noteText, { color: theme.colors.text }]} numberOfLines={2}>
+                    <Text style={[styles.noteText, { color: theme.colors.text }]}>
                       {note.text}
                     </Text>
                   </View>
                   {note.note && (
-                    <Text style={[styles.noteContent, { color: theme.colors.textSecondary }]} numberOfLines={2}>
+                    <Text style={[styles.noteContent, { color: theme.colors.textSecondary }]}>
                       {note.note}
                     </Text>
                   )}
                   <Text style={[styles.noteDate, { color: theme.colors.textSecondary }]}>
                     {new Date(note.createdAt).toLocaleString('zh-CN')}
                   </Text>
-                </TouchableOpacity>
+                </View>
               ))
             )}
           </View>

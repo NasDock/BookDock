@@ -31,15 +31,13 @@ export class AuthorController {
   @Get(':id')
   @ApiOperation({ summary: 'Get author detail' })
   async getAuthor(@Param('id', ParseUUIDPipe) id: string) {
-    const data = await this.authorService.getAuthor(id);
-    return { success: true, data };
+    return await this.authorService.getAuthor(id);
   }
 
   @Get(':id/books')
   @ApiOperation({ summary: 'Get books by author' })
   async getAuthorBooks(@Param('id', ParseUUIDPipe) id: string) {
-    const data = await this.authorService.getAuthorBooks(id);
-    return { success: true, data };
+    return await this.authorService.getAuthorBooks(id);
   }
 
   @Post()

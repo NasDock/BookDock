@@ -401,6 +401,7 @@ export function LibraryScreen() {
         data={filteredBooks}
         keyExtractor={(item) => item.id}
         numColumns={gridColumns}
+        key={`grid-${gridColumns}`}
         renderItem={renderBookItem}
         ListHeaderComponent={renderHeader}
         contentContainerStyle={styles.listContentContainer}
