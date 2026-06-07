@@ -1176,6 +1176,17 @@ export function ReaderScreen() {
   const lastScrollYRef = useRef(0);
   const topBarAnim = useRef(new Animated.Value(1)).current;
   const bottomBarAnim = useRef(new Animated.Value(1)).current;
+  // Mirror of `showBars` that the WebView message handler can read without
+  // being part of its useCallback deps. This keeps the WebView's `onMessage`
+  // prop reference stable across scroll-driven re-renders — without it, the
+  // bar auto-hide would force handleMessage to recreate on every scroll,
+  // which in turn re-pushes the prop to the native WebView and can trigger
+  // a re-evaluation of the page (snapping the user back to the saved
+  // position).
+  const showBarsRef = useRef(true);
+  useEffect(() => {
+    showBarsRef.current = showBars;
+  }, [showBars]);
 
   // Stable WebView source object. The scroll-mode WebView re-renders
   // frequently as scroll progress updates; without this memo the inline
@@ -1187,10 +1198,23 @@ export function ReaderScreen() {
     () => ({ html: htmlContent }),
     [htmlContent],
   );
-  // Track whether the WebView has already restored its initial position.
-  // Without this guard, anything that re-runs `injectedJS` (e.g. a reload
-  // triggered by a stale source reference) would snap the user back.
-  const initialPositionRestoredRef = useRef(false);
+  const pagedWebViewSource = useMemo(
+    () => ({ html: pagedHtmlContent }),
+    [pagedHtmlContent],
+  );
+  // Stable refs for props that would otherwise be a new reference on every
+  // render. React uses shallow prop comparison inside the WebView, and any
+  // new array / function reference can re-trigger native prop forwarding,
+  // which on Android may re-evaluate the WebView (snapping it back to the
+  // initial scroll offset). These memos make the props truly stable.
+  const originWhitelistAll = useMemo(() => ['*'], []);
+  const handleScrollLoadEnd = useCallback(() => {
+    webViewReadyRef.current = true;
+  }, []);
+  const handleScrollError = useCallback((e: any) => {
+    console.error('WebView error:', e.nativeEvent);
+    setError('渲染书籍内容失败');
+  }, []);
 
   // Reader theme colors for native UI bars
   const readerTheme = READER_THEMES.find(tm => tm.key === readerStore.mode) || READER_THEMES[0];
@@ -1232,6 +1256,29 @@ export function ReaderScreen() {
       useNativeDriver: true,
     }).start();
   }, [topBarAnim, bottomBarAnim]);
+
+  // Toggle auto-scroll on/off in the WebView. Only meaningful in scroll
+  // mode. Reused by both the toolbar button and the middle-area tap
+  // gesture (see handleMessage).
+  const handleToggleAutoScroll = useCallback(() => {
+    const next = !readerStore.autoScrollEnabled;
+    readerStore.setAutoScrollEnabled(next);
+    if (readerStore.readingMode !== 'scroll') return;
+    if (next) {
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          if (window.__autoScrollSetSpeed) window.__autoScrollSetSpeed(${readerStore.autoScrollSpeed});
+          if (window.__autoScrollStart) window.__autoScrollStart();
+        })();
+        true;
+      `);
+    } else {
+      webViewRef.current?.injectJavaScript(`
+        (function() { if (window.__autoScrollStop) window.__autoScrollStop(); })();
+        true;
+      `);
+    }
+  }, [readerStore]);
 
   // Load specific chapter for TXT/EPUB/MOBI books
   const loadChapter = useCallback(async (chapterIndex: number, scrollOffset = 0) => {
@@ -1603,7 +1650,7 @@ export function ReaderScreen() {
         }
       } else if (data.type === 'centerTap') {
         // Paged mode: tap the middle of the page toggles chrome bars
-        animateBars(!showBars);
+        animateBars(!showBarsRef.current);
       } else if (data.type === 'scrollDirection') {
         // While auto-scrolling, the host pins the toolbars visible to
         // prevent flicker. Skip hide/show driven by the auto-scroll motion.
@@ -1621,19 +1668,22 @@ export function ReaderScreen() {
           setShowActionSheet(true);
         }
       } else if (data.type === 'click') {
-        const { x, y } = data;
+        const { y } = data;
         const screenHeight = Dimensions.get('window').height;
         const topZone = screenHeight * 0.15;
         const bottomZone = screenHeight * 0.85;
-        // Click in top or bottom zone toggles bars; middle zone does nothing
+        // Top / bottom 15% -> toggle the action bars.
+        // Middle 70% -> toggle auto-scroll (start / stop).
         if (y < topZone || y > bottomZone) {
-          animateBars(!showBars);
+          animateBars(!showBarsRef.current);
+        } else {
+          handleToggleAutoScroll();
         }
       }
     } catch {
       // Ignore parse errors
     }
-  }, [book.id, readerStore.autoSaveProgress, libraryStore, animateBars, showBars, chapters.length, currentChapter, loadChapter, readerStore.autoScrollEnabled]);
+  }, [book.id, readerStore.autoSaveProgress, libraryStore, animateBars, chapters.length, currentChapter, loadChapter, readerStore.autoScrollEnabled, handleToggleAutoScroll]);
 
   const requestCurrentPositionSave = useCallback(() => {
     webViewRef.current?.injectJavaScript(`
@@ -1681,10 +1731,13 @@ export function ReaderScreen() {
   const injectedJS = useMemo(() => `
     (function() {
       const initialScrollOffset = ${Math.max(0, Math.round(savedScrollOffset))};
-      // Whether we have already restored the saved position. Set true on
-      // first restore so any subsequent re-invocation (e.g. caused by
-      // WebView reload or repeated rAF calls) becomes a no-op.
-      let initialPositionRestored = false;
+      // Persistent "has restored" flag stored on window so it survives
+      // even if the script gets re-injected (e.g. on Android WebView
+      // re-evaluation of the injectedJavaScript prop). Once we've
+      // restored the initial position once, never snap the user back.
+      if (typeof window.__readerInitialPositionRestored !== 'boolean') {
+        window.__readerInitialPositionRestored = false;
+      }
       let lastScrollTop = -1;
       let lastScrollDirection = '';
       let directionAnchor = 0;
@@ -1736,8 +1789,14 @@ export function ReaderScreen() {
         }
       };
 
-      const restorePosition = (force) => {
-        if (initialPositionRestored && !force) return;
+      const restorePosition = () => {
+        // Once we've restored once, never snap back. This is keyed on a
+        // window-level flag so re-injection of this script (which can
+        // happen on Android when the injectedJavaScript prop changes)
+        // does not reset the guard and jerk the user back to the saved
+        // offset.
+        if (window.__readerInitialPositionRestored) return;
+        window.__readerInitialPositionRestored = true;
         if (initialScrollOffset > 0) {
           // Defer one frame so the browser has a chance to lay out the
           // content (otherwise scrollHeight may still be the placeholder
@@ -1752,11 +1811,9 @@ export function ReaderScreen() {
               lastScrollTop = initialScrollOffset;
               directionAnchor = initialScrollOffset;
             }
-            initialPositionRestored = true;
             sendProgress();
           });
         } else {
-          initialPositionRestored = true;
           sendProgress();
         }
       };
@@ -1803,22 +1860,54 @@ export function ReaderScreen() {
         }, delay);
       }
 
+      // Track touchstart position so we can distinguish a tap (no movement)
+      // from an actual scroll gesture. Pausing auto-scroll on a bare tap
+      // would feel like "the scroll stopped" every time the user tapped
+      // the lower area to toggle the action bars.
+      let touchStartX = 0;
+      let touchStartY = 0;
+      let touchActive = false;
+      let didMove = false;
+
       document.addEventListener('touchstart', function(e) {
         lastReportedSelection = '';
         if (selectionReportTimer) {
           clearTimeout(selectionReportTimer);
           selectionReportTimer = null;
         }
-        // User touched the page — pause any active auto-scroll until they
-        // release AND don't touch the page again for a short grace period.
-        autoScroll.pause();
+        if (e.touches.length === 1) {
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+          touchActive = true;
+          didMove = false;
+        }
+      }, { passive: true });
+
+      document.addEventListener('touchmove', function(e) {
+        if (!touchActive || e.touches.length !== 1) return;
+        const dx = e.touches[0].clientX - touchStartX;
+        const dy = e.touches[0].clientY - touchStartY;
+        if (Math.abs(dx) + Math.abs(dy) > 8) {
+          didMove = true;
+        }
+        // Pause auto-scroll only once we have evidence the user is
+        // intentionally scrolling (not just tapping to toggle bars).
+        if (didMove) {
+          autoScroll.pause();
+        }
       }, { passive: true });
 
       document.addEventListener('touchend', function() {
         reportSelectionAfterSettled(350);
-        // Resume auto-scroll after a short grace period (unless the user
-        // explicitly disabled it via the toolbar).
-        autoScroll.scheduleResume(1200);
+        // Only schedule an auto-scroll resume if the user actually
+        // scrolled. A bare tap (e.g. tapping the lower area to toggle
+        // bars) should leave the auto-scroll state alone — if the engine
+        // was running, it continues; if it was stopped, it stays stopped.
+        if (didMove) {
+          autoScroll.scheduleResume(1200);
+        }
+        touchActive = false;
+        didMove = false;
       });
 
       document.addEventListener('mouseup', function() {
@@ -1948,15 +2037,13 @@ export function ReaderScreen() {
       }
 
       requestAnimationFrame(() => {
+        // Try once. The persistent window-level guard means any retry
+        // would be a no-op, so we only need a single attempt.
         restorePosition();
-        // Second attempt after images / fonts settle, in case the first
-        // run found an empty content height. The force flag lets the retry
-        // bypass the already-restored guard exactly once.
-        setTimeout(function() { restorePosition(true); }, 250);
       });
     })();
     true;
-  `, [savedScrollOffset, readerStore.autoScrollEnabled, readerStore.autoScrollSpeed, htmlContent]);
+  `, [savedScrollOffset, htmlContent]);
 
   const handleShare = useCallback(async () => {
     try {
@@ -2179,27 +2266,6 @@ export function ReaderScreen() {
     }
     navigation.navigate('TTSScreen', { book });
   }, [navigation, book]);
-
-  // Toggle auto-scroll on/off in the WebView. Only meaningful in scroll mode.
-  const handleToggleAutoScroll = useCallback(() => {
-    const next = !readerStore.autoScrollEnabled;
-    readerStore.setAutoScrollEnabled(next);
-    if (readerStore.readingMode !== 'scroll') return;
-    if (next) {
-      webViewRef.current?.injectJavaScript(`
-        (function() {
-          if (window.__autoScrollSetSpeed) window.__autoScrollSetSpeed(${readerStore.autoScrollSpeed});
-          if (window.__autoScrollStart) window.__autoScrollStart();
-        })();
-        true;
-      `);
-    } else {
-      webViewRef.current?.injectJavaScript(`
-        (function() { if (window.__autoScrollStop) window.__autoScrollStop(); })();
-        true;
-      `);
-    }
-  }, [readerStore]);
 
   // Push speed changes to the WebView when the user adjusts the slider.
   useEffect(() => {
@@ -2444,15 +2510,15 @@ export function ReaderScreen() {
         <WebView
           key={`paged-${currentChapter}`}
           ref={webViewRef}
-          source={{ html: pagedHtmlContent }}
+          source={pagedWebViewSource}
           style={styles.webview}
-          originWhitelist={['*']}
+          originWhitelist={originWhitelistAll}
           javaScriptEnabled={true}
           domStorageEnabled={true}
           scrollEnabled={false}
           showsVerticalScrollIndicator={false}
           onMessage={handleMessage}
-          onLoadEnd={() => { webViewReadyRef.current = true; }}
+          onLoadEnd={handleScrollLoadEnd}
           onError={(e) => {
             console.error('Paged reader error:', e.nativeEvent);
             setError('渲染翻页内容失败');
@@ -2468,15 +2534,12 @@ export function ReaderScreen() {
           onMessage={handleMessage}
           scrollEnabled={true}
           showsVerticalScrollIndicator={true}
-          originWhitelist={['*']}
+          originWhitelist={originWhitelistAll}
           javaScriptEnabled={true}
           domStorageEnabled={true}
           onTouchStart={handleWebViewClick}
-          onLoadEnd={() => { webViewReadyRef.current = true; }}
-          onError={(e) => {
-            console.error('WebView error:', e.nativeEvent);
-            setError('渲染书籍内容失败');
-          }}
+          onLoadEnd={handleScrollLoadEnd}
+          onError={handleScrollError}
         />
       )}
 
