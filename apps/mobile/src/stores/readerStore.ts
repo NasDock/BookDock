@@ -3,6 +3,8 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ReaderMode } from '@bookdock/ebook-reader';
 
+export type ReadingMode = 'scroll' | 'page';
+
 interface ReaderState {
   fontSize: number;
   fontFamily: string;
@@ -10,8 +12,11 @@ interface ReaderState {
   margin: number;
   mode: ReaderMode;
   textDirection: 'ltr' | 'rtl';
+  readingMode: ReadingMode;
   currentBookId: string | null;
   autoSaveProgress: boolean;
+  autoScrollEnabled: boolean;
+  autoScrollSpeed: number; // 1-100 (px / 50ms tick)
 
   // Actions
   setFontSize: (size: number) => void;
@@ -20,8 +25,11 @@ interface ReaderState {
   setMargin: (margin: number) => void;
   setMode: (mode: ReaderMode) => void;
   setTextDirection: (direction: 'ltr' | 'rtl') => void;
+  setReadingMode: (mode: ReadingMode) => void;
   setCurrentBookId: (bookId: string | null) => void;
   setAutoSaveProgress: (autoSave: boolean) => void;
+  setAutoScrollEnabled: (enabled: boolean) => void;
+  setAutoScrollSpeed: (speed: number) => void;
   resetToDefaults: () => void;
 }
 
@@ -32,8 +40,11 @@ const defaultConfig = {
   margin: 16,
   mode: 'light' as ReaderMode,
   textDirection: 'ltr' as const,
+  readingMode: 'scroll' as ReadingMode,
   currentBookId: null,
   autoSaveProgress: true,
+  autoScrollEnabled: false,
+  autoScrollSpeed: 30,
 };
 
 export const useReaderStore = create<ReaderState>()(
@@ -47,8 +58,11 @@ export const useReaderStore = create<ReaderState>()(
       setMargin: (margin) => set({ margin }),
       setMode: (mode) => set({ mode }),
       setTextDirection: (textDirection) => set({ textDirection }),
+      setReadingMode: (readingMode) => set({ readingMode }),
       setCurrentBookId: (currentBookId) => set({ currentBookId }),
       setAutoSaveProgress: (autoSaveProgress) => set({ autoSaveProgress }),
+      setAutoScrollEnabled: (autoScrollEnabled) => set({ autoScrollEnabled }),
+      setAutoScrollSpeed: (autoScrollSpeed) => set({ autoScrollSpeed: Math.max(1, Math.min(100, Math.round(autoScrollSpeed))) }),
       resetToDefaults: () => set(defaultConfig),
     }),
     {

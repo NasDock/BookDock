@@ -565,6 +565,576 @@ function generateReaderHtml(
 </html>`;
 }
 
+// Generate HTML for "page-flip" reading mode. Splits content into page-sized
+// blocks and renders one at a time with swipe/tap navigation. Includes a
+// book-like 3D flip animation: a flipping "leaf" element overlays the current
+// page and rotates around the Y axis while the next page fades in behind.
+function generatePagedReaderHtml(
+  bookTitle: string,
+  bookAuthor: string,
+  content: string,
+  fileType: string,
+  config: ReaderConfig,
+  initialPageOffset: number,
+): string {
+  const isDark = config.theme === 'dark';
+  const isSepia = config.theme === 'sepia';
+  const bgColor = isDark ? '#1a1a1a' : isSepia ? '#f4ecd8' : '#ffffff';
+  const pageBg = isDark ? '#222222' : isSepia ? '#fbf3e0' : '#fdfdfd';
+  const textColor = isDark ? '#e0e0e0' : '#1a1a1a';
+  const linkColor = isDark ? '#6b9fff' : '#0066cc';
+  const shadowColor = isDark ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.18)';
+  const highlightColor = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
+
+  const safeContent = content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta charset="UTF-8">
+  <title>${bookTitle}</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body, p, span, div, h1, h2, h3, h4, h5, h6, article, section {
+      -webkit-user-select: text !important;
+      user-select: text !important;
+      -webkit-touch-callout: default !important;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: ${bgColor};
+      color: ${textColor};
+    }
+    #stage {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      overflow: hidden;
+      background: ${bgColor};
+      perspective: 1600px;
+      perspective-origin: 50% 50%;
+    }
+    /* The two stacked "leaf" pages. Only one is visible at a time. */
+    .leaf {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: ${config.margin}px;
+      padding-top: ${config.margin + 56}px;
+      padding-bottom: ${config.margin + 72}px;
+      font-family: ${config.fontFamily};
+      font-size: ${config.fontSize}px;
+      line-height: ${config.lineHeight};
+      color: ${textColor};
+      background: ${pageBg};
+      text-align: justify;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+      overflow: hidden;
+      touch-action: pan-y;
+      -webkit-user-select: text;
+      user-select: text;
+      -webkit-overflow-scrolling: touch;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+    /* The current "page" being shown (the bottom of the stack). */
+    #current {
+      z-index: 1;
+    }
+    /* The "flipping" leaf overlay, parked off-screen to the right by default. */
+    #flipping {
+      z-index: 3;
+      transform-origin: 0% 50%;
+      transform: translateX(100%) rotateY(0deg);
+      box-shadow: -8px 0 24px ${shadowColor};
+      will-change: transform;
+      pointer-events: none;
+    }
+    #flipping.flip-next {
+      animation: flipNext 420ms cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
+    }
+    #flipping.flip-next-rubber {
+      animation: flipNextRubber 220ms cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
+    }
+    #flipping.flip-prev {
+      animation: flipPrev 420ms cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
+    }
+    #flipping.flip-prev-rubber {
+      animation: flipPrevRubber 220ms cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
+    }
+    #flipping.flip-next-cancel {
+      animation: flipNextCancel 240ms cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
+    }
+    #flipping.flip-prev-cancel {
+      animation: flipPrevCancel 240ms cubic-bezier(0.45, 0.05, 0.25, 1) forwards;
+    }
+    /* Forward: new page slides in from the right while the leaf flips over to the left. */
+    @keyframes flipNext {
+      0%   { transform: translateX(0%) rotateY(0deg);   box-shadow: -2px 0 6px ${shadowColor}; }
+      35%  { box-shadow: -10px 0 28px ${shadowColor}; }
+      50%  { box-shadow: -16px 0 36px ${shadowColor}; }
+      100% { transform: translateX(-100%) rotateY(-180deg); box-shadow: -2px 0 6px ${shadowColor}; }
+    }
+    @keyframes flipNextRubber {
+      0%   { transform: translateX(0%) rotateY(0deg); }
+      60%  { transform: translateX(-110%) rotateY(-160deg); }
+      100% { transform: translateX(-100%) rotateY(-180deg); }
+    }
+    @keyframes flipNextCancel {
+      0%   { transform: translateX(-100%) rotateY(-180deg); }
+      100% { transform: translateX(0%) rotateY(0deg); }
+    }
+    /* Backward: new page slides in from the left while the leaf flips over to the right. */
+    @keyframes flipPrev {
+      0%   { transform: translateX(0%) rotateY(0deg);  transform-origin: 100% 50%; box-shadow: 8px 0 24px ${shadowColor}; }
+      35%  { box-shadow: 12px 0 30px ${shadowColor}; }
+      50%  { box-shadow: 16px 0 36px ${shadowColor}; }
+      100% { transform: translateX(100%) rotateY(180deg); transform-origin: 100% 50%; box-shadow: 8px 0 24px ${shadowColor}; }
+    }
+    @keyframes flipPrevRubber {
+      0%   { transform: translateX(0%) rotateY(0deg); transform-origin: 100% 50%; }
+      60%  { transform: translateX(110%) rotateY(160deg); transform-origin: 100% 50%; }
+      100% { transform: translateX(100%) rotateY(180deg); transform-origin: 100% 50%; }
+    }
+    @keyframes flipPrevCancel {
+      0%   { transform: translateX(100%) rotateY(180deg); transform-origin: 100% 50%; }
+      100% { transform: translateX(0%) rotateY(0deg); transform-origin: 100% 50%; }
+    }
+    /* A subtle dark gradient on the flipping leaf that shifts as it rotates
+       to fake a paper-curving shadow (browser 3D is unreliable on Android). */
+    #flipping::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(
+        to right,
+        rgba(0,0,0,0) 0%,
+        rgba(0,0,0,0) 40%,
+        rgba(0,0,0,0.15) 60%,
+        rgba(0,0,0,0.35) 100%
+      );
+      opacity: 0;
+      transition: opacity 200ms ease;
+    }
+    /* A small highlight strip near the spine during the flip. */
+    #current::before, #flipping::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 18px;
+      pointer-events: none;
+      background: linear-gradient(
+        to ${isDark ? 'left' : 'right'},
+        ${highlightColor},
+        rgba(0,0,0,0)
+      );
+    }
+    #current::before { right: 0; }
+    #flipping::before { left: 0; transform: scaleX(-1); }
+
+    h1, h2, h3, h4, h5, h6 { color: ${textColor}; margin: 0.6em 0 0.4em; }
+    h1 { font-size: ${config.fontSize * 1.5}px; }
+    h2 { font-size: ${config.fontSize * 1.3}px; }
+    h3 { font-size: ${config.fontSize * 1.15}px; }
+    p  { margin: 0.5em 0; }
+    img { max-width: 100%; height: auto; }
+    a   { color: ${linkColor}; }
+
+    #progress {
+      position: fixed;
+      bottom: 12px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 12px;
+      color: ${isDark ? '#aaa' : '#888'};
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div id="current" class="leaf"></div>
+    <div id="flipping" class="leaf"></div>
+  </div>
+  <div id="progress"></div>
+  <script>
+    (function() {
+      const initialOffset = ${Math.max(0, Math.round(initialPageOffset))};
+      // The book text/HTML content. We store it as a string and split lazily
+      // into paragraph-like chunks. For EPUB/MOBI/AZW3 the content is already
+      // pre-rendered HTML on the server, so we parse it into block elements.
+      const rawContent = ${JSON.stringify(safeContent)};
+      const fileType = ${JSON.stringify(fileType)};
+      const isHtml = fileType === 'epub' || fileType === 'mobi' || fileType === 'azw3';
+
+      // Build an array of "page-sized" content blocks. We use a hidden
+      // measurement container to slice text in real screen-heights.
+      const measure = document.createElement('div');
+      measure.style.cssText = 'position:absolute;visibility:hidden;left:-99999px;top:0;width:100%;' +
+        'padding-left:' + ${config.margin} + 'px;padding-right:' + ${config.margin} + 'px;' +
+        'padding-top:' + (${config.margin} + 56) + 'px;padding-bottom:' + (${config.margin} + 72) + 'px;' +
+        'font-family:${config.fontFamily.replace(/'/g, "\\'")};font-size:${config.fontSize}px;line-height:${config.lineHeight};text-align:justify;word-wrap:break-word;';
+      document.body.appendChild(measure);
+
+      function buildPagesFromText(text) {
+        // Split into paragraphs on blank lines, then re-merge into pages that
+        // fit the visible page height.
+        const paragraphs = text.split(/\\n\\s*\\n/).map(s => s.trim()).filter(Boolean);
+        if (paragraphs.length === 0) paragraphs.push(text);
+        const currentEl = document.getElementById('current');
+        const maxHeight = currentEl.clientHeight;
+        const pages = [];
+        let buffer = '';
+        for (let i = 0; i < paragraphs.length; i++) {
+          const candidate = buffer ? buffer + '\\n\\n' + paragraphs[i] : paragraphs[i];
+          measure.textContent = candidate;
+          if (measure.scrollHeight > maxHeight && buffer) {
+            pages.push(buffer);
+            buffer = paragraphs[i];
+            measure.textContent = buffer;
+          } else {
+            buffer = candidate;
+          }
+        }
+        if (buffer) pages.push(buffer);
+        return pages.length > 0 ? pages : [''];
+      }
+
+      function buildPagesFromHtml(html) {
+        // Parse the provided HTML into block elements, then group them into
+        // pages that fit the visible page height.
+        const container = document.createElement('div');
+        container.innerHTML = html;
+        const blocks = Array.from(container.children);
+        if (blocks.length === 0) return [html];
+        const currentEl = document.getElementById('current');
+        const maxHeight = currentEl.clientHeight;
+        const pages = [];
+        let buffer = [];
+        for (let i = 0; i < blocks.length; i++) {
+          buffer.push(blocks[i].outerHTML);
+          measure.innerHTML = buffer.join('');
+          if (measure.scrollHeight > maxHeight && buffer.length > 1) {
+            const overflow = buffer.pop();
+            pages.push(buffer.join(''));
+            buffer = [overflow];
+          }
+        }
+        if (buffer.length > 0) pages.push(buffer.join(''));
+        return pages.length > 0 ? pages : [html];
+      }
+
+      const pages = isHtml ? buildPagesFromHtml(rawContent) : buildPagesFromText(rawContent);
+      measure.remove();
+
+      let current = Math.max(0, Math.min(initialOffset, pages.length - 1));
+      const currentEl = document.getElementById('current');
+      const flippingEl = document.getElementById('flipping');
+      const progressEl = document.getElementById('progress');
+
+      function postMessage(data) {
+        if (window.ReactNativeWebView) {
+          window.ReactNativeWebView.postMessage(JSON.stringify(data));
+        }
+      }
+
+      function reportPage() {
+        const pct = pages.length > 0 ? Math.round(((current + 1) / pages.length) * 100) : 0;
+        progressEl.textContent = (current + 1) + ' / ' + pages.length + '  ·  ' + pct + '%';
+        postMessage({ type: 'page', page: current, total: pages.length, percentage: pct });
+      }
+
+      function setContent(el, idx) {
+        el.innerHTML = pages[idx] || '';
+      }
+
+      function resetFlipper() {
+        flippingEl.classList.remove(
+          'flip-next', 'flip-prev',
+          'flip-next-rubber', 'flip-prev-rubber',
+          'flip-next-cancel', 'flip-prev-cancel',
+        );
+        // Park flipping leaf off-screen to the right (default for next-flip).
+        flippingEl.style.transformOrigin = '0% 50%';
+        flippingEl.style.transform = 'translateX(100%) rotateY(0deg)';
+        flippingEl.style.boxShadow = '';
+      }
+
+      function render(progressOnly) {
+        if (!progressOnly) {
+          setContent(currentEl, current);
+        }
+        resetFlipper();
+        reportPage();
+      }
+
+      // Animate a flip from the current page to the page at "nextIdx".
+      // dir = +1 for forward (current goes off to the left), -1 for backward.
+      function animateFlip(dir, nextIdx) {
+        return new Promise(function(resolve) {
+          // Stage the flipping leaf: it currently mirrors the page we are
+          // leaving (because we want it to look like that page is being
+          // peeled away), and the "current" element will be updated to the
+          // destination page so it becomes visible as the leaf rotates.
+          setContent(flippingEl, current);
+          // Set initial transform without transition.
+          flippingEl.style.transition = 'none';
+          if (dir > 0) {
+            flippingEl.style.transformOrigin = '0% 50%';
+            flippingEl.style.transform = 'translateX(0%) rotateY(0deg)';
+          } else {
+            flippingEl.style.transformOrigin = '100% 50%';
+            flippingEl.style.transform = 'translateX(0%) rotateY(0deg)';
+          }
+          // Force layout so the next class change triggers the animation.
+          // eslint-disable-next-line no-unused-expressions
+          flippingEl.offsetHeight;
+          flippingEl.style.transition = '';
+
+          // Place the destination content on the bottom page BEFORE animating,
+          // so when the flipping leaf rotates out the new page is already
+          // showing through.
+          setContent(currentEl, nextIdx);
+          current = nextIdx;
+
+          const cls = dir > 0 ? 'flip-next' : 'flip-prev';
+          const onEnd = function() {
+            flippingEl.removeEventListener('animationend', onEnd);
+            resetFlipper();
+            reportPage();
+            resolve();
+          };
+          flippingEl.addEventListener('animationend', onEnd);
+          flippingEl.classList.add(cls);
+        });
+      }
+
+      // Cancel a partial finger-tracking flip and snap back / complete.
+      function finalizeGesture(dir, shouldFlip) {
+        return new Promise(function(resolve) {
+          setContent(currentEl, current);
+          const cls = shouldFlip
+            ? (dir > 0 ? 'flip-next-rubber' : 'flip-prev-rubber')
+            : (dir > 0 ? 'flip-next-cancel' : 'flip-prev-cancel');
+          const onEnd = function() {
+            flippingEl.removeEventListener('animationend', onEnd);
+            resetFlipper();
+            if (shouldFlip) {
+              reportPage();
+            }
+            resolve();
+          };
+          flippingEl.addEventListener('animationend', onEnd);
+          flippingEl.classList.add(cls);
+        });
+      }
+
+      function go(delta) {
+        const next = current + delta;
+        if (next < 0 || next >= pages.length) {
+          postMessage({ type: 'pageEdge', edge: next < 0 ? 'start' : 'end' });
+          return false;
+        }
+        animateFlip(delta > 0 ? 1 : -1, next);
+        return true;
+      }
+
+      // Expose helpers for host (React Native) to drive the page directly.
+      window.__readerGo = go;
+      window.__readerGetPage = function() { return current; };
+      window.__readerGetTotal = function() { return pages.length; };
+      window.__readerRepaginate = function() {
+        const newPages = isHtml ? buildPagesFromHtml(rawContent) : buildPagesFromText(rawContent);
+        pages.length = 0;
+        newPages.forEach(p => pages.push(p));
+        current = Math.max(0, Math.min(current, pages.length - 1));
+        render();
+      };
+
+      // ── Touch / swipe handling with finger-tracking flip ───────────────
+      let touchStartX = 0;
+      let touchStartY = 0;
+      let touchStartTime = 0;
+      let touchActive = false;
+      let gestureDir = 0;          // -1 = prev, +1 = next, 0 = none
+      let gestureShouldFlip = false;
+      let gestureOriginTransform = '';
+
+      function getFlipTransform(progress) {
+        // progress in [0, 1] maps to rotateY(0) -> rotateY(±180deg) and
+        // translateX(0) -> translateX(±100%).
+        const angle = progress * 180;
+        const offset = progress * 100;
+        const sign = gestureDir > 0 ? -1 : 1;
+        const origin = gestureDir > 0 ? '0% 50%' : '100% 50%';
+        flippingEl.style.transformOrigin = origin;
+        flippingEl.style.transform =
+          'translateX(' + (sign * offset) + '%) rotateY(' + (sign * angle) + 'deg)';
+      }
+
+      function startGesture(dir) {
+        gestureDir = dir;
+        // Decide if there's a page in that direction.
+        if (dir > 0) {
+          if (current >= pages.length - 1) {
+            postMessage({ type: 'pageEdge', edge: 'end' });
+            return false;
+          }
+          // Show the current page on the flipping leaf (it will peel away to the left).
+          setContent(flippingEl, current);
+          flippingEl.style.transition = 'none';
+          flippingEl.style.transformOrigin = '0% 50%';
+          flippingEl.style.transform = 'translateX(0%) rotateY(0deg)';
+        } else {
+          if (current <= 0) {
+            postMessage({ type: 'pageEdge', edge: 'start' });
+            return false;
+          }
+          setContent(flippingEl, current);
+          flippingEl.style.transition = 'none';
+          flippingEl.style.transformOrigin = '100% 50%';
+          flippingEl.style.transform = 'translateX(0%) rotateY(0deg)';
+        }
+        gestureOriginTransform = flippingEl.style.transform;
+        return true;
+      }
+
+      pageElTouchTargets();
+
+      function pageElTouchTargets() {
+        // Use document for touch listeners so the gesture works across the
+        // full stage, not just on the text content.
+        const stage = document.getElementById('stage');
+        stage.addEventListener('touchstart', function(e) {
+          if (e.touches.length !== 1) { touchActive = false; return; }
+          touchActive = true;
+          touchStartX = e.touches[0].clientX;
+          touchStartY = e.touches[0].clientY;
+          touchStartTime = Date.now();
+          gestureDir = 0;
+          gestureShouldFlip = false;
+        }, { passive: true });
+
+        stage.addEventListener('touchmove', function(e) {
+          if (!touchActive || e.touches.length !== 1) return;
+          const dx = e.touches[0].clientX - touchStartX;
+          const dy = e.touches[0].clientY - touchStartY;
+          if (gestureDir === 0) {
+            if (Math.abs(dx) < 18 || Math.abs(dx) <= Math.abs(dy) * 1.6) return;
+            gestureDir = dx < 0 ? 1 : -1;
+            if (!startGesture(gestureDir)) {
+              touchActive = false;
+              return;
+            }
+          }
+          // Map horizontal finger position to flip progress.
+          const w = window.innerWidth;
+          // For "next" (dx<0), negative dx = forward; clamp 0..w.
+          const travelled = Math.min(w, Math.max(0, Math.abs(dx)));
+          const progress = Math.min(0.95, travelled / w);
+          getFlipTransform(progress);
+        }, { passive: true });
+
+        stage.addEventListener('touchend', function(e) {
+          if (!touchActive) return;
+          touchActive = false;
+          if (gestureDir === 0) return;
+          const dx = (e.changedTouches[0].clientX || touchStartX) - touchStartX;
+          const w = window.innerWidth;
+          const progress = Math.min(0.95, Math.abs(dx) / w);
+          const fast = (Date.now() - touchStartTime) < 220 && Math.abs(dx) > 24;
+          gestureShouldFlip = progress > 0.45 || fast;
+          const targetIdx = current + gestureDir;
+          if (gestureShouldFlip && targetIdx >= 0 && targetIdx < pages.length) {
+            // Snap to the target page.
+            setContent(currentEl, targetIdx);
+            current = targetIdx;
+            finalizeGesture(gestureDir, true);
+          } else {
+            // Snap back.
+            setContent(currentEl, current);
+            finalizeGesture(gestureDir, false);
+          }
+          gestureDir = 0;
+        });
+
+        stage.addEventListener('touchcancel', function() {
+          if (!touchActive) return;
+          touchActive = false;
+          if (gestureDir !== 0) {
+            setContent(currentEl, current);
+            finalizeGesture(gestureDir, false);
+            gestureDir = 0;
+          }
+        });
+      }
+
+      // ── Tap zones ──────────────────────────────────────────────────────
+      // Top / bottom 18% -> toggle bars.
+      // Middle region is split horizontally: left half -> previous page,
+      // right half -> next page. (Swipe gestures are still available as the
+      // primary navigation method.)
+      currentEl.addEventListener('click', function(e) {
+        if (window.getSelection && window.getSelection().toString().trim().length > 0) return;
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        const x = e.clientX;
+        const y = e.clientY;
+        const topZone = h * 0.18;
+        const bottomZone = h * 0.82;
+        if (y < topZone || y > bottomZone) {
+          // Top / bottom region -> toggle toolbars.
+          postMessage({ type: 'centerTap' });
+        } else if (x < w * 0.5) {
+          // Middle-left -> previous page.
+          go(-1);
+        } else {
+          // Middle-right -> next page.
+          go(1);
+        }
+      });
+
+      // ── Text selection forwarding for notes / highlights ───────────────
+      let selectionTimer = null;
+      function reportSelection() {
+        const sel = window.getSelection ? window.getSelection() : null;
+        const text = sel ? sel.toString().trim() : '';
+        if (text.length > 0) {
+          postMessage({ type: 'textSelected', text: text });
+        }
+      }
+      currentEl.addEventListener('touchend', function() {
+        if (selectionTimer) clearTimeout(selectionTimer);
+        selectionTimer = setTimeout(reportSelection, 350);
+      });
+      document.addEventListener('selectionchange', function() {
+        if (selectionTimer) clearTimeout(selectionTimer);
+        selectionTimer = setTimeout(reportSelection, 500);
+      });
+
+      render();
+    })();
+  </script>
+</body>
+</html>`;
+}
+
 export function ReaderScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ReaderScreenRouteProp>();
@@ -577,6 +1147,10 @@ export function ReaderScreen() {
   const insets = useSafeAreaInsets();
 
   const [htmlContent, setHtmlContent] = useState<string>('');
+  const [pagedHtmlContent, setPagedHtmlContent] = useState<string>('');
+  const [pagedPageOffset, setPagedPageOffset] = useState(0);
+  const [pagedTotalPages, setPagedTotalPages] = useState(0);
+  const [pagedCurrentPage, setPagedCurrentPage] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -591,6 +1165,7 @@ export function ReaderScreen() {
   const [pdfOutline, setPdfOutline] = useState<Array<{ title: string; page: number }>>([]);
   const [pdfHtmlContent, setPdfHtmlContent] = useState<string>('');
   const [selectedText, setSelectedText] = useState<string>('');
+  const [rawChapterContent, setRawChapterContent] = useState<string>('');
   const [showActionSheet, setShowActionSheet] = useState(false);
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [noteText, setNoteText] = useState('');
@@ -601,6 +1176,21 @@ export function ReaderScreen() {
   const lastScrollYRef = useRef(0);
   const topBarAnim = useRef(new Animated.Value(1)).current;
   const bottomBarAnim = useRef(new Animated.Value(1)).current;
+
+  // Stable WebView source object. The scroll-mode WebView re-renders
+  // frequently as scroll progress updates; without this memo the inline
+  // `source={{ html: htmlContent }}` object would be a new reference on
+  // every render which can trigger a full WebView reload — and a reload
+  // re-runs `injectedJS`, including `restorePosition()`, which would jump
+  // the user back to the last "saved" position.
+  const scrollWebViewSource = useMemo(
+    () => ({ html: htmlContent }),
+    [htmlContent],
+  );
+  // Track whether the WebView has already restored its initial position.
+  // Without this guard, anything that re-runs `injectedJS` (e.g. a reload
+  // triggered by a stale source reference) would snap the user back.
+  const initialPositionRestoredRef = useRef(false);
 
   // Reader theme colors for native UI bars
   const readerTheme = READER_THEMES.find(tm => tm.key === readerStore.mode) || READER_THEMES[0];
@@ -655,7 +1245,7 @@ export function ReaderScreen() {
     try {
       setCurrentChapter(chapterIndex);
       setSavedScrollOffset(scrollOffset);
-      
+
       const localPath = libraryStore.getLocalBookPath(book.id);
       let chapterContent = '';
       if (localPath) {
@@ -679,8 +1269,21 @@ export function ReaderScreen() {
         }
       }
 
+      setRawChapterContent(chapterContent);
       const html = generateReaderHtml(book.title, book.author, chapterContent, book.fileType, readerConfigRef.current);
       setHtmlContent(html);
+      const paged = generatePagedReaderHtml(
+        book.title,
+        book.author,
+        chapterContent,
+        book.fileType || 'txt',
+        readerConfigRef.current,
+        0,
+      );
+      setPagedHtmlContent(paged);
+      setPagedPageOffset(0);
+      setPagedCurrentPage(0);
+      setPagedTotalPages(0);
 
       const chsCount = chapters.length || localChaptersRef.current.length || 1;
       const overallPercentage = Math.round(((chapterIndex + 1) / chsCount) * 100);
@@ -757,7 +1360,20 @@ export function ReaderScreen() {
             const chapterContent = parsed[initialChapter]?.content || '';
             const html = generateReaderHtml(book.title, book.author, chapterContent, book.fileType, readerConfigRef.current);
             setHtmlContent(html);
-            
+            setRawChapterContent(chapterContent);
+            const paged = generatePagedReaderHtml(
+              book.title,
+              book.author,
+              chapterContent,
+              book.fileType || 'txt',
+              readerConfigRef.current,
+              0,
+            );
+            setPagedHtmlContent(paged);
+            setPagedPageOffset(0);
+            setPagedCurrentPage(0);
+            setPagedTotalPages(0);
+
             const overallPct = chs.length > 0 ? Math.round(((initialChapter + 1) / chs.length) * 100) : 0;
             setReadingProgress(overallPct);
             latestPositionRef.current = {
@@ -784,8 +1400,22 @@ export function ReaderScreen() {
               setChapters(chs);
               const contentRes = await apiClient.getChapterContent(book.id, initialChapter);
               if (contentRes.success && contentRes.data) {
-                const html = generateReaderHtml(book.title, book.author, contentRes.data.content, book.fileType, readerConfigRef.current);
+                const chapterContent = contentRes.data.content;
+                const html = generateReaderHtml(book.title, book.author, chapterContent, book.fileType, readerConfigRef.current);
                 setHtmlContent(html);
+                setRawChapterContent(chapterContent);
+                const paged = generatePagedReaderHtml(
+                  book.title,
+                  book.author,
+                  chapterContent,
+                  book.fileType || 'epub',
+                  readerConfigRef.current,
+                  0,
+                );
+                setPagedHtmlContent(paged);
+                setPagedPageOffset(0);
+                setPagedCurrentPage(0);
+                setPagedTotalPages(0);
                 const overallPct = chs.length > 0 ? Math.round(((initialChapter + 1) / chs.length) * 100) : 0;
                 setReadingProgress(overallPct);
                 latestPositionRef.current = {
@@ -814,9 +1444,23 @@ export function ReaderScreen() {
 
           const contentRes = await apiClient.getChapterContent(book.id, initialChapter);
           if (contentRes.success && contentRes.data) {
-            const html = generateReaderHtml(book.title, book.author, contentRes.data.content, book.fileType, readerConfigRef.current);
+            const chapterContent = contentRes.data.content;
+            const html = generateReaderHtml(book.title, book.author, chapterContent, book.fileType, readerConfigRef.current);
             setHtmlContent(html);
-            
+            setRawChapterContent(chapterContent);
+            const paged = generatePagedReaderHtml(
+              book.title,
+              book.author,
+              chapterContent,
+              book.fileType || 'txt',
+              readerConfigRef.current,
+              0,
+            );
+            setPagedHtmlContent(paged);
+            setPagedPageOffset(0);
+            setPagedCurrentPage(0);
+            setPagedTotalPages(0);
+
             const overallPct = chs.length > 0 ? Math.round(((initialChapter + 1) / chs.length) * 100) : 0;
             setReadingProgress(overallPct);
             latestPositionRef.current = {
@@ -906,7 +1550,7 @@ export function ReaderScreen() {
       if (data.type === 'scroll') {
         const progress = data.progress || 0;
         const scrollOffset = data.scrollOffset || 0;
-        
+
         // Calculate overall progress based on chapter index
         const overallPercentage = chapters.length > 0
           ? Math.max(0, Math.min(100, Math.round(((currentChapter + (progress / 100)) / chapters.length) * 100)))
@@ -918,11 +1562,52 @@ export function ReaderScreen() {
           scrollOffset,
         };
         setReadingProgress(overallPercentage);
-        
+        // NOTE: do NOT call setSavedScrollOffset here. Doing so on every
+        // scroll event would re-create the `injectedJS` template literal
+        // (its deps include savedScrollOffset), which would push a new
+        // injectedJavaScript prop to the WebView on every scroll, causing
+        // the Android WebView to re-execute the script and snap the page
+        // back to the saved position. The live scroll position lives in
+        // `latestPositionRef.current`; `savedScrollOffset` is only used
+        // for the initial restore on first mount.
+
         if (book.id && readerStore.autoSaveProgress) {
           libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
         }
+      } else if (data.type === 'page') {
+        // Paged mode: report a single page index within the chapter.
+        const page = typeof data.page === 'number' ? data.page : 0;
+        const total = typeof data.total === 'number' ? data.total : 0;
+        const pct = typeof data.percentage === 'number' ? data.percentage : 0;
+        setPagedCurrentPage(page);
+        setPagedTotalPages(total);
+        setPagedPageOffset(page);
+        const overallPercentage = chapters.length > 0
+          ? Math.max(0, Math.min(100, Math.round(((currentChapter + (pct / 100)) / chapters.length) * 100)))
+          : pct;
+        latestPositionRef.current = {
+          percentage: overallPercentage,
+          currentPage: currentChapter,
+          scrollOffset: page,
+        };
+        setReadingProgress(overallPercentage);
+        if (book.id && readerStore.autoSaveProgress) {
+          libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
+        }
+      } else if (data.type === 'pageEdge') {
+        // Paged mode: hit start/end of a chapter, fall back to chapter navigation
+        if (data.edge === 'end' && currentChapter < chapters.length - 1) {
+          loadChapter(currentChapter + 1, 0);
+        } else if (data.edge === 'start' && currentChapter > 0) {
+          loadChapter(currentChapter - 1, 0);
+        }
+      } else if (data.type === 'centerTap') {
+        // Paged mode: tap the middle of the page toggles chrome bars
+        animateBars(!showBars);
       } else if (data.type === 'scrollDirection') {
+        // While auto-scrolling, the host pins the toolbars visible to
+        // prevent flicker. Skip hide/show driven by the auto-scroll motion.
+        if (readerStore.autoScrollEnabled) return;
         const direction = data.direction;
         if (direction === 'down') {
           animateBars(false);
@@ -948,7 +1633,7 @@ export function ReaderScreen() {
     } catch {
       // Ignore parse errors
     }
-  }, [book.id, readerStore.autoSaveProgress, libraryStore, animateBars, showBars, chapters.length, currentChapter]);
+  }, [book.id, readerStore.autoSaveProgress, libraryStore, animateBars, showBars, chapters.length, currentChapter, loadChapter, readerStore.autoScrollEnabled]);
 
   const requestCurrentPositionSave = useCallback(() => {
     webViewRef.current?.injectJavaScript(`
@@ -996,10 +1681,19 @@ export function ReaderScreen() {
   const injectedJS = useMemo(() => `
     (function() {
       const initialScrollOffset = ${Math.max(0, Math.round(savedScrollOffset))};
+      // Whether we have already restored the saved position. Set true on
+      // first restore so any subsequent re-invocation (e.g. caused by
+      // WebView reload or repeated rAF calls) becomes a no-op.
+      let initialPositionRestored = false;
       let lastScrollTop = -1;
       let lastScrollDirection = '';
       let directionAnchor = 0;
       let scrollTimeout = null;
+      // While auto-scrolling, do NOT post scrollDirection messages — the
+      // monotonic scroll would otherwise loop the bar-hide/show animation
+      // and cause visible flicker. The host keeps toolbars pinned visible
+      // during auto-scroll.
+      let autoScrolling = false;
 
       const sendProgress = () => {
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
@@ -1019,9 +1713,13 @@ export function ReaderScreen() {
       };
 
       const detectScrollDirection = () => {
+        if (autoScrolling) return; // skip while auto-scrolling
+        if (autoScroll && autoScroll.isSuppressingDirection && autoScroll.isSuppressingDirection()) {
+          return; // brief cooldown after auto-scroll ends
+        }
         const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
         if (scrollTop <= 10) return; // Don't trigger at very top
-        
+
         const delta = scrollTop - directionAnchor;
         if (delta > 30) {
           if (lastScrollDirection !== 'down') {
@@ -1038,13 +1736,29 @@ export function ReaderScreen() {
         }
       };
 
-      const restorePosition = () => {
+      const restorePosition = (force) => {
+        if (initialPositionRestored && !force) return;
         if (initialScrollOffset > 0) {
-          window.scrollTo(0, initialScrollOffset);
-          lastScrollTop = initialScrollOffset;
-          directionAnchor = initialScrollOffset;
+          // Defer one frame so the browser has a chance to lay out the
+          // content (otherwise scrollHeight may still be the placeholder
+          // height and the page would jump to the wrong position).
+          requestAnimationFrame(function() {
+            const cur = window.pageYOffset || document.documentElement.scrollTop || 0;
+            // Only scroll if we're not already at the desired position.
+            // (Avoids fighting the user's gestures if they started scrolling
+            // before this code runs.)
+            if (Math.abs(cur - initialScrollOffset) > 1) {
+              window.scrollTo(0, initialScrollOffset);
+              lastScrollTop = initialScrollOffset;
+              directionAnchor = initialScrollOffset;
+            }
+            initialPositionRestored = true;
+            sendProgress();
+          });
+        } else {
+          initialPositionRestored = true;
+          sendProgress();
         }
-        sendProgress();
       };
 
       window.addEventListener('scroll', () => {
@@ -1095,10 +1809,16 @@ export function ReaderScreen() {
           clearTimeout(selectionReportTimer);
           selectionReportTimer = null;
         }
+        // User touched the page — pause any active auto-scroll until they
+        // release AND don't touch the page again for a short grace period.
+        autoScroll.pause();
       }, { passive: true });
 
       document.addEventListener('touchend', function() {
         reportSelectionAfterSettled(350);
+        // Resume auto-scroll after a short grace period (unless the user
+        // explicitly disabled it via the toolbar).
+        autoScroll.scheduleResume(1200);
       });
 
       document.addEventListener('mouseup', function() {
@@ -1109,13 +1829,134 @@ export function ReaderScreen() {
         reportSelectionAfterSettled(500);
       });
 
+      // ── Auto-scroll engine ─────────────────────────────────────────────
+      // Time-based smooth scrolling: target velocity = speedPxPerSec pixels
+      // per second. Each rAF tick we move the page by elapsedSec * speedPxPerSec.
+      // This produces a fluid, framerate-independent scroll instead of discrete
+      // 50ms jumps that look jittery on high-refresh-rate screens.
+      const autoScroll = (function() {
+        let running = false;
+        // user-facing speed: 1..100 -> px/second (clamped 5..2000).
+        let userSpeed = ${readerStore.autoScrollSpeed};
+        let speedPxPerSec = userSpeed * 4; // 1 -> 4 px/s, 100 -> 400 px/s
+        let enabled = ${readerStore.autoScrollEnabled ? 'true' : 'false'};
+        let lastTs = 0;
+        let resumeTimer = null;
+        let rafId = null;
+        // Coalesce scroll-direction resets for a short while after the
+        // engine stops so that the last bit of auto-scroll motion doesn't
+        // register as "user scrolled down" in detectScrollDirection.
+        let suppressDirectionUntil = 0;
+
+        function tick(ts) {
+          if (!running) return;
+          if (lastTs === 0) lastTs = ts;
+          const elapsedSec = Math.min(0.1, (ts - lastTs) / 1000);
+          lastTs = ts;
+          const sh = Math.max(
+            document.documentElement.scrollHeight,
+            document.body.scrollHeight
+          ) - window.innerHeight;
+          if (sh <= 0) { rafId = requestAnimationFrame(tick); return; }
+          const st = window.pageYOffset || document.documentElement.scrollTop || 0;
+          if (st >= sh - 1) {
+            // Reached the bottom — report and stop.
+            running = false;
+            autoScrolling = false;
+            suppressDirectionUntil = Date.now() + 800;
+            postStatus(false, speedPxPerSec);
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'autoScrollEnd' }));
+            return;
+          }
+          window.scrollBy(0, speedPxPerSec * elapsedSec);
+          rafId = requestAnimationFrame(tick);
+        }
+
+        function start() {
+          if (running) return;
+          running = true;
+          enabled = true;
+          autoScrolling = true;
+          lastTs = 0;
+          rafId = requestAnimationFrame(tick);
+          postStatus(true, speedPxPerSec);
+        }
+
+        function stop() {
+          running = false;
+          enabled = false;
+          autoScrolling = false;
+          if (rafId) cancelAnimationFrame(rafId);
+          rafId = null;
+          // Suppress direction-change messages for a moment so the toolbar
+          // doesn't flicker when the engine stops on the last frame.
+          suppressDirectionUntil = Date.now() + 600;
+          postStatus(false, speedPxPerSec);
+        }
+
+        function pause() {
+          if (!running) return;
+          running = false;
+          if (rafId) cancelAnimationFrame(rafId);
+          rafId = null;
+          // Brief cooldown so the residual scroll motion after a touch
+          // doesn't push "down" → animateBars(false) → flicker.
+          suppressDirectionUntil = Date.now() + 600;
+        }
+
+        function scheduleResume(delay) {
+          if (resumeTimer) { clearTimeout(resumeTimer); resumeTimer = null; }
+          if (!enabled) return;
+          resumeTimer = setTimeout(function() {
+            resumeTimer = null;
+            if (enabled) start();
+          }, delay || 1200);
+        }
+
+        function setSpeed(newUserSpeed) {
+          const u = Math.max(1, Math.min(100, Math.round(newUserSpeed)));
+          userSpeed = u;
+          speedPxPerSec = u * 4;
+          postStatus(running, speedPxPerSec);
+        }
+
+        function isEnabled() { return enabled; }
+        function isRunning() { return running; }
+        function isSuppressingDirection() { return Date.now() < suppressDirectionUntil; }
+
+        function postStatus(isRunning, currentSpeed) {
+          window.ReactNativeWebView.postMessage(JSON.stringify({
+            type: 'autoScrollStatus',
+            running: isRunning,
+            speed: currentSpeed,
+          }));
+        }
+
+        // Expose for the host (React Native) to drive the engine.
+        window.__autoScrollStart = start;
+        window.__autoScrollStop = stop;
+        window.__autoScrollSetSpeed = setSpeed;
+        window.__autoScrollIsRunning = isRunning;
+        window.__autoScrollIsEnabled = isEnabled;
+
+        return { start, stop, pause, scheduleResume, setSpeed, isSuppressingDirection };
+      })();
+
+      // Auto-start if enabled in the persisted config.
+      if (${readerStore.autoScrollEnabled ? 'true' : 'false'}) {
+        setTimeout(function() { autoScroll.start(); }, 600);
+      }
+
       requestAnimationFrame(() => {
         restorePosition();
-        setTimeout(restorePosition, 250);
+        // Second attempt after images / fonts settle, in case the first
+        // run found an empty content height. The force flag lets the retry
+        // bypass the already-restored guard exactly once.
+        setTimeout(function() { restorePosition(true); }, 250);
       });
     })();
     true;
-  `, [savedScrollOffset]);
+  `, [savedScrollOffset, readerStore.autoScrollEnabled, readerStore.autoScrollSpeed, htmlContent]);
 
   const handleShare = useCallback(async () => {
     try {
@@ -1260,6 +2101,15 @@ export function ReaderScreen() {
   }, [selectedText, book, readingProgress]);
 
   const handlePrevPage = useCallback(() => {
+    if (readerStore.readingMode === 'page') {
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          if (window.__readerGo) window.__readerGo(-1);
+        })();
+        true;
+      `);
+      return;
+    }
     if (book.fileType === 'txt' || book.fileType === 'epub' || book.fileType === 'mobi' || book.fileType === 'azw3') {
       if (currentChapter > 0) {
         loadChapter(currentChapter - 1, 0);
@@ -1281,9 +2131,18 @@ export function ReaderScreen() {
         true;
       `);
     }
-  }, [book.fileType, currentChapter, loadChapter, pdfCurrentPage]);
+  }, [book.fileType, currentChapter, loadChapter, pdfCurrentPage, readerStore.readingMode]);
 
   const handleNextPage = useCallback(() => {
+    if (readerStore.readingMode === 'page') {
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          if (window.__readerGo) window.__readerGo(1);
+        })();
+        true;
+      `);
+      return;
+    }
     if (book.fileType === 'txt' || book.fileType === 'epub' || book.fileType === 'mobi' || book.fileType === 'azw3') {
       if (currentChapter < chapters.length - 1) {
         loadChapter(currentChapter + 1, 0);
@@ -1320,6 +2179,54 @@ export function ReaderScreen() {
     }
     navigation.navigate('TTSScreen', { book });
   }, [navigation, book]);
+
+  // Toggle auto-scroll on/off in the WebView. Only meaningful in scroll mode.
+  const handleToggleAutoScroll = useCallback(() => {
+    const next = !readerStore.autoScrollEnabled;
+    readerStore.setAutoScrollEnabled(next);
+    if (readerStore.readingMode !== 'scroll') return;
+    if (next) {
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          if (window.__autoScrollSetSpeed) window.__autoScrollSetSpeed(${readerStore.autoScrollSpeed});
+          if (window.__autoScrollStart) window.__autoScrollStart();
+        })();
+        true;
+      `);
+    } else {
+      webViewRef.current?.injectJavaScript(`
+        (function() { if (window.__autoScrollStop) window.__autoScrollStop(); })();
+        true;
+      `);
+    }
+  }, [readerStore]);
+
+  // Push speed changes to the WebView when the user adjusts the slider.
+  useEffect(() => {
+    if (readerStore.readingMode !== 'scroll') return;
+    if (!readerStore.autoScrollEnabled) return;
+    webViewRef.current?.injectJavaScript(`
+      (function() {
+        if (window.__autoScrollSetSpeed) window.__autoScrollSetSpeed(${readerStore.autoScrollSpeed});
+      })();
+      true;
+    `);
+  }, [readerStore.autoScrollSpeed, readerStore.autoScrollEnabled, readerStore.readingMode]);
+
+  // When switching modes, stop auto-scroll in scroll-mode WebView.
+  useEffect(() => {
+    if (readerStore.readingMode === 'page' && readerStore.autoScrollEnabled) {
+      readerStore.setAutoScrollEnabled(false);
+    }
+  }, [readerStore.readingMode]);
+
+  // Pin the top/bottom toolbars visible while auto-scrolling so they don't
+  // slide off — that slide was the source of the visible "上下闪烁" flicker.
+  useEffect(() => {
+    if (readerStore.autoScrollEnabled) {
+      animateBars(true);
+    }
+  }, [readerStore.autoScrollEnabled, animateBars]);
 
   // Apply reader settings to WebView in real-time
   const applyReaderSettings = useCallback((
@@ -1361,6 +2268,77 @@ export function ReaderScreen() {
       applyReaderSettings(readerStore.mode, readerStore.fontFamily, readerStore.fontSize, readerStore.lineHeight, readerStore.margin);
     }
   }, [readerStore.mode, readerStore.fontFamily, readerStore.fontSize, readerStore.lineHeight, readerStore.margin, isLoading, htmlContent, applyReaderSettings]);
+
+  // Whenever reader style changes, rebuild the paged HTML so each page is
+  // re-measured against the new font/line-height/margin (page mode only).
+  useEffect(() => {
+    if (readerStore.readingMode !== 'page') return;
+    if (!rawChapterContent) return;
+    if (
+      book.fileType !== 'txt' &&
+      book.fileType !== 'epub' &&
+      book.fileType !== 'mobi' &&
+      book.fileType !== 'azw3'
+    ) {
+      return;
+    }
+    const paged = generatePagedReaderHtml(
+      book.title,
+      book.author,
+      rawChapterContent,
+      book.fileType || 'txt',
+      readerConfig,
+      pagedPageOffset,
+    );
+    setPagedHtmlContent(paged);
+    // Intentionally do NOT include pagedPageOffset / pagedCurrentPage here to
+    // avoid an infinite re-render loop. After rebuilding, ask the WebView to
+    // restore the previously-saved page index once it is ready.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    readerStore.readingMode,
+    readerStore.mode,
+    readerStore.fontFamily,
+    readerStore.fontSize,
+    readerStore.lineHeight,
+    readerStore.margin,
+    rawChapterContent,
+  ]);
+
+  // When the WebView is ready in paged mode, jump to the saved page index
+  // (this restores position after settings changes rebuild the HTML).
+  useEffect(() => {
+    if (readerStore.readingMode !== 'page') return;
+    if (!webViewReadyRef.current) return;
+    if (pagedHtmlContent && pagedTotalPages > 0) {
+      const target = Math.max(0, Math.min(pagedPageOffset, pagedTotalPages - 1));
+      webViewRef.current?.injectJavaScript(`
+        (function() {
+          const cur = (window.__readerGetPage && window.__readerGetPage()) || 0;
+          if (cur !== ${target}) {
+            // Jump by repeatedly calling go() until we land on the target page.
+            let attempts = 0;
+            while (window.__readerGetPage && window.__readerGetPage() < ${target} && attempts < 500) {
+              window.__readerGo(1);
+              attempts++;
+            }
+            while (window.__readerGetPage && window.__readerGetPage() > ${target} && attempts < 1000) {
+              window.__readerGo(-1);
+              attempts++;
+            }
+          }
+        })();
+        true;
+      `);
+    }
+  }, [pagedHtmlContent, pagedTotalPages, readerStore.readingMode, pagedPageOffset]);
+
+  // In paged mode, hide the "scrolled to top" toolbars behavior - the page
+  // is a fixed container, so we don't need to auto-hide on scroll direction.
+  useEffect(() => {
+    if (readerStore.readingMode !== 'page') return;
+    setShowBars(true);
+  }, [readerStore.readingMode, currentChapter]);
 
   const topBarTranslate = topBarAnim.interpolate({
     inputRange: [0, 1],
@@ -1462,10 +2440,29 @@ export function ReaderScreen() {
             setError('渲染 PDF 失败');
           }}
         />
+      ) : readerStore.readingMode === 'page' && pagedHtmlContent ? (
+        <WebView
+          key={`paged-${currentChapter}`}
+          ref={webViewRef}
+          source={{ html: pagedHtmlContent }}
+          style={styles.webview}
+          originWhitelist={['*']}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          scrollEnabled={false}
+          showsVerticalScrollIndicator={false}
+          onMessage={handleMessage}
+          onLoadEnd={() => { webViewReadyRef.current = true; }}
+          onError={(e) => {
+            console.error('Paged reader error:', e.nativeEvent);
+            setError('渲染翻页内容失败');
+          }}
+        />
       ) : (
         <WebView
           ref={webViewRef}
-          source={{ html: htmlContent }}
+          key="reader-scroll"
+          source={scrollWebViewSource}
           style={styles.webview}
           injectedJavaScript={injectedJS}
           onMessage={handleMessage}
@@ -1513,6 +2510,19 @@ export function ReaderScreen() {
         <TouchableOpacity style={styles.barButton} onPress={handleTTS}>
           <Ionicons name="volume-high-outline" size={22} color={readerTheme.barText} />
         </TouchableOpacity>
+        {readerStore.readingMode === 'scroll' && (
+          <TouchableOpacity
+            style={styles.barButton}
+            onPress={handleToggleAutoScroll}
+            accessibilityLabel="自动滚动"
+          >
+            <Ionicons
+              name={readerStore.autoScrollEnabled ? 'pause-circle' : 'play-circle'}
+              size={24}
+              color={readerStore.autoScrollEnabled ? theme.colors.primary : readerTheme.barText}
+            />
+          </TouchableOpacity>
+        )}
         <TouchableOpacity style={styles.barButton} onPress={() => setShowSettings(true)}>
           <Ionicons name="settings-outline" size={22} color={readerTheme.barText} />
         </TouchableOpacity>
@@ -1529,6 +2539,29 @@ export function ReaderScreen() {
           <Pressable style={styles.modalBackdrop} onPress={() => setShowSettings(false)} />
           <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
             <Text style={[styles.modalTitle, { color: theme.colors.text }]}>阅读设置</Text>
+
+            {/* Reading Mode (scroll vs page-flip) */}
+            <View style={styles.settingRow}>
+              <Text style={[styles.settingLabel, { color: theme.colors.text }]}>阅读方式</Text>
+              <View style={styles.fontSizeControls}>
+                {([
+                  { value: 'scroll', label: '上下滚动' },
+                  { value: 'page', label: '左右翻页' },
+                ] as const).map((opt) => (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[
+                      styles.fontOptionButton,
+                      { borderColor: readerStore.readingMode === opt.value ? theme.colors.primary : theme.colors.border },
+                      readerStore.readingMode === opt.value && { backgroundColor: theme.colors.primary + '20' },
+                    ]}
+                    onPress={() => readerStore.setReadingMode(opt.value)}
+                  >
+                    <Text style={[styles.fontOptionText, { color: theme.colors.text }]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
 
             {/* Theme */}
             <View style={styles.settingRow}>
@@ -1629,6 +2662,30 @@ export function ReaderScreen() {
                 </TouchableOpacity>
               </View>
             </View>
+
+            {/* Auto-scroll speed (only relevant in scroll mode) */}
+            {readerStore.readingMode === 'scroll' && (
+              <View style={styles.settingRow}>
+                <Text style={[styles.settingLabel, { color: theme.colors.text }]}>自动翻页速度</Text>
+                <View style={styles.fontSizeControls}>
+                  <TouchableOpacity
+                    onPress={() => readerStore.setAutoScrollSpeed(Math.max(1, readerStore.autoScrollSpeed - 5))}
+                    style={[styles.fontButton, { borderColor: theme.colors.border }]}
+                  >
+                    <Text style={{ color: theme.colors.text }}>-</Text>
+                  </TouchableOpacity>
+                  <Text style={[styles.fontValue, { color: theme.colors.text }]}>
+                    {readerStore.autoScrollSpeed}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => readerStore.setAutoScrollSpeed(Math.min(100, readerStore.autoScrollSpeed + 5))}
+                    style={[styles.fontButton, { borderColor: theme.colors.border }]}
+                  >
+                    <Text style={{ color: theme.colors.text }}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
 
             <TouchableOpacity
               style={[styles.closeButton, { backgroundColor: theme.colors.primary }]}
