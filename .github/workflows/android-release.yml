@@ -12,15 +12,6 @@ jobs:
     permissions:
       contents: write
     env:
-      # Use the community autolinking path which correctly registers the
-      # `expo-module-gradle-plugin` plugin id. The default
-      # `expo-modules-autolinking` setup shipped with Expo SDK 52 has a
-      # regression where the plugin id is never registered in
-      # `pluginManagement`, causing any module that uses the new-style
-      # `plugins { id 'expo-module-gradle-plugin' }` block
-      # (e.g. expo-intent-launcher@56.0.4) to fail with
-      # "Plugin [id: 'expo-module-gradle-plugin'] was not found".
-      EXPO_USE_COMMUNITY_AUTOLINKING: '1'
 
     steps:
       - name: Checkout
@@ -58,15 +49,6 @@ jobs:
 
       - name: Build Android APK
         env:
-          # Use the community autolinking path which correctly registers
-          # the `expo-module-gradle-plugin` plugin id. The default
-          # `expo-modules-autolinking` setup shipped with Expo SDK 52 has
-          # a regression where the plugin id is never registered in
-          # `pluginManagement`, causing any module that uses the new-style
-          # `plugins { id 'expo-module-gradle-plugin' }` block
-          # (e.g. expo-intent-launcher@56.0.4) to fail with
-          # "Plugin [id: 'expo-module-gradle-plugin'] was not found".
-          EXPO_USE_COMMUNITY_AUTOLINKING: '1'
         run: |
           cd apps/mobile/android
           chmod +x gradlew
