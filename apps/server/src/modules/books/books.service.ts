@@ -422,10 +422,20 @@ export class BooksService implements OnModuleInit {
       }
 
       const item = epub.flow[chapterIndex];
-      const rawHtml = await epub.getChapter(item.id);
+      // Use getChapterRaw (not getChapter) so the <img src="..."> attributes
+      // survive: getChapter does a buggy relative-path rewrite that strips
+      // the src entirely if the image's href doesn't match a manifest entry
+      // by raw concatenation (which it never does for ../Images/foo.jpg
+      // because the manifest stores the absolute-style href).
+      const rawHtml = await epub.getChapterRaw(item.id);
+
+      // Replace <img src="..."> references with inline data URIs so the
+      // client can render images without any extra HTTP round-trips
+      // (and without needing to know the EPUB's internal file layout).
+      const withImages = await this.inlineEpubImages(epub, rawHtml, item.href);
 
       // Clean HTML for reading: remove scripts, styles, keep basic structure
-      const cleanContent = this.cleanEpubHtml(rawHtml, item.href);
+      const cleanContent = this.cleanEpubHtml(withImages, item.href);
 
       // Try to get title from TOC
       let title = (item.title as string) || `第 ${chapterIndex + 1} 章`;
@@ -442,6 +452,102 @@ export class BooksService implements OnModuleInit {
       console.error('Failed to get EPUB chapter:', err);
       throw new NotFoundException('Failed to read EPUB chapter');
     }
+  }
+
+  /**
+   * Walk through the chapter HTML and replace every <img src="..."> with
+   * a data URI. The chapter is identified by its href within the EPUB
+   * (e.g. "OEBPS/Text/chapter1.xhtml"), and image srcs are resolved
+   * relative to that chapter's parent directory.
+   *
+   * The EPub lib exposes image bytes via getImage(id); we look the id up
+   * in the manifest by matching the resolved href.
+   */
+  private async inlineEpubImages(epub: any, html: string, chapterHref: string): Promise<string> {
+    if (!html) return html;
+    // Match <img ... src="..."> tags. Use a non-greedy match for the src
+    // attribute; the tag itself may carry other attributes (alt, class, etc.)
+    const imgRegex = /<img\b([^>]*?)\ssrc=(["'])([^"']+)\2([^>]*)>/gi;
+    const matches: { match: string; prefix: string; src: string; suffix: string; quote: string }[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = imgRegex.exec(html)) !== null) {
+      matches.push({
+        match: m[0],
+        prefix: m[1] || '',
+        src: m[3],
+        suffix: m[4] || '',
+        quote: m[2],
+      });
+    }
+    if (matches.length === 0) return html;
+
+    // Build a quick lookup: archive-href -> manifest id
+    const hrefToId = new Map<string, string>();
+    for (const [id, info] of Object.entries<any>(epub.manifest || {})) {
+      if (info && typeof info.href === 'string') {
+        hrefToId.set(info.href, id);
+      }
+    }
+
+    // The chapter's href may be e.g. "OEBPS/Text/chapter1.xhtml". The
+    // base directory for resolving relative image paths is the chapter's
+    // parent, e.g. "OEBPS/Text/".
+    const baseDir = chapterHref.includes('/')
+      ? chapterHref.substring(0, chapterHref.lastIndexOf('/') + 1)
+      : '';
+
+    let result = html;
+    for (const match of matches) {
+      // Skip data URIs, absolute URLs, or already-resolved URLs
+      if (
+        /^(data:|https?:\/\/|blob:|file:)/i.test(match.src)
+      ) {
+        continue;
+      }
+
+      // Resolve the src against the chapter's base directory.
+      const resolvedHref = this.resolveEpubPath(baseDir, match.src);
+      const manifestId = hrefToId.get(resolvedHref);
+      if (!manifestId) {
+        // Image not in manifest (could be a remote URL, or path mismatch);
+        // leave the original src so the WebView can try to load it.
+        continue;
+      }
+
+      try {
+        const { data, mimeType } = await epub.getImage(manifestId);
+        const dataUri = `data:${mimeType};base64,${data.toString('base64')}`;
+        const replacement = `<img${match.prefix} src=${match.quote}${dataUri}${match.quote}${match.suffix}>`;
+        result = result.replace(match.match, replacement);
+      } catch (err) {
+        // If the image can't be read for any reason, fall back to the
+        // original src so the chapter still renders.
+        console.warn(`[epub] failed to inline image ${match.src}:`, (err as Error).message);
+      }
+    }
+    return result;
+  }
+
+  /**
+   * Resolve a relative href against a base directory, both expressed in
+   * POSIX style (forward slashes). Handles ".." segments. Returns an
+   * absolute-style path within the EPUB archive.
+   */
+  private resolveEpubPath(baseDir: string, relative: string): string {
+    if (!relative) return baseDir;
+    // Already absolute (rare for EPUB hrefs)
+    if (relative.startsWith('/')) return relative.substring(1);
+
+    const stack: string[] = baseDir.split('/').filter(Boolean);
+    for (const seg of relative.split('/')) {
+      if (!seg || seg === '.') continue;
+      if (seg === '..') {
+        stack.pop();
+        continue;
+      }
+      stack.push(seg);
+    }
+    return stack.join('/');
   }
 
   /**
