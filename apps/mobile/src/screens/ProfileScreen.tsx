@@ -23,6 +23,9 @@ import { getApiClient, type Book, type Collection, type Note } from '@bookdock/a
 import { getCoverImageUrl } from '../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+import { useCheckUpdate } from '../hooks/useCheckUpdate';
+import { UpdateModal } from '../components/UpdateModal';
+
 function getBookGradient(title: string): string[] {
   const gradients = [
     ['#3B82F6', '#6366F1'],
@@ -60,6 +63,19 @@ export function ProfileScreen() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
 
+  const {
+    checkUpdate,
+    progress,
+    isUpdating,
+    updateInfo,
+    startUpdate,
+    ignoreUpdate,
+    cancelUpdate,
+    installLocalUpdate,
+  } = useCheckUpdate();
+
+  const [isUpdateModalVisible, setIsUpdateModalVisible] = useState(false);
+
   const styles = useMemo(() => createStyles(theme), [theme]);
 
   const fetchData = useCallback(async () => {
@@ -84,6 +100,16 @@ export function ProfileScreen() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    checkUpdate();
+  }, []);
+
+  useEffect(() => {
+    if (updateInfo) {
+      setIsUpdateModalVisible(true);
+    }
+  }, [updateInfo]);
 
   const inProgressBooks = useMemo(
     () => books.filter((b) => (b.readingProgress ?? 0) > 0 && (b.readingProgress ?? 0) < 100),
@@ -150,6 +176,23 @@ export function ProfileScreen() {
       ),
       headerRight: () => (
         <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 16 }}>
+          {progress > 0 && (
+            <TouchableOpacity
+              onPress={() => {
+                if (progress === 1) {
+                  installLocalUpdate();
+                } else {
+                  setIsUpdateModalVisible(true);
+                }
+              }}
+              style={{ marginRight: 10, flexDirection: 'row', alignItems: 'center' }}
+            >
+              <Ionicons name="download-outline" size={22} color={theme.colors.text} />
+              <Text style={{ color: theme.colors.text }}>
+                {(progress * 100).toFixed(0)}%
+              </Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity
             style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
             onPress={() => navigation.navigate('ScanLogin')}
@@ -165,7 +208,7 @@ export function ProfileScreen() {
         </View>
       ),
     });
-  }, [navigation, theme]);
+  }, [navigation, theme, progress]);
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'collections', label: '书单' },
@@ -374,6 +417,23 @@ export function ProfileScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      <UpdateModal
+        visible={isUpdateModalVisible}
+        progress={progress}
+        isUpdating={isUpdating}
+        updateInfo={updateInfo}
+        onBackground={() => setIsUpdateModalVisible(false)}
+        onUpdate={startUpdate}
+        onIgnore={() => {
+          ignoreUpdate();
+          setIsUpdateModalVisible(false);
+        }}
+        onCancel={() => {
+          cancelUpdate();
+          setIsUpdateModalVisible(false);
+        }}
+      />
 
       {/* Create Collection Modal */}
       <Modal visible={showCreateModal} transparent animationType="slide" onRequestClose={() => setShowCreateModal(false)}>
