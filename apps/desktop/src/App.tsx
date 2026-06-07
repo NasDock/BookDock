@@ -45,6 +45,9 @@ import Notes from "./pages/Notes";
 import { useAuthStore, useThemeStore } from "./stores/authStore";
 import { getSavedApiBaseUrl } from "./utils/network";
 
+import UpdateModal from "./components/UpdateModal";
+import { useCheckUpdate } from "./hooks/useCheckUpdate";
+
 import "./styles.css";
 
 const defaultApiBaseUrl =
@@ -424,6 +427,15 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 
 function AppRoutes() {
   const { token } = useAuth();
+  const { checkUpdate, updateInfo, cancelUpdate } = useCheckUpdate();
+
+  useEffect(() => {
+    // Check update on startup
+    const timer = setTimeout(() => {
+      checkUpdate();
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     initApiClient({
@@ -563,6 +575,11 @@ function AppRoutes() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <UpdateModal
+        visible={!!updateInfo}
+        updateInfo={updateInfo}
+        onCancel={cancelUpdate}
+      />
     </AppLayout>
   );
 }

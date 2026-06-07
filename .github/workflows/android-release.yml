@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
 
     steps:
       - name: Checkout
@@ -47,6 +48,7 @@ jobs:
           npx expo prebuild --clean --platform android
 
       - name: Build Android APK
+        env:
         run: |
           cd apps/mobile/android
           chmod +x gradlew
