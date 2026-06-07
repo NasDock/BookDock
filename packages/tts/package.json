@@ -1,6 +1,6 @@
 {
   "name": "@bookdock/tts",
-  "version": "0.0.61",
+  "version": "0.0.62",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
