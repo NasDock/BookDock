@@ -1,29 +1,36 @@
 import {
-  Injectable,
-  Inject,
-  NotFoundException,
-  ForbiddenException,
-  OnModuleInit,
+    Inject,
+    Injectable,
+    NotFoundException,
+    OnModuleInit
 } from '@nestjs/common';
-import { PrismaClient, Book } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
+import { PrismaClient } from '@prisma/client';
 import { BookMetadataService } from '../book-metadata/book-metadata.service';
 
-import { createReadStream, statSync, existsSync } from 'fs';
-import { readdir, stat, readFile, rename } from 'fs/promises';
-import { join } from 'path';
+import { EPub } from 'epub';
+import { createReadStream, existsSync, statSync } from 'fs';
+import { readdir, readFile, rename, stat } from 'fs/promises';
 import * as iconv from 'iconv-lite';
+import { join } from 'path';
 import { BookFormat } from '../../common/types/prisma-compat';
 import { PRISMA_CLIENT } from '../../config/database.module';
 import {
-  CreateBookDto,
-  UpdateBookDto,
-  BookQueryDto,
-  BookResponseDto,
-  PaginatedBooksDto,
-  BookStatsDto,
+    BookQueryDto,
+    BookResponseDto,
+    BookStatsDto,
+    CreateBookDto,
+    PaginatedBooksDto,
+    UpdateBookDto,
 } from './dto/books.dto';
-import { EPub } from 'epub';
+
+export interface BookParagraph {
+  id: string;
+  index: number;
+  text: string;
+  charStart: number;
+  charEnd: number;
+}
 
 // MOBI parser is ESM-only, use dynamic import
 let mobiParser: typeof import('@lingo-reader/mobi-parser') | null = null;
@@ -404,6 +411,187 @@ export class BooksService implements OnModuleInit {
     } catch (err) {
       console.error('Failed to parse EPUB:', err);
       return [];
+    }
+  }
+
+  // ─── Paragraph Extraction (TTS-friendly) ────────────────────────────────
+
+  /**
+   * Extract paragraphs from a chapter's HTML.
+   * - splits the HTML on <p>, <h1>..<h6>, <li>, <blockquote>
+   * - strips any remaining tags from each block
+   * - skips blocks with empty / whitespace-only text
+   * - returns stable ids of the form "p-<n>" and char offsets so the
+   *   client can compute a progress bar.
+   */
+  private extractParagraphs(html: string): BookParagraph[] {
+    if (!html) return [];
+    const blockTag = '(?:p|h[1-6]|li|blockquote|div)';
+    const re = new RegExp(`<${blockTag}\\b[^>]*>([\\s\\S]*?)<\\/${blockTag}>`, 'gi');
+    const out: BookParagraph[] = [];
+    let cursor = 0;
+    let idx = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+      const inner = m[1]
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!inner) continue;
+      out.push({
+        id: `p-${idx}`,
+        index: idx,
+        text: inner,
+        charStart: cursor,
+        charEnd: cursor + inner.length,
+      });
+      cursor += inner.length + 1;
+      idx += 1;
+    }
+    return out;
+  }
+
+  /** Public entry point used by Reader-TTS. */
+  async getChapterParagraphs(
+    id: string,
+    chapterIndex: number,
+  ): Promise<{ title: string; paragraphs: BookParagraph[] }> {
+    const book = await this.prisma.book.findUnique({ where: { id, isDeleted: false } });
+    if (!book) throw new NotFoundException('Book not found');
+
+    if (book.format === 'txt') {
+      return this.getTxtChapterParagraphs(book.filePath, chapterIndex);
+    }
+    if (book.format === 'epub') {
+      return this.getEpubChapterParagraphs(book.filePath, chapterIndex);
+    }
+    if (book.format === 'mobi' || book.format === 'azw3') {
+      return this.getMobiChapterParagraphs(book.filePath, chapterIndex);
+    }
+    // Fallback: legacy content endpoint, split on blank lines.
+    const { title, content } = await this.getChapterContent(id, chapterIndex);
+    return {
+      title,
+      paragraphs: content
+        .split(/\n\s*\n+/)
+        .map((para, i) => ({ id: `p-${i}`, index: i, text: para.trim(), charStart: 0, charEnd: para.length }))
+        .filter((p) => p.text.length > 0),
+    };
+  }
+
+  private async getEpubChapterParagraphs(
+    filePath: string,
+    chapterIndex: number,
+  ): Promise<{ title: string; paragraphs: BookParagraph[] }> {
+    const fullPath = join(this.nasEbookPath, filePath);
+    if (!existsSync(fullPath)) {
+      throw new NotFoundException('EPUB file not found');
+    }
+    try {
+      const epub = new EPub(fullPath);
+      await epub.parse();
+      if (chapterIndex < 0 || chapterIndex >= epub.flow.length) {
+        throw new NotFoundException('Chapter not found');
+      }
+      const item = epub.flow[chapterIndex];
+      const rawHtml = await epub.getChapterRaw(item.id);
+      const withImages = await this.inlineEpubImages(epub, rawHtml, item.href);
+      const cleanContent = this.cleanEpubHtml(withImages, item.href);
+      const paragraphs = this.extractParagraphs(cleanContent);
+      let title = (item.title as string) || `第 ${chapterIndex + 1} 章`;
+      const tocItem = epub.toc.find((t) => t.href.split('#')[0] === item.href);
+      if (tocItem) title = tocItem.title as string;
+      return { title, paragraphs };
+    } catch (err) {
+      if (err instanceof NotFoundException) throw err;
+      console.error('Failed to get EPUB paragraphs:', err);
+      throw new NotFoundException('Failed to read EPUB chapter');
+    }
+  }
+
+  private async getTxtChapterParagraphs(
+    filePath: string,
+    chapterIndex: number,
+  ): Promise<{ title: string; paragraphs: BookParagraph[] }> {
+    const chapters = await this.parseTxtChapters(filePath);
+    if (chapterIndex < 0 || chapterIndex >= chapters.length) {
+      throw new NotFoundException('Chapter not found');
+    }
+    const fullPath = join(this.nasEbookPath, filePath);
+    const text = await this.readTextFile(fullPath);
+    const lines = text.split(/\r?\n/);
+    const startLine = chapters[chapterIndex].startLine;
+    const endLine =
+      chapterIndex + 1 < chapters.length ? chapters[chapterIndex + 1].startLine : lines.length;
+    const contentLines = lines.slice(startLine + 1, endLine);
+    const body = contentLines.join('\n').trim();
+    const blocks = body
+      .split(/\n\s*\n+/)
+      .map((b) => b.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    const paragraphs: BookParagraph[] = [];
+    let cursor = 0;
+    blocks.forEach((b, i) => {
+      paragraphs.push({ id: `p-${i}`, index: i, text: b, charStart: cursor, charEnd: cursor + b.length });
+      cursor += b.length + 1;
+    });
+    return { title: chapters[chapterIndex].title, paragraphs };
+  }
+
+  private async getMobiChapterParagraphs(
+    filePath: string,
+    chapterIndex: number,
+  ): Promise<{ title: string; paragraphs: BookParagraph[] }> {
+    let mobi: any;
+    const fullPath = join(this.nasEbookPath, filePath);
+    if (!existsSync(fullPath)) throw new NotFoundException('MOBI/AZW3 file not found');
+    try {
+      const parser = await getMobiParser();
+      mobi = await parser.initMobiFile(fullPath);
+      const spine = mobi.getSpine();
+      if (chapterIndex < 0 || chapterIndex >= spine.length) {
+        throw new NotFoundException('Chapter not found');
+      }
+      const chapterId = spine[chapterIndex].id;
+      const chapter = mobi.loadChapter(chapterId);
+      if (!chapter) throw new NotFoundException('Failed to load chapter');
+      const cleanContent = this.cleanEpubHtml(chapter.html, '');
+      const paragraphs = this.extractParagraphs(cleanContent);
+      let title = `第 ${chapterIndex + 1} 章`;
+      const toc = mobi.getToc();
+      const resolved = mobi.resolveHref(chapterId);
+      if (resolved) {
+        const baseId = resolved.id;
+        const findTitle = (items: any[]): string | undefined => {
+          for (const item of items) {
+            const itemBase = item.href.split('#')[0];
+            if (itemBase === baseId || item.href === baseId) return item.label;
+            if (item.children?.length) {
+              const found = findTitle(item.children);
+              if (found) return found;
+            }
+          }
+          return undefined;
+        };
+        const tocTitle = findTitle(toc);
+        if (tocTitle) title = tocTitle;
+      }
+      return { title, paragraphs };
+    } catch (err) {
+      if (err instanceof NotFoundException) throw err;
+      console.error('Failed to get MOBI paragraphs:', err);
+      throw new NotFoundException('Failed to read MOBI/AZW3 chapter');
+    } finally {
+      if (mobi) {
+        try { mobi.destroy(); } catch { /* ignore */ }
+      }
     }
   }
 

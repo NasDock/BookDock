@@ -1,15 +1,15 @@
-import {
-  IsString,
-  IsOptional,
-  IsEnum,
-  IsInt,
-  Min,
-  Max,
-  IsUUID,
-  IsNumber,
-} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import {
+    IsEnum,
+    IsInt,
+    IsNumber,
+    IsOptional,
+    IsString,
+    IsUUID,
+    Max,
+    Min,
+} from 'class-validator';
 import { TtsVoiceGender } from '../../../common/types/prisma-compat';
 
 export class CreateTtsJobDto {
@@ -165,4 +165,86 @@ export class TtsAudioFileResponseDto {
 
   @ApiProperty()
   createdAt: Date;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Paragraph-level synthesize (new TTS gateway path)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Request body for POST /tts/synthesize (paragraph-level).
+ * Replaces the old text-only endpoint. Returns a URL pointing to a
+ * cached mp3 file under /audio/<hash>.mp3, which the client plays
+ * via <audio src="...">.
+ */
+export class SynthesizeParagraphDto {
+  @ApiPropertyOptional({ description: 'Book UUID (used for cache & quota tracking)' })
+  @IsUUID()
+  @IsOptional()
+  bookId?: string;
+
+  @ApiPropertyOptional({ description: 'Stable paragraph id within the chapter' })
+  @IsString()
+  @IsOptional()
+  paragraphId?: string;
+
+  @ApiProperty({ description: 'Text to synthesize (≤ 3000 chars)' })
+  @IsString()
+  @Min(1)
+  @Max(3000)
+  text!: string;
+
+  @ApiPropertyOptional({ description: 'Provider name (default: app.ttsDefaultProvider)' })
+  @IsString()
+  @IsOptional()
+  provider?: string;
+
+  @ApiPropertyOptional({ description: 'Voice id (provider-specific)' })
+  @IsString()
+  @IsOptional()
+  voice?: string;
+
+  @ApiPropertyOptional({ default: 1.0, minimum: 0.25, maximum: 4.0 })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0.25)
+  @Max(4.0)
+  @IsOptional()
+  rate?: number;
+
+  @ApiPropertyOptional({ default: 1.0, minimum: 0.0, maximum: 2.0 })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(2)
+  @IsOptional()
+  pitch?: number;
+
+  @ApiPropertyOptional({ default: 1.0, minimum: 0.0, maximum: 2.0 })
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  @Max(2)
+  @IsOptional()
+  volume?: number;
+}
+
+export class SynthesizeParagraphResponseDto {
+  @ApiProperty()
+  url!: string;
+
+  @ApiProperty()
+  contentHash!: string;
+
+  @ApiProperty()
+  provider!: string;
+
+  @ApiProperty()
+  voice!: string;
+
+  @ApiProperty()
+  bytes!: number;
+
+  @ApiProperty({ description: 'true if served from cache' })
+  cached!: boolean;
 }

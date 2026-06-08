@@ -1,7 +1,7 @@
 import { registerAs } from '@nestjs/config';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { randomBytes } from 'crypto';
-import { join, dirname } from 'path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { dirname } from 'path';
 
 const DEFAULT_JWT_SECRET = 'bookdock-dev-secret-change-in-production';
 const JWT_SECRET_FILE = process.env.JWT_SECRET_FILE || '/data/db/.jwt_secret';
@@ -47,4 +47,10 @@ export const AppConfig = registerAs('app', () => ({
   nasAudioPath: process.env.NAS_AUDIO_PATH || '/data/audio',
   sourceLocalPath: process.env.SOURCE_LOCAL_PATH || '/data/sources',
   cachePath: process.env.CACHE_PATH || '',
+  // TTS service integration
+  ttsServiceUrl: process.env.TTS_SERVICE_URL || 'http://localhost:5000',
+  ttsDefaultProvider: process.env.TTS_DEFAULT_PROVIDER || 'edge',
+  ttsAudioCacheDir: process.env.TTS_AUDIO_CACHE_DIR || '/data/audio',
+  ttsMaxTextLength: parseInt(process.env.TTS_MAX_TEXT_LENGTH || '3000', 10),
+  ttsMaxRequestTimeoutMs: parseInt(process.env.TTS_MAX_REQUEST_TIMEOUT_MS || '30000', 10),
 }));

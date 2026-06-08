@@ -1,24 +1,24 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import type { TTSVoice } from "@bookdock/api-client";
+import { getApiClient } from "@bookdock/api-client";
+import { Ionicons } from "@expo/vector-icons";
+import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
+import { Audio } from "expo-av";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
+  ActivityIndicator,
+  Alert,
   SafeAreaView,
   ScrollView,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { Audio } from 'expo-av';
-import { useTTSStore, useThemeStore } from '../stores';
-import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
-import { getApiClient } from '@bookdock/api-client';
-import type { RootStackParamList } from '../navigation/types';
-import type { TTSVoice } from '@bookdock/api-client';
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import type { RootStackParamList } from "../navigation/types";
+import { useTTSStore, useThemeStore } from "../stores";
+import { borderRadius, fontSizes, getTheme, spacing } from "../utils/theme";
 
-type TTSScreenRouteProp = RouteProp<RootStackParamList, 'TTSScreen'>;
+type TTSScreenRouteProp = RouteProp<RootStackParamList, "TTSScreen">;
 
 export function TTSScreen() {
   const navigation = useNavigation();
@@ -26,14 +26,14 @@ export function TTSScreen() {
   const { book } = route.params;
 
   const actualTheme = useThemeStore((state) => state.actualTheme);
-  const theme = getTheme(actualTheme === 'dark');
+  const theme = getTheme(actualTheme === "dark");
   const ttsStore = useTTSStore();
 
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [showVoices, setShowVoices] = useState(false);
   const [availableVoices, setAvailableVoices] = useState<TTSVoice[]>([]);
-  const [currentText, setCurrentText] = useState('');
+  const [currentText, setCurrentText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [playbackProgress, setPlaybackProgress] = useState(0);
@@ -56,7 +56,7 @@ export function TTSScreen() {
           }
         }
       } catch {
-        setError('暂无可用语音');
+        setError("暂无可用语音");
       }
     };
 
@@ -85,19 +85,28 @@ export function TTSScreen() {
 
   // Fetch book content for TTS via server-parsed chapters
   const fetchBookContent = useCallback(async () => {
-    if (!book) return '';
+    if (!book) return "";
     try {
       setIsLoading(true);
       const apiClient = getApiClient();
       const chaptersRes = await apiClient.getChapters(book.id);
-      if (chaptersRes.success && chaptersRes.data && chaptersRes.data.length > 0) {
+      if (
+        chaptersRes.success &&
+        chaptersRes.data &&
+        chaptersRes.data.length > 0
+      ) {
         const contents = await Promise.all(
           chaptersRes.data.map(async (ch) => {
-            const contentRes = await apiClient.getChapterContent(book.id, ch.index);
-            return contentRes.success && contentRes.data ? contentRes.data.content : '';
-          })
+            const contentRes = await apiClient.getChapterContent(
+              book.id,
+              ch.index,
+            );
+            return contentRes.success && contentRes.data
+              ? contentRes.data.content
+              : "";
+          }),
         );
-        const text = contents.join('\n\n');
+        const text = contents.join("\n\n");
         setIsLoading(false);
         return text.slice(0, 5000);
       }
@@ -116,9 +125,9 @@ export function TTSScreen() {
         await soundRef.current.playAsync();
         setIsPaused(false);
         setIsSpeaking(true);
-        ttsStore.setState('playing');
+        ttsStore.setState("playing");
       } catch {
-        Alert.alert('错误', '恢复播放失败');
+        Alert.alert("错误", "恢复播放失败");
       }
       return;
     }
@@ -129,7 +138,7 @@ export function TTSScreen() {
 
     if (!text.trim()) {
       setIsLoading(false);
-      Alert.alert('错误', '没有可用于朗读的文本内容');
+      Alert.alert("错误", "没有可用于朗读的文本内容");
       return;
     }
 
@@ -139,46 +148,76 @@ export function TTSScreen() {
 
       const apiClient = getApiClient();
       const voiceId = ttsStore.selectedVoice?.id;
-      const blob = await apiClient.convertToSpeech(text, voiceId || 'default');
-
-      // Create a temporary file URI from blob
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onloadend = () => {
-          const base64 = reader.result as string;
-          resolve(base64.split(',')[1]);
-        };
-        reader.onerror = reject;
+      // Use the new paragraph-level endpoint which returns a URL to a
+      // cached mp3 file. The full migration to per-paragraph playback
+      // happens after this baseline; for now we just synthesize the
+      // joined text as one paragraph and stream it.
+      const result = await apiClient.synthesizeParagraph({
+        bookId: book.id,
+        paragraphId: "full",
+        text,
+        provider: "edge",
+        voice: voiceId,
       });
-      reader.readAsDataURL(blob);
-      const base64Data = await base64Promise;
+      const url = result.success && result.data ? result.data.url : null;
+      let audioUri: string | undefined;
+      if (url) {
+        // Resolve relative /audio/<hash>.mp3 against API base URL.
+        const base = apiClient.baseURL || "";
+        audioUri = url.startsWith("http")
+          ? url
+          : `${base.replace(/\/$/, "")}${url}`;
+      } else {
+        // Fallback to legacy blob path if the new endpoint isn't available.
+        const blob = await apiClient.convertToSpeech(
+          text,
+          voiceId || "default",
+        );
+        const reader = new FileReader();
+        const base64Promise = new Promise<string>((resolve, reject) => {
+          reader.onloadend = () => {
+            const base64 = reader.result as string;
+            resolve(base64.split(",")[1]);
+          };
+          reader.onerror = reject;
+        });
+        reader.readAsDataURL(blob);
+        const base64Data = await base64Promise;
+        audioUri = `data:audio/mpeg;base64,${base64Data}`;
+      }
 
       const { sound } = await Audio.Sound.createAsync(
-        { uri: `data:audio/wav;base64,${base64Data}` },
-        { shouldPlay: true, rate: ttsStore.playbackRate, volume: ttsStore.volume },
+        { uri: audioUri },
+        {
+          shouldPlay: true,
+          rate: ttsStore.playbackRate,
+          volume: ttsStore.volume,
+        },
         (status) => {
           if (status.isLoaded) {
-            setPlaybackProgress(status.positionMillis / (status.durationMillis || 1));
+            setPlaybackProgress(
+              status.positionMillis / (status.durationMillis || 1),
+            );
             if (status.didJustFinish) {
               setIsSpeaking(false);
               setIsPaused(false);
-              ttsStore.setState('idle');
+              ttsStore.setState("idle");
             }
           }
-        }
+        },
       );
 
       soundRef.current = sound;
       setIsLoading(false);
       setIsSpeaking(true);
       setIsPaused(false);
-      ttsStore.setState('playing');
+      ttsStore.setState("playing");
     } catch (err) {
-      console.error('TTS error:', err);
+      console.error("TTS error:", err);
       setIsLoading(false);
       setIsSpeaking(false);
-      ttsStore.setState('idle');
-      Alert.alert('TTS 错误', '语音合成失败，请检查网络和后端服务');
+      ttsStore.setState("idle");
+      Alert.alert("TTS 错误", "语音合成失败，请检查网络和后端服务");
     }
   }, [isPaused, currentText, ttsStore, fetchBookContent]);
 
@@ -188,9 +227,9 @@ export function TTSScreen() {
         await soundRef.current.pauseAsync();
         setIsSpeaking(false);
         setIsPaused(true);
-        ttsStore.setState('paused');
+        ttsStore.setState("paused");
       } catch {
-        Alert.alert('错误', '暂停播放失败');
+        Alert.alert("错误", "暂停播放失败");
       }
     }
   }, [ttsStore]);
@@ -200,54 +239,80 @@ export function TTSScreen() {
     setIsSpeaking(false);
     setIsPaused(false);
     setPlaybackProgress(0);
-    ttsStore.setState('idle');
+    ttsStore.setState("idle");
   }, [ttsStore]);
 
-  const handleRateChange = useCallback(async (rate: number) => {
-    const newRate = Math.max(0.5, Math.min(2.0, rate));
-    ttsStore.setPlaybackRate(newRate);
-    if (soundRef.current) {
-      try {
-        await soundRef.current.setRateAsync(newRate, true);
-      } catch {
-        // Ignore rate change errors
+  const handleRateChange = useCallback(
+    async (rate: number) => {
+      const newRate = Math.max(0.5, Math.min(2.0, rate));
+      ttsStore.setPlaybackRate(newRate);
+      if (soundRef.current) {
+        try {
+          await soundRef.current.setRateAsync(newRate, true);
+        } catch {
+          // Ignore rate change errors
+        }
       }
-    }
-  }, [ttsStore]);
+    },
+    [ttsStore],
+  );
 
-  const handleVolumeChange = useCallback(async (volume: number) => {
-    ttsStore.setVolume(volume);
-    if (soundRef.current) {
-      try {
-        await soundRef.current.setVolumeAsync(volume);
-      } catch {
-        // Ignore volume change errors
+  const handleVolumeChange = useCallback(
+    async (volume: number) => {
+      ttsStore.setVolume(volume);
+      if (soundRef.current) {
+        try {
+          await soundRef.current.setVolumeAsync(volume);
+        } catch {
+          // Ignore volume change errors
+        }
       }
-    }
-  }, [ttsStore]);
+    },
+    [ttsStore],
+  );
 
-  const handleVoiceSelect = useCallback((voice: TTSVoice) => {
-    ttsStore.setSelectedVoice(voice);
-    setShowVoices(false);
-  }, [ttsStore]);
+  const handleVoiceSelect = useCallback(
+    (voice: TTSVoice) => {
+      ttsStore.setSelectedVoice(voice);
+      setShowVoices(false);
+    },
+    [ttsStore],
+  );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    >
       <View style={styles.content}>
         {/* Book Info */}
-        <View style={[styles.bookInfo, { backgroundColor: theme.colors.surface }]}>
-          <View style={[styles.bookCover, { backgroundColor: theme.colors.primary + '20' }]}>
-            <Text style={styles.bookCoverText}>{book.title.charAt(0).toUpperCase()}</Text>
+        <View
+          style={[styles.bookInfo, { backgroundColor: theme.colors.surface }]}
+        >
+          <View
+            style={[
+              styles.bookCover,
+              { backgroundColor: theme.colors.primary + "20" },
+            ]}
+          >
+            <Text style={styles.bookCoverText}>
+              {book.title.charAt(0).toUpperCase()}
+            </Text>
           </View>
           <View style={styles.bookMeta}>
-            <Text style={styles.bookTitle} numberOfLines={2}>{book.title}</Text>
+            <Text style={styles.bookTitle} numberOfLines={2}>
+              {book.title}
+            </Text>
             <Text style={styles.bookAuthor}>{book.author}</Text>
-            <Text style={styles.bookType}>{(book.fileType || book.format || 'unknown').toUpperCase()}</Text>
+            <Text style={styles.bookType}>
+              {(book.fileType || book.format || "unknown").toUpperCase()}
+            </Text>
           </View>
         </View>
 
         {/* Controls */}
-        <View style={[styles.controls, { backgroundColor: theme.colors.surface }]}>
+        <View
+          style={[styles.controls, { backgroundColor: theme.colors.surface }]}
+        >
           <View style={styles.mainControls}>
             <TouchableOpacity onPress={handleStop} style={styles.controlButton}>
               <Ionicons name="stop" size={28} color={theme.colors.error} />
@@ -255,14 +320,17 @@ export function TTSScreen() {
 
             <TouchableOpacity
               onPress={isSpeaking ? handlePause : handlePlay}
-              style={[styles.playButton, { backgroundColor: theme.colors.primary }]}
+              style={[
+                styles.playButton,
+                { backgroundColor: theme.colors.primary },
+              ]}
               disabled={isLoading}
             >
               {isLoading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Ionicons
-                  name={isSpeaking ? 'pause' : 'play'}
+                  name={isSpeaking ? "pause" : "play"}
                   size={32}
                   color="#fff"
                 />
@@ -273,17 +341,29 @@ export function TTSScreen() {
               onPress={() => setShowVoices(!showVoices)}
               style={styles.controlButton}
             >
-              <Ionicons name="options-outline" size={24} color={theme.colors.textSecondary} />
+              <Ionicons
+                name="options-outline"
+                size={24}
+                color={theme.colors.textSecondary}
+              />
             </TouchableOpacity>
           </View>
 
           {/* Progress bar */}
           <View style={styles.progressContainer}>
-            <View style={[styles.progressBar, { backgroundColor: theme.colors.border + '40' }]}>
+            <View
+              style={[
+                styles.progressBar,
+                { backgroundColor: theme.colors.border + "40" },
+              ]}
+            >
               <View
                 style={[
                   styles.progressFill,
-                  { backgroundColor: theme.colors.primary, width: `${playbackProgress * 100}%` },
+                  {
+                    backgroundColor: theme.colors.primary,
+                    width: `${playbackProgress * 100}%`,
+                  },
                 ]}
               />
             </View>
@@ -291,7 +371,9 @@ export function TTSScreen() {
 
           {/* Rate Control */}
           <View style={styles.sliderContainer}>
-            <Text style={styles.sliderLabel}>Speed: {ttsStore.playbackRate.toFixed(1)}x</Text>
+            <Text style={styles.sliderLabel}>
+              Speed: {ttsStore.playbackRate.toFixed(1)}x
+            </Text>
             <View style={styles.rateButtons}>
               {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((rate) => (
                 <TouchableOpacity
@@ -310,7 +392,7 @@ export function TTSScreen() {
                       {
                         color:
                           ttsStore.playbackRate === rate
-                            ? '#fff'
+                            ? "#fff"
                             : theme.colors.textSecondary,
                       },
                     ]}
@@ -324,7 +406,9 @@ export function TTSScreen() {
 
           {/* Volume Control */}
           <View style={styles.sliderContainer}>
-            <Text style={styles.sliderLabel}>Volume: {Math.round(ttsStore.volume * 100)}%</Text>
+            <Text style={styles.sliderLabel}>
+              Volume: {Math.round(ttsStore.volume * 100)}%
+            </Text>
             <View style={styles.rateButtons}>
               {[0, 25, 50, 75, 100].map((pct) => (
                 <TouchableOpacity
@@ -343,7 +427,7 @@ export function TTSScreen() {
                       {
                         color:
                           Math.round(ttsStore.volume * 100) === pct
-                            ? '#fff'
+                            ? "#fff"
                             : theme.colors.textSecondary,
                       },
                     ]}
@@ -358,7 +442,12 @@ export function TTSScreen() {
 
         {/* Voice Selector */}
         {showVoices && (
-          <View style={[styles.voicesPanel, { backgroundColor: theme.colors.surface }]}>
+          <View
+            style={[
+              styles.voicesPanel,
+              { backgroundColor: theme.colors.surface },
+            ]}
+          >
             <Text style={styles.voicesTitle}>Select Voice</Text>
             <ScrollView style={styles.voicesList}>
               {availableVoices.map((voice) => (
@@ -367,7 +456,7 @@ export function TTSScreen() {
                   style={[
                     styles.voiceItem,
                     ttsStore.selectedVoice?.id === voice.id && {
-                      backgroundColor: theme.colors.primary + '20',
+                      backgroundColor: theme.colors.primary + "20",
                     },
                   ]}
                   onPress={() => handleVoiceSelect(voice)}
@@ -375,7 +464,11 @@ export function TTSScreen() {
                   <Text style={styles.voiceName}>{voice.name}</Text>
                   <Text style={styles.voiceLang}>{voice.lang}</Text>
                   {ttsStore.selectedVoice?.id === voice.id && (
-                    <Ionicons name="checkmark" size={20} color={theme.colors.primary} />
+                    <Ionicons
+                      name="checkmark"
+                      size={20}
+                      color={theme.colors.primary}
+                    />
                   )}
                 </TouchableOpacity>
               ))}
@@ -387,11 +480,19 @@ export function TTSScreen() {
         )}
 
         {/* Preview Text */}
-        <View style={[styles.previewPanel, { backgroundColor: theme.colors.surface }]}>
+        <View
+          style={[
+            styles.previewPanel,
+            { backgroundColor: theme.colors.surface },
+          ]}
+        >
           <Text style={styles.previewTitle}>Preview</Text>
           <ScrollView style={styles.previewScroll}>
-            <Text style={[styles.previewText, { color: theme.colors.text }]} numberOfLines={10}>
-              {currentText || '点击播放加载并收听书籍内容'}
+            <Text
+              style={[styles.previewText, { color: theme.colors.text }]}
+              numberOfLines={10}
+            >
+              {currentText || "点击播放加载并收听书籍内容"}
             </Text>
           </ScrollView>
         </View>
@@ -411,21 +512,21 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       gap: spacing.md,
     },
     bookInfo: {
-      flexDirection: 'row',
+      flexDirection: "row",
       padding: spacing.md,
       borderRadius: borderRadius.lg,
-      alignItems: 'center',
+      alignItems: "center",
     },
     bookCover: {
       width: 60,
       height: 80,
       borderRadius: borderRadius.sm,
-      justifyContent: 'center',
-      alignItems: 'center',
+      justifyContent: "center",
+      alignItems: "center",
     },
     bookCoverText: {
       fontSize: fontSizes.xxxl,
-      fontWeight: 'bold',
+      fontWeight: "bold",
       color: theme.colors.primary,
     },
     bookMeta: {
@@ -434,7 +535,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     },
     bookTitle: {
       fontSize: fontSizes.lg,
-      fontWeight: '600',
+      fontWeight: "600",
       color: theme.colors.text,
     },
     bookAuthor: {
@@ -446,7 +547,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontSize: fontSizes.sm,
       color: theme.colors.textSecondary,
       marginTop: spacing.xs,
-      textTransform: 'uppercase',
+      textTransform: "uppercase",
     },
     controls: {
       padding: spacing.md,
@@ -454,9 +555,9 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       gap: spacing.md,
     },
     mainControls: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      alignItems: 'center',
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "center",
       gap: spacing.lg,
     },
     controlButton: {
@@ -466,8 +567,8 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       width: 64,
       height: 64,
       borderRadius: 32,
-      alignItems: 'center',
-      justifyContent: 'center',
+      alignItems: "center",
+      justifyContent: "center",
     },
     progressContainer: {
       marginTop: spacing.sm,
@@ -475,10 +576,10 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     progressBar: {
       height: 4,
       borderRadius: 2,
-      overflow: 'hidden',
+      overflow: "hidden",
     },
     progressFill: {
-      height: '100%',
+      height: "100%",
       borderRadius: 2,
     },
     sliderContainer: {
@@ -489,19 +590,19 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       color: theme.colors.textSecondary,
     },
     rateButtons: {
-      flexDirection: 'row',
+      flexDirection: "row",
       gap: spacing.xs,
-      flexWrap: 'wrap',
+      flexWrap: "wrap",
     },
     rateButton: {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
       borderRadius: borderRadius.md,
-      backgroundColor: theme.colors.border + '40',
+      backgroundColor: theme.colors.border + "40",
     },
     rateButtonText: {
       fontSize: fontSizes.sm,
-      fontWeight: '500',
+      fontWeight: "500",
     },
     voicesPanel: {
       padding: spacing.md,
@@ -510,7 +611,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     },
     voicesTitle: {
       fontSize: fontSizes.md,
-      fontWeight: '600',
+      fontWeight: "600",
       color: theme.colors.text,
       marginBottom: spacing.sm,
     },
@@ -518,8 +619,8 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       maxHeight: 200,
     },
     voiceItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
+      flexDirection: "row",
+      alignItems: "center",
       padding: spacing.sm,
       borderRadius: borderRadius.md,
     },
@@ -534,7 +635,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       marginRight: spacing.sm,
     },
     emptyVoices: {
-      textAlign: 'center',
+      textAlign: "center",
       color: theme.colors.textSecondary,
       padding: spacing.md,
     },
@@ -545,7 +646,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     },
     previewTitle: {
       fontSize: fontSizes.md,
-      fontWeight: '600',
+      fontWeight: "600",
       color: theme.colors.text,
       marginBottom: spacing.sm,
     },
