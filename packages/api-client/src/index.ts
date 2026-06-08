@@ -1,4 +1,5 @@
 import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { mockData } from './mockUtils';
 
 export interface ApiResponse<T = unknown> {
   success: boolean;
@@ -168,7 +169,13 @@ class ApiClient {
     );
 
     this.client.interceptors.response.use(
-      (response) => response,
+      (response) => {
+        // Apply mock data transformation if data exists
+        if (response.data !== undefined && response.data !== null) {
+          response.data = mockData(response.data);
+        }
+        return response;
+      },
       (error: AxiosError) => {
         if (error.response?.status === 401) {
           this.onAuthError?.();
