@@ -42,6 +42,7 @@ export class TtsService {
   private readonly logger = new Logger(TtsService.name);
 
   private readonly ttsServiceUrl: string;
+  private readonly apiBaseUrl: string;
   private cacheDir: string;
   private readonly maxTextLength: number;
   private readonly timeoutMs: number;
@@ -51,6 +52,7 @@ export class TtsService {
     private readonly configService: ConfigService,
   ) {
     this.ttsServiceUrl = this.configService.get<string>('app.ttsServiceUrl') || 'http://localhost:5000';
+    this.apiBaseUrl = this.configService.get<string>('app.apiBaseUrl') || 'http://localhost:8088';
     this.cacheDir = this.configService.get<string>('app.ttsAudioCacheDir') || '/data/audio';
     this.maxTextLength = this.configService.get<number>('app.ttsMaxTextLength') || 3000;
     this.timeoutMs = this.configService.get<number>('app.ttsMaxRequestTimeoutMs') || 30000;
@@ -336,10 +338,7 @@ export class TtsService {
     fileUrl: string,
     fileSize: number,
   ): Promise<void> {
-    // TtsAudioFile.bookId is non-nullable in the schema; fall back to a
-    // well-formed UUID that won't collide with any real book. The TTS
-    // cache is content-addressed so we don't strictly need a book link.
-    const fallbackBookId = '00000000-0000-0000-0000-000000000000';
+    // TtsAudioFile.bookId is optional; store null when no book is associated.
     try {
       const existing = await this.prisma.ttsAudioFile.findFirst({
         where: { contentHash },
@@ -353,7 +352,7 @@ export class TtsService {
       }
       await this.prisma.ttsAudioFile.create({
         data: {
-          bookId: bookId || fallbackBookId,
+          bookId: bookId || undefined,
           filePath,
           fileUrl,
           fileSize: BigInt(fileSize),

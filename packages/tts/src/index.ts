@@ -18,10 +18,11 @@ import {
     Paragraph,
     SynthesizeParagraphRequest,
     TtsProgressPayload,
+    TTSProvider,
     TTSVoice
 } from '@bookdock/api-client';
 
-export type { Paragraph, TTSVoice } from '@bookdock/api-client';
+export type { Paragraph, TTSProvider, TTSVoice } from '@bookdock/api-client';
 
 export interface TTSConfig {
   provider?: string;
@@ -33,6 +34,11 @@ export interface TTSConfig {
   bookId?: string;
   chapterIndex?: number;
 }
+
+/** Per-call overrides (used by the reader page to switch voice/provider
+ *  without mutating the global config). Empty / undefined fields fall
+ *  back to `cfg`. */
+export type TTSOverrides = Partial<Pick<TTSConfig, 'provider' | 'voiceId' | 'rate' | 'pitch' | 'volume'>>;
 
 export interface TTSProgress {
   paragraphIndex: number;
@@ -83,20 +89,54 @@ export class TTSManager {
   };
   private voices: TTSVoice[] = [];
   private lastSaveAt = 0;
-  private voicesLoaded = false;
+  /** Tracks the provider the voices list was loaded for, so we can
+   *  refetch when the user switches provider. */
+  private voicesProvider: string | null = null;
+  private providers: TTSProvider[] = [];
+  private providersLoaded = false;
+  /** Per-call overrides set by the most recent play() call. */
+  private activeOverrides: TTSOverrides | null = null;
 
   async initialize(provider = 'edge'): Promise<void> {
-    if (this.voicesLoaded) return;
+    await this.loadProviders();
+    await this.loadVoices(provider);
+  }
+
+  async loadProviders(): Promise<TTSProvider[]> {
+    if (this.providersLoaded) return this.providers;
     try {
-      const r = await this.api.getVoices(provider);
+      const r = await this.api.getTtsProviders();
+      const list = (r.success && r.data?.providers) ? r.data.providers : [];
+      this.providers = list;
+      this.providersLoaded = true;
+    } catch {
+      this.providers = [];
+    }
+    return this.providers;
+  }
+
+  getProviders(): TTSProvider[] { return this.providers; }
+
+  /** Fetch the voice list for a given provider. Re-fetches if the
+   *  provider differs from the last loaded one. */
+  async loadVoices(provider = 'edge', language?: string): Promise<TTSVoice[]> {
+    try {
+      const r = await this.api.getVoices(provider, language);
       if (r.success && r.data) {
         this.voices = r.data;
-        this.voicesLoaded = true;
+        this.voicesProvider = provider;
+      } else {
+        this.voices = [];
+        this.voicesProvider = provider;
       }
     } catch {
       this.voices = [];
     }
+    return this.voices;
   }
+
+  /** Returns the provider that the cached voices list belongs to. */
+  getVoicesProvider(): string | null { return this.voicesProvider; }
 
   getAvailableVoices(): TTSVoice[] { return this.voices; }
   getState(): TTSState { return this.state; }
@@ -119,6 +159,7 @@ export class TTSManager {
     paragraphs: Paragraph[],
     startIndex = 0,
     callbacks: TTSEventCallbacks = {},
+    overrides?: TTSOverrides,
   ): Promise<void> {
     if (!paragraphs.length) {
       callbacks.onError?.(new Error('No paragraphs to play'));
@@ -128,6 +169,13 @@ export class TTSManager {
     this.progress.totalParagraphs = paragraphs.length;
     this.cb = callbacks;
     this.currentIndex = Math.max(0, Math.min(startIndex, paragraphs.length - 1));
+    this.activeOverrides = overrides || null;
+    // If the voice/provider changed, drop the cache so the new request
+    // goes through with the new audio URL.
+    if (overrides && (overrides.provider !== undefined || overrides.voiceId !== undefined)) {
+      this.cache.forEach((c) => { try { URL.revokeObjectURL(c.url); } catch { /* ignore */ } });
+      this.cache.clear();
+    }
     await this.playCurrent();
   }
 
@@ -151,6 +199,7 @@ export class TTSManager {
   }
 
   stop(): void {
+    this.detachAudioListeners(this.audio);
     if (this.audio) {
       this.audio.pause();
       this.audio.currentTime = 0;
@@ -160,6 +209,7 @@ export class TTSManager {
     this.cache.forEach((c) => { try { URL.revokeObjectURL(c.url); } catch { /* ignore */ } });
     this.cache.clear();
     this.audio = null;
+    this.activeOverrides = null;
     this.persistProgress(true);
   }
 
@@ -197,119 +247,171 @@ export class TTSManager {
     this.progress.currentText = para.text;
     this.cb.onParagraphChange?.(this.currentIndex, para);
 
-    let entry = this.cache.get(para.id);
-    if (!entry) {
-      this.state = 'loading';
-      try {
-        const r = await this.api.synthesizeParagraph({
-          bookId: this.cfg.bookId,
-          paragraphId: para.id,
-          text: para.text,
-          provider: this.cfg.provider,
-          voice: this.cfg.voiceId,
-          rate: this.cfg.rate,
-          pitch: this.cfg.pitch,
-          volume: this.cfg.volume,
-        } as SynthesizeParagraphRequest);
-        if (!r.success || !r.data) throw new Error(r.error || 'synthesize failed');
-        const audio = new Audio();
-        audio.preload = 'auto';
-        audio.src = r.data.url;
-        audio.playbackRate = this.cfg.rate ?? 1.0;
-        audio.volume = this.cfg.volume ?? 1.0;
-        entry = { url: r.data.url, audio, loaded: false };
-        this.cache.set(para.id, entry);
-        await new Promise<void>((resolve, reject) => {
-          const onCanPlay = () => { audio.removeEventListener('canplaythrough', onCanPlay); audio.removeEventListener('error', onErr); resolve(); };
-          const onErr = () => { audio.removeEventListener('canplaythrough', onCanPlay); audio.removeEventListener('error', onErr); reject(new Error('audio load failed')); };
-          audio.addEventListener('canplaythrough', onCanPlay);
-          audio.addEventListener('error', onErr);
-          audio.load();
-        });
-        entry.loaded = true;
-      } catch (err) {
-        this.state = 'error';
-        this.cb.onError?.(err as Error);
-        return;
-      }
+    const eff = this._effective();
+
+    // Split paragraph text into ≤ 2500-char chunks (server's hard cap is
+    // 3000, we leave headroom for UTF-8 expansion / SSML overhead).
+    const chunks = splitForTts(para.text, 2500);
+    if (chunks.length === 0) {
+      this.cb.onError?.(new Error('Paragraph is empty'));
+      return;
     }
 
-    this.audio = entry.audio;
-    this.attachAudioListeners(autoAdvance);
+    this.state = 'loading';
+    const audios: HTMLAudioElement[] = [];
+    try {
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const chunkParaId = chunks.length > 1 ? `${para.id}#${i}` : para.id;
+        let entry = this.cache.get(chunkParaId);
+        if (!entry) {
+          const r = await this.api.synthesizeParagraph({
+            bookId: this.cfg.bookId,
+            paragraphId: chunkParaId,
+            text: chunk,
+            provider: eff.provider,
+            voice: eff.voiceId,
+            rate: eff.rate,
+            pitch: eff.pitch,
+            volume: eff.volume,
+          } as SynthesizeParagraphRequest);
+          if (!r.success || !r.data) throw new Error(r.error || 'synthesize failed');
+          const audio = new Audio();
+          audio.preload = 'auto';
+          const audioUrl = r.data.url.startsWith('http') ? r.data.url : `${this.api.serverBaseURL}${r.data.url}`;
+          audio.src = audioUrl;
+          audio.playbackRate = eff.rate ?? 1.0;
+          audio.volume = eff.volume ?? 1.0;
+          entry = { url: audioUrl, audio, loaded: false };
+          this.cache.set(chunkParaId, entry);
+          await new Promise<void>((resolve, reject) => {
+            const onCanPlay = () => { audio.removeEventListener('canplaythrough', onCanPlay); audio.removeEventListener('error', onErr); resolve(); };
+            const onErr = () => { audio.removeEventListener('canplaythrough', onCanPlay); audio.removeEventListener('error', onErr); reject(new Error('audio load failed')); };
+            audio.addEventListener('canplaythrough', onCanPlay);
+            audio.addEventListener('error', onErr);
+            audio.load();
+          });
+          entry.loaded = true;
+        }
+        audios.push(entry.audio);
+      }
+    } catch (err) {
+      this.state = 'error';
+      this.cb.onError?.(err as Error);
+      return;
+    }
+
     this.state = 'playing';
     this.progress.isPlaying = true;
     this.cb.onStart?.();
+    this.audio = audios[0];
+    this.attachAudioListeners(autoAdvance);
     try {
       await this.audio.play();
     } catch (err) {
       this.cb.onError?.(err as Error);
       return;
     }
+    // Chain chunks: each chunk (except the last) plays the next on ended.
+    // The last chunk relies on attachAudioListeners(autoAdvance) to move
+    // to the next paragraph, so we must NOT add another ended listener.
+    for (let i = 1; i < audios.length; i++) {
+      const prev = audios[i - 1];
+      const next = audios[i];
+      // prev is not the last chunk, so detach its paragraph-advance listener
+      // and replace with a chunk-chain listener.
+      prev.removeEventListener('ended', this._onEnded);
+      prev.addEventListener('ended', () => {
+        this.detachAudioListeners(this.audio);
+        this.audio = next;
+        this.attachAudioListeners(autoAdvance);
+        next.play().catch((e) => this.cb.onError?.(e as Error));
+      }, { once: true });
+    }
+
     this.prefetch(this.currentIndex + 1);
     this.persistProgress();
   }
 
+  private _onTimeUpdate = () => {
+    const audio = this.audio;
+    if (!audio) return;
+    const dur = audio.duration;
+    const cur = audio.currentTime;
+    this.progress.paragraphProgress = Number.isFinite(dur) && dur > 0 ? cur / dur : 0;
+    this.progress.chapterProgress = (this.currentIndex + this.progress.paragraphProgress) / Math.max(1, this.paragraphs.length);
+    this.cb.onProgress?.(this.progress);
+    const now = Date.now();
+    if (now - this.lastSaveAt > 5000) {
+      this.lastSaveAt = now;
+      this.persistProgress();
+    }
+  };
+
+  private _onEnded = () => {
+    this.currentIndex += 1;
+    if (this.currentIndex >= this.paragraphs.length) {
+      this.state = 'idle';
+      this.progress.isPlaying = false;
+      this.cb.onEnd?.();
+      this.persistProgress(true);
+      return;
+    }
+    this.playCurrent(true).catch((e) => this.cb.onError?.(e as Error));
+  };
+
+  private _onError = () => {
+    this.state = 'error';
+    this.cb.onError?.(new Error('Audio playback error'));
+  };
+
   private attachAudioListeners(autoAdvance: boolean) {
     if (!this.audio) return;
     const audio = this.audio;
-    audio.ontimeupdate = () => {
-      const dur = audio.duration;
-      const cur = audio.currentTime;
-      this.progress.paragraphProgress = Number.isFinite(dur) && dur > 0 ? cur / dur : 0;
-      this.progress.chapterProgress = (this.currentIndex + this.progress.paragraphProgress) / Math.max(1, this.paragraphs.length);
-      this.cb.onProgress?.(this.progress);
-      const now = Date.now();
-      if (now - this.lastSaveAt > 5000) {
-        this.lastSaveAt = now;
-        this.persistProgress();
-      }
-    };
-    audio.onended = () => {
-      if (!autoAdvance) {
-        this.state = 'idle';
-        this.cb.onEnd?.();
-        return;
-      }
-      this.currentIndex += 1;
-      if (this.currentIndex >= this.paragraphs.length) {
-        this.state = 'idle';
-        this.progress.isPlaying = false;
-        this.cb.onEnd?.();
-        this.persistProgress(true);
-        return;
-      }
-      this.playCurrent(true).catch((e) => this.cb.onError?.(e as Error));
-    };
-    audio.onerror = () => {
-      this.state = 'error';
-      this.cb.onError?.(new Error('Audio playback error'));
-    };
+    audio.addEventListener('timeupdate', this._onTimeUpdate);
+    if (autoAdvance) {
+      audio.addEventListener('ended', this._onEnded);
+    }
+    audio.addEventListener('error', this._onError);
+  }
+
+  private detachAudioListeners(audio: HTMLAudioElement | null) {
+    if (!audio) return;
+    audio.removeEventListener('timeupdate', this._onTimeUpdate);
+    audio.removeEventListener('ended', this._onEnded);
+    audio.removeEventListener('error', this._onError);
   }
 
   private async prefetch(idx: number) {
     if (idx >= this.paragraphs.length) return;
     const para = this.paragraphs[idx];
-    if (this.cache.has(para.id)) return;
+    const eff = this._effective();
     try {
       const r = await this.api.synthesizeParagraph({
         bookId: this.cfg.bookId,
         paragraphId: para.id,
         text: para.text,
-        provider: this.cfg.provider,
-        voice: this.cfg.voiceId,
-        rate: this.cfg.rate,
-        pitch: this.cfg.pitch,
-        volume: this.cfg.volume,
+        provider: eff.provider,
+        voice: eff.voiceId,
+        rate: eff.rate,
+        pitch: eff.pitch,
+        volume: eff.volume,
       } as SynthesizeParagraphRequest);
       if (!r.success || !r.data) return;
       const audio = new Audio();
       audio.preload = 'auto';
-      audio.src = r.data.url;
+      const audioUrl = r.data.url.startsWith('http') ? r.data.url : `${this.api.serverBaseURL}${r.data.url}`;
+      audio.src = audioUrl;
       audio.load();
-      this.cache.set(para.id, { url: r.data.url, audio, loaded: false });
+      this.cache.set(para.id, { url: audioUrl, audio, loaded: false });
     } catch {
       // Prefetch failures are non-fatal.
     }
+  }
+
+  /** Merge `cfg` with `activeOverrides` (overrides win). */
+  private _effective(): TTSConfig {
+    return { ...this.cfg, ...(this.activeOverrides || {}) };
   }
 
   private persistProgress(force = false) {
@@ -341,4 +443,55 @@ export function getTTSManager(): TTSManager {
 export function initTTSManager(): TTSManager {
   instance = new TTSManager();
   return instance;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Split a paragraph into ≤ maxLen-character chunks for TTS.
+ * Tries to break on sentence boundaries (CJK + Western punctuation),
+ * falling back to hard-cuts at whitespace if a single sentence is
+ * longer than maxLen.
+ */
+export function splitForTts(text: string, maxLen: number): string[] {
+  if (!text) return [];
+  if (text.length <= maxLen) return [text];
+
+  const sentenceEnd = /(?<=[.!?。！？；;])\s*/g;
+  const sentences = text.split(sentenceEnd).filter(Boolean);
+  const out: string[] = [];
+  let buf = '';
+
+  for (const s of sentences) {
+    if (s.length > maxLen) {
+      // Single sentence is too long — flush whatever we have, then
+      // hard-split this monster on whitespace.
+      if (buf) { out.push(buf); buf = ''; }
+      let rest = s;
+      while (rest.length > maxLen) {
+        let cutAt = rest.lastIndexOf(' ', maxLen);
+        if (cutAt <= 0) cutAt = maxLen; // no whitespace, hard cut
+        out.push(rest.slice(0, cutAt));
+        rest = rest.slice(cutAt).trimStart();
+      }
+      if (rest) {
+        if (rest.length > maxLen) {
+          // Last-resort hard cut
+          out.push(rest.slice(0, maxLen));
+          out.push(rest.slice(maxLen));
+        } else {
+          buf = rest;
+        }
+      }
+      continue;
+    }
+    if ((buf + ' ' + s).trim().length > maxLen) {
+      if (buf) out.push(buf);
+      buf = s;
+    } else {
+      buf = buf ? buf + ' ' + s : s;
+    }
+  }
+  if (buf) out.push(buf);
+  return out;
 }

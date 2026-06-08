@@ -7,6 +7,7 @@ import {
     IsOptional,
     IsString,
     IsUUID,
+    Length,
     Max,
     Min,
 } from 'class-validator';
@@ -190,8 +191,7 @@ export class SynthesizeParagraphDto {
 
   @ApiProperty({ description: 'Text to synthesize (≤ 3000 chars)' })
   @IsString()
-  @Min(1)
-  @Max(3000)
+  @Length(1, 3000)
   text!: string;
 
   @ApiPropertyOptional({ description: 'Provider name (default: app.ttsDefaultProvider)' })

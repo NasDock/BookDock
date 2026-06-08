@@ -32,8 +32,6 @@ credentials.json
 # Docker
 .docker/
 
-# Prisma
-apps/server/prisma/migrations/
 
 # Test
 coverage/
@@ -45,3 +43,5 @@ ebooks/
 covers/
 
 .claude
+
+.tts-cache

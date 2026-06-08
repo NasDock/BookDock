@@ -215,6 +215,23 @@ class ApiClient {
   private onAuthError?: () => void;
   public readonly baseURL: string;
 
+  /** Server base URL without /api suffix, for static assets (audio, covers, etc.) */
+  get serverBaseURL(): string {
+    return this.baseURL.replace(/\/api$/, '');
+  }
+
+  /**
+   * Convert a server-relative path (e.g. "/covers/abc.jpg") into an
+   * absolute URL pointing at the current server. Pass-through if the
+   * input is already an http(s)/data URL or empty.
+   */
+  toAbsoluteUrl(path?: string | null): string | undefined {
+    if (!path) return undefined;
+    if (/^(https?:|data:|blob:)/i.test(path)) return path;
+    if (!path.startsWith('/')) return path;
+    return `${this.serverBaseURL}${path}`;
+  }
+
   constructor(config: ApiClientConfig) {
     this.getAuthToken = config.getAuthToken;
     this.onAuthError = config.onAuthError;

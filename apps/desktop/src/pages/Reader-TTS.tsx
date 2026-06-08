@@ -1,54 +1,108 @@
-// @ts-nocheck
+/**
+ * Reader-TTS — paragraph-level audio reading view.
+ *
+ *  - Loads paragraphs via /books/:id/paragraphs?chapter=N
+ *  - Plays them sequentially through @bookdock/tts TTSManager
+ *  - Highlights the active paragraph in real time
+ *  - Click any paragraph → jump there; click the progress bar → seek
+ *  - Settings (provider / voice / rate / volume) can be overridden
+ *    locally for this page; defaults are pulled from localStorage
+ *    (set by the Settings page).
+ *  - Persists reading position to /tts/progress on pause / seek / exit
+ */
 import {
   Book,
   getApiClient,
   Paragraph,
   TtsProgressRecord,
 } from "@bookdock/api-client";
-import { TTSManager, TTSProgress, TTSState } from "@bookdock/tts";
-import { Button } from "@bookdock/ui";
+import {
+  TTSManager,
+  TTSOverrides,
+  TTSProgress,
+  TTSProvider,
+  TTSState,
+  TTSVoice,
+} from "@bookdock/tts";
 import {
   ArrowLeft,
   BookOpen,
+  Clock,
   FileText,
+  Gauge,
   Pause,
   Play,
   RotateCcw,
   Settings,
   SkipBack,
   SkipForward,
-  Square,
-  Volume2,
+  X,
 } from "lucide-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { getCoverImageUrl } from "../utils/network";
 
-/**
- * Reader-TTS — paragraph-level audio reading view.
- *
- *  - Fetches paragraphs via /books/:id/paragraphs?chapter=N
- *  - Plays them sequentially via @bookdock/tts TTSManager
- *  - Highlights the active paragraph + shows a global progress bar
- *  - Clicking the progress bar seeks to the corresponding paragraph
- *  - Persists progress to /tts/progress on pause / seek / exit
- */
+const TTS_CONFIG_KEY = "bookdock-tts-config";
+const TTS_LANG_KEY = "bookdock-tts-language";
+
+interface StoredTtsConfig {
+  provider?: string;
+  voiceId?: string;
+  rate?: number;
+  volume?: number;
+}
+
+function loadStoredConfig(): StoredTtsConfig {
+  try {
+    const raw = localStorage.getItem(TTS_CONFIG_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
 export default function ReaderTTS() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
+  // ── Book + chapter state ─────────────────────────────────────────────
   const [book, setBook] = useState<Book | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [paragraphs, setParagraphs] = useState<Paragraph[]>([]);
   const [chapterTitle, setChapterTitle] = useState("");
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [chapterIndex, setChapterIndex] = useState(0);
-  const [showSettings, setShowSettings] = useState(false);
-  const [ttsState, setTtsState] = useState<TTSState>("idle");
-  const [voices, setVoices] = useState<any[]>([]);
-  const [voiceId, setVoiceId] = useState<string>("");
-  const [rate, setRate] = useState(1.0);
-  const [volume, setVolume] = useState(1.0);
+  const [chapters, setChapters] = useState<{ title: string; index: number }[]>(
+    [],
+  );
+
+  // ── TTS state ────────────────────────────────────────────────────────
+  const [providers, setProviders] = useState<TTSProvider[]>([]);
+  const [voices, setVoices] = useState<TTSVoice[]>([]);
+  const [language, setLanguage] = useState<string | undefined>(() => {
+    try {
+      return localStorage.getItem(TTS_LANG_KEY) || undefined;
+    } catch {
+      return undefined;
+    }
+  });
+
+  const stored = useMemo(loadStoredConfig, []);
+  const [provider, setProvider] = useState<string>(stored.provider || "edge");
+  const [voiceId, setVoiceId] = useState<string>(stored.voiceId || "");
+  const [rate, setRate] = useState<number>(stored.rate || 1.0);
+  const [volume, setVolume] = useState<number>(
+    stored.volume !== undefined ? stored.volume : 1.0,
+  );
+
+  const [state, setState] = useState<TTSState>("idle");
   const [progress, setProgress] = useState<TTSProgress>({
     paragraphIndex: 0,
     totalParagraphs: 0,
@@ -57,14 +111,90 @@ export default function ReaderTTS() {
     currentText: "",
     isPlaying: false,
   });
+  const [showChapterPanel, setShowChapterPanel] = useState(false);
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+  const [showTtsSettings, setShowTtsSettings] = useState(false);
+  const [voicesLoading, setVoicesLoading] = useState(false);
+  // Sleep timer: minutes remaining, or 0 = off
+  const [sleepMinutes, setSleepMinutes] = useState(0);
+  const [sleepRemaining, setSleepRemaining] = useState(0); // seconds
+  // Panel state: open the picker without starting the timer
+  const [showSleepPanel, setShowSleepPanel] = useState(false);
+  const [pendingSleepMinutes, setPendingSleepMinutes] = useState<
+    number | "custom"
+  >("custom");
+  const [customSleepInput, setCustomSleepInput] = useState("");
 
-  const contentRef = useRef<HTMLDivElement>(null);
-  const paragraphRefs = useRef<(HTMLParagraphElement | null)[]>([]);
   const managerRef = useRef<TTSManager | null>(null);
+  if (!managerRef.current) managerRef.current = new TTSManager();
+  const manager = managerRef.current;
+
+  const paragraphRefs = useRef<(HTMLParagraphElement | null)[]>([]);
   const bookIdRef = useRef<string | undefined>(undefined);
   const chapterIndexRef = useRef(0);
 
-  // ── Book + chapter fetch ───────────────────────────────────────────────
+  // ── Load providers on mount ──────────────────────────────────────────
+  useEffect(() => {
+    (async () => {
+      const ps = await manager.loadProviders();
+      setProviders(ps);
+      // If the stored provider isn't in the list, fall back to first enabled.
+      const enabledNames = ps.filter((p) => p.enabled).map((p) => p.name);
+      if (!enabledNames.includes(provider) && enabledNames.length > 0) {
+        setProvider(enabledNames[0]);
+      }
+    })();
+    return () => {
+      manager.stop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manager]);
+
+  // ── Load voices when provider or language changes ────────────────────
+  useEffect(() => {
+    if (!provider) return;
+    let cancelled = false;
+    (async () => {
+      setVoicesLoading(true);
+      try {
+        const vs = await manager.loadVoices(provider, language);
+        if (cancelled) return;
+        setVoices(vs);
+        // If current voiceId isn't in the new list, reset to the first
+        if (voiceId && !vs.find((v) => v.id === voiceId)) {
+          setVoiceId(vs[0]?.id || "");
+        } else if (!voiceId && vs[0]) {
+          setVoiceId(vs[0].id);
+        }
+      } finally {
+        if (!cancelled) setVoicesLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manager, provider, language]);
+
+  // ── Sync config into manager so it persists for subsequent calls ─────
+  useEffect(() => {
+    manager.setConfig({
+      provider,
+      voiceId,
+      rate,
+      volume,
+      bookId: bookIdRef.current,
+      chapterIndex: chapterIndexRef.current,
+    });
+    // Live rate/volume adjustments while audio is playing
+    if (manager.getState() === "playing" || manager.getState() === "paused") {
+      manager.setRate(rate);
+      manager.setVolume(volume);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manager, provider, voiceId, rate, volume]);
+
+  // ── Book + chapter fetch ─────────────────────────────────────────────
   useEffect(() => {
     const fetchAll = async () => {
       if (!id) return;
@@ -84,9 +214,8 @@ export default function ReaderTTS() {
           setError("本书暂无章节内容，请先解析章节。");
           return;
         }
+        setChapters(chRes.data);
         const ci = 0;
-        setChapterIndex(ci);
-        chapterIndexRef.current = ci;
         await loadChapter(apiClient, id, ci);
       } catch (err) {
         setError((err as Error).message);
@@ -95,7 +224,7 @@ export default function ReaderTTS() {
       }
     };
     fetchAll();
-    return () => managerRef.current?.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const loadChapter = async (
@@ -103,6 +232,9 @@ export default function ReaderTTS() {
     bookId: string,
     ci: number,
   ) => {
+    setChapterIndex(ci);
+    chapterIndexRef.current = ci;
+    manager.setConfig({ chapterIndex: ci });
     const r = await apiClient.getChapterParagraphs(bookId, ci);
     if (!r.success || !r.data) {
       setError("加载章节失败");
@@ -111,95 +243,161 @@ export default function ReaderTTS() {
     setChapterTitle(r.data.title);
     setParagraphs(r.data.paragraphs);
     paragraphRefs.current = new Array(r.data.paragraphs.length).fill(null);
-    setCurrentIndex(0);
+    setProgress((p) => ({
+      ...p,
+      paragraphIndex: 0,
+      totalParagraphs: r.data!.paragraphs.length,
+      paragraphProgress: 0,
+      chapterProgress: 0,
+      currentText: "",
+    }));
+    // Resume from saved progress
     try {
       const p = await apiClient.getTtsProgress(bookId, ci);
       if (p.success && p.data && !Array.isArray(p.data)) {
         const rec = p.data as TtsProgressRecord;
-        setCurrentIndex(
-          Math.min(rec.paragraphIndex, r.data.paragraphs.length - 1),
-        );
+        setProgress((prev) => ({
+          ...prev,
+          paragraphIndex: Math.min(
+            rec.paragraphIndex,
+            r.data!.paragraphs.length - 1,
+          ),
+        }));
       }
     } catch {
-      // ignore
+      /* ignore */
     }
   };
 
-  // ── TTS Manager init ──────────────────────────────────────────────────
-  useEffect(() => {
-    managerRef.current = new TTSManager();
-    managerRef.current.initialize("edge").then(() => {
-      const v = managerRef.current!.getAvailableVoices();
-      setVoices(v);
-      if (v[0]) setVoiceId(v[0].id);
-    });
-  }, []);
-
-  // ── Playback handlers ──────────────────────────────────────────────────
+  // ── Playback handlers ────────────────────────────────────────────────
   const handlePlayPause = useCallback(async () => {
-    const m = managerRef.current;
-    if (!m) return;
-    if (ttsState === "playing") {
-      m.pause();
-    } else if (ttsState === "paused") {
-      m.resume();
-    } else {
-      if (!paragraphs.length) return;
-      m.setConfig({
-        provider: "edge",
-        voiceId,
-        rate,
-        volume,
-        bookId: bookIdRef.current,
-        chapterIndex: chapterIndexRef.current,
-      });
-      await m.play(paragraphs, currentIndex, {
-        onStart: () => setTtsState("playing"),
-        onPause: () => setTtsState("paused"),
-        onResume: () => setTtsState("playing"),
-        onEnd: () => setTtsState("idle"),
+    if (!paragraphs.length) return;
+    if (state === "playing") {
+      manager.pause();
+      return;
+    }
+    if (state === "paused") {
+      manager.resume();
+      return;
+    }
+    // idle / error → start
+    const overrides: TTSOverrides = { provider, voiceId, rate, volume };
+    await manager.play(
+      paragraphs,
+      progress.paragraphIndex,
+      {
+        onStart: () => setState("playing"),
+        onPause: () => setState("paused"),
+        onResume: () => setState("playing"),
+        onEnd: () => setState("idle"),
         onError: (e) => {
           setError(e.message);
-          setTtsState("error");
+          setState("error");
         },
         onProgress: (p) => setProgress(p),
-        onParagraphChange: (idx) => setCurrentIndex(idx),
-      });
-    }
-  }, [ttsState, paragraphs, currentIndex, voiceId, rate, volume]);
-
-  const handleStop = useCallback(() => {
-    managerRef.current?.stop();
-    setTtsState("idle");
-  }, []);
+        onParagraphChange: (idx) =>
+          setProgress((prev) => ({ ...prev, paragraphIndex: idx })),
+      },
+      overrides,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    manager,
+    paragraphs,
+    progress.paragraphIndex,
+    state,
+    provider,
+    voiceId,
+    rate,
+    volume,
+  ]);
 
   const handleSkipBack = useCallback(() => {
-    if (currentIndex > 0) managerRef.current?.jumpTo(currentIndex - 1);
-  }, [currentIndex]);
+    if (progress.paragraphIndex > 0) {
+      manager.jumpTo(progress.paragraphIndex - 1);
+    }
+  }, [manager, progress.paragraphIndex]);
 
   const handleSkipForward = useCallback(() => {
-    if (currentIndex < paragraphs.length - 1)
-      managerRef.current?.jumpTo(currentIndex + 1);
-  }, [currentIndex, paragraphs.length]);
+    if (progress.paragraphIndex < paragraphs.length - 1) {
+      manager.jumpTo(progress.paragraphIndex + 1);
+    }
+  }, [manager, progress.paragraphIndex, paragraphs.length]);
 
-  const handleSeek = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const ratio = Math.max(0, Math.min(1, x / rect.width));
-    managerRef.current?.seek(ratio);
-    setProgress((p) => ({ ...p, chapterProgress: ratio }));
-  }, []);
+  const handleSeek = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const ratio = Math.max(0, Math.min(1, x / rect.width));
+      manager.seek(ratio);
+    },
+    [manager],
+  );
+
+  const handleChapterChange = useCallback(
+    async (ci: number) => {
+      if (ci === chapterIndex) return;
+      manager.stop();
+      setState("idle");
+      const apiClient = getApiClient();
+      await loadChapter(apiClient, bookIdRef.current!, ci);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [chapterIndex, manager],
+  );
+
+  // ── Persist settings to localStorage on change ──────────────────────
+  useEffect(() => {
+    const cfg: StoredTtsConfig = { provider, voiceId, rate, volume };
+    try {
+      localStorage.setItem(TTS_CONFIG_KEY, JSON.stringify(cfg));
+    } catch {
+      /* ignore */
+    }
+  }, [provider, voiceId, rate, volume]);
 
   useEffect(() => {
-    const el = paragraphRefs.current[currentIndex];
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [currentIndex]);
+    try {
+      if (language) localStorage.setItem(TTS_LANG_KEY, language);
+    } catch {
+      /* ignore */
+    }
+  }, [language]);
 
+  // ── Scroll active paragraph into view ───────────────────────────────
+  useEffect(() => {
+    const el = paragraphRefs.current[progress.paragraphIndex];
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [progress.paragraphIndex]);
+
+  // ── Sleep timer ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (sleepMinutes <= 0) {
+      setSleepRemaining(0);
+      return;
+    }
+    setSleepRemaining(sleepMinutes * 60);
+    const interval = setInterval(() => {
+      setSleepRemaining((s) => {
+        if (s <= 1) {
+          // Time's up — pause playback
+          manager.pause();
+          setSleepMinutes(0);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [sleepMinutes, manager]);
+
+  // ── Keyboard shortcuts ───────────────────────────────────────────────
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (
         e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
       )
         return;
       if (e.key === " ") {
@@ -211,13 +409,28 @@ export default function ReaderTTS() {
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         handleSkipForward();
-      } else if (e.key === "Escape") setShowSettings(false);
+      } else if (e.key === "Escape") {
+        if (showChapterPanel) setShowChapterPanel(false);
+        else if (showSleepPanel) setShowSleepPanel(false);
+        else if (showTtsSettings) setShowTtsSettings(false);
+        else if (showSpeedMenu) setShowSpeedMenu(false);
+        else if (sleepMinutes > 0) setSleepMinutes(0);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [handlePlayPause, handleSkipBack, handleSkipForward]);
+  }, [
+    handlePlayPause,
+    handleSkipBack,
+    handleSkipForward,
+    showChapterPanel,
+    showTtsSettings,
+    showSpeedMenu,
+    showSleepPanel,
+    sleepMinutes,
+  ]);
 
-  // ── Render ─────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -236,48 +449,62 @@ export default function ReaderTTS() {
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
             {error || "书籍不存在"}
           </h2>
-          <Button onClick={() => navigate("/")}>返回书库</Button>
+          <button
+            onClick={() => navigate("/library")}
+            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+          >
+            返回书库
+          </button>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
-      <header className="sticky top-0 z-50 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between px-4 h-14">
-          <button
-            onClick={() => {
-              managerRef.current?.stop();
-              navigate(-1);
-            }}
-            className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="text-sm">返回</span>
-          </button>
-          <div className="flex items-center gap-2">
-            <Volume2 className="w-5 h-5" />
-            <span className="font-medium text-gray-900 dark:text-white">
-              听书模式
-            </span>
-          </div>
-          <button
-            onClick={() => setShowSettings((s) => !s)}
-            className={`p-2 rounded-lg ${showSettings ? "bg-blue-100 dark:bg-blue-900 text-blue-600" : "text-gray-600 dark:text-gray-400 hover:bg-gray-100"}`}
-          >
-            <Settings className="w-5 h-5" />
-          </button>
-        </div>
-      </header>
+  const providerLabel = (name: string) => {
+    if (name === "edge") return "Microsoft Edge TTS";
+    if (name === "mi") return "小米 TTS";
+    return name;
+  };
 
-      <main className="flex-1 flex flex-col lg:flex-row">
-        <div className="lg:w-80 p-6 bg-white dark:bg-gray-800 border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-gray-700">
+  const formatSleepRemaining = () => {
+    const m = Math.floor(sleepRemaining / 60);
+    const s = sleepRemaining % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
+  const formatSleepShort = () => {
+    const m = Math.floor(sleepRemaining / 60);
+    return m >= 1 ? `${m}m` : `${sleepRemaining}s`;
+  };
+
+  return (
+    <div className="h-screen bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+        {/* Sidebar */}
+        <div className="lg:w-96 bg-white dark:bg-gray-800 border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-gray-700 flex flex-col shrink-0">
+          {/* Sidebar header: back button + chapter title */}
+          <div className="sticky top-0 z-20 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex items-center px-4 h-14">
+              <button
+                onClick={() => {
+                  manager.stop();
+                  navigate(-1);
+                }}
+                className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white shrink-0"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span className="text-sm">返回</span>
+              </button>
+              <div className="flex-1" />
+            </div>
+          </div>
+
+          <div className="p-5 flex flex-col gap-4 overflow-y-auto flex-1">
+          {/* Book info */}
           <div className="flex flex-col items-center text-center">
             <div className="w-32 h-44 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-lg">
-              {book.coverUrl ? (
+              {getCoverImageUrl(book.coverUrl) ? (
                 <img
-                  src={book.coverUrl}
+                  src={getCoverImageUrl(book.coverUrl)}
                   alt={book.title}
                   className="w-full h-full object-cover"
                 />
@@ -295,19 +522,18 @@ export default function ReaderTTS() {
             <p className="text-gray-500 dark:text-gray-400">
               {book.author || "未知作者"}
             </p>
-            <div className="mt-4 flex gap-2">
-              <span className="px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-sm uppercase">
-                {book.fileType}
-              </span>
-              {book.language && (
-                <span className="px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-sm">
-                  {book.language}
-                </span>
-              )}
-            </div>
+            <p
+              className="mt-2 text-sm text-gray-500 dark:text-gray-400 truncate max-w-full"
+              title={chapterTitle || "未加载"}
+            >
+              {chapterTitle || "加载中…"}
+            </p>
           </div>
 
-          <div className="mt-6">
+          {/* (TTS settings moved to the ⚙ popover in the control bar) */}
+
+          {/* Progress bar */}
+          <div>
             <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400 mb-2">
               <span>
                 {progress.paragraphIndex + 1} / {progress.totalParagraphs} 段
@@ -328,140 +554,444 @@ export default function ReaderTTS() {
               />
             </div>
             <p className="mt-1 text-xs text-gray-400">
-              点击进度条可跳转到对应段落
+              点击进度条或段落即可跳转
             </p>
           </div>
 
-          {showSettings && (
-            <div className="mt-6 space-y-4">
-              <h3 className="font-medium text-gray-900 dark:text-white">
-                语音设置
-              </h3>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  语音
-                </label>
-                <select
-                  value={voiceId}
-                  onChange={(e) => setVoiceId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                >
-                  {voices.length === 0 ? (
-                    <option value="">加载中…</option>
-                  ) : (
-                    voices.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.name} ({v.language})
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  语速: {rate.toFixed(1)}x
-                </label>
-                <input
-                  type="range"
-                  min={0.5}
-                  max={2}
-                  step={0.1}
-                  value={rate}
-                  onChange={(e) => {
-                    const r = parseFloat(e.target.value);
-                    setRate(r);
-                    managerRef.current?.setRate(r);
-                  }}
-                  className="w-full accent-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  音量: {Math.round(volume * 100)}%
-                </label>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={volume}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    setVolume(v);
-                    managerRef.current?.setVolume(v);
-                  }}
-                  className="w-full accent-blue-500"
-                />
-              </div>
+          {/* Playback controls */}
+          <div className="flex items-center justify-center gap-2 py-2 flex-wrap">
+            {/* TTS settings popover (provider / voice / language) */}
+            <div className="relative">
+              <button
+                onClick={() => setShowTtsSettings((v) => !v)}
+                className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+                title="TTS 设置"
+                aria-label="TTS 设置"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+              {showTtsSettings && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setShowTtsSettings(false)}
+                  />
+                  <div className="absolute bottom-full left-0 mb-2 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg w-72 p-3 space-y-2 text-left">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      朗读设置
+                    </p>
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        语言筛选
+                      </label>
+                      <select
+                        value={language || ""}
+                        onChange={(e) =>
+                          setLanguage(e.target.value || undefined)
+                        }
+                        className="w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                      >
+                        <option value="">全部</option>
+                        <option value="zh">中文</option>
+                        <option value="en">英语</option>
+                        <option value="ja">日语</option>
+                        <option value="ko">韩语</option>
+                        <option value="fr">法语</option>
+                        <option value="de">德语</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        服务商
+                      </label>
+                      <select
+                        value={provider}
+                        onChange={(e) => setProvider(e.target.value)}
+                        className="w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                      >
+                        {providers.length === 0 ? (
+                          <option value={provider}>
+                            {providerLabel(provider)}
+                          </option>
+                        ) : (
+                          providers.map((p) => (
+                            <option
+                              key={p.name}
+                              value={p.name}
+                              disabled={!p.enabled}
+                            >
+                              {providerLabel(p.name)}
+                              {p.status === "needs_config" ? " *" : ""}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        语音
+                      </label>
+                      <select
+                        value={voiceId}
+                        onChange={(e) => setVoiceId(e.target.value)}
+                        disabled={voicesLoading}
+                        className="w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+                      >
+                        <option value="">默认</option>
+                        {voices.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.name} ({v.language || v.lang || ""})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <p className="text-[11px] text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-700">
+                      仅对当前听书生效，不影响全局默认。
+                    </p>
+                  </div>
+                </>
+              )}
             </div>
-          )}
 
-          <div className="flex items-center justify-center gap-4 py-4">
+            {/* Speed picker (icon only, dropdown shows current rate) */}
+            <div className="relative">
+              <button
+                onClick={() => setShowSpeedMenu((v) => !v)}
+                className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 relative"
+                title={`倍速 ${rate.toFixed(1)}x`}
+                aria-label="倍速"
+              >
+                <Gauge className="w-4 h-4" />
+                <span className="absolute -top-1 -right-1 bg-blue-500 text-white text-[10px] leading-none rounded-full px-1 py-0.5 font-semibold">
+                  {rate.toFixed(1)}x
+                </span>
+              </button>
+              {showSpeedMenu && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setShowSpeedMenu(false)}
+                  />
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg overflow-hidden min-w-[80px]">
+                    {[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => {
+                          setRate(r);
+                          setShowSpeedMenu(false);
+                        }}
+                        className={`block w-full px-4 py-1.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                          rate === r
+                            ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 font-semibold"
+                            : ""
+                        }`}
+                      >
+                        {r.toFixed(1)}x
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
             <button
               onClick={handleSkipBack}
-              className="p-3 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+              className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
               title="上一段"
+              aria-label="上一段"
             >
-              <SkipBack className="w-5 h-5" />
-            </button>
-            <button
-              onClick={handleStop}
-              className="p-3 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
-              title="停止"
-            >
-              <Square className="w-5 h-5" />
+              <SkipBack className="w-4 h-4" />
             </button>
             <button
               onClick={handlePlayPause}
-              disabled={ttsState === "loading"}
-              className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl ${ttsState === "playing" ? "bg-red-500 hover:bg-red-600" : "bg-blue-500 hover:bg-blue-600"} text-white shadow-lg disabled:opacity-50`}
+              disabled={state === "loading"}
+              className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl ${
+                state === "playing"
+                  ? "bg-red-500 hover:bg-red-600"
+                  : "bg-blue-500 hover:bg-blue-600"
+              } text-white shadow-lg disabled:opacity-50`}
+              title={state === "playing" ? "暂停" : "播放"}
+              aria-label={state === "playing" ? "暂停" : "播放"}
             >
-              {ttsState === "loading" ? (
-                <RotateCcw className="w-6 h-6 animate-spin" />
-              ) : ttsState === "playing" ? (
-                <Pause className="w-6 h-6" />
+              {state === "loading" ? (
+                <RotateCcw className="w-5 h-5 animate-spin" />
+              ) : state === "playing" ? (
+                <Pause className="w-5 h-5" />
               ) : (
-                <Play className="w-6 h-6" />
+                <Play className="w-5 h-5" />
               )}
             </button>
             <button
               onClick={handleSkipForward}
-              className="p-3 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+              className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
               title="下一段"
+              aria-label="下一段"
             >
-              <SkipForward className="w-5 h-5" />
+              <SkipForward className="w-4 h-4" />
             </button>
+
+            {/* Chapter picker */}
+            <button
+              onClick={() => setShowChapterPanel(true)}
+              className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+              title="章节"
+              aria-label="章节"
+              disabled={chapters.length === 0}
+            >
+              <BookOpen className="w-4 h-4" />
+            </button>
+
+            {/* Sleep timer */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setShowSleepPanel(true);
+                  setPendingSleepMinutes(
+                    sleepMinutes > 0 ? sleepMinutes : "custom",
+                  );
+                  setCustomSleepInput(
+                    sleepMinutes > 0 ? String(sleepMinutes) : "",
+                  );
+                }}
+                className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 relative"
+                title={
+                  sleepMinutes > 0
+                    ? `定时关闭 ${formatSleepRemaining()}`
+                    : "定时关闭"
+                }
+                aria-label="定时关闭"
+              >
+                <Clock className="w-4 h-4" />
+                {sleepMinutes > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-amber-500 text-white text-[10px] leading-none rounded-full px-1 py-0.5 font-semibold">
+                    {formatSleepShort()}
+                  </span>
+                )}
+              </button>
+              {showSleepPanel && (
+                <>
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setShowSleepPanel(false)}
+                  />
+                  <div className="absolute bottom-full right-0 mb-2 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg p-3 w-64 text-left space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      定时关闭
+                    </p>
+                    {sleepMinutes > 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        当前: {formatSleepRemaining()} 后停止
+                      </p>
+                    )}
+
+                    {/* Quick presets */}
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {[30, 60, 120].map((m) => (
+                        <button
+                          key={m}
+                          onClick={() => {
+                            setPendingSleepMinutes(m);
+                            setCustomSleepInput("");
+                          }}
+                          className={`px-2 py-1.5 rounded text-sm font-medium border transition-colors ${
+                            pendingSleepMinutes === m
+                              ? "bg-blue-500 border-blue-500 text-white"
+                              : "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:border-blue-400"
+                          }`}
+                        >
+                          {m < 60 ? `${m}分` : `${m / 60}小时`}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Custom input */}
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        自定义（分钟）
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={600}
+                        value={
+                          pendingSleepMinutes === "custom"
+                            ? customSleepInput
+                            : ""
+                        }
+                        onFocus={() => {
+                          if (pendingSleepMinutes !== "custom") {
+                            setPendingSleepMinutes("custom");
+                            setCustomSleepInput("");
+                          }
+                        }}
+                        onChange={(e) => {
+                          setPendingSleepMinutes("custom");
+                          setCustomSleepInput(e.target.value);
+                        }}
+                        placeholder="例如 45"
+                        className="w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-1.5 pt-1">
+                      <button
+                        onClick={() => {
+                          const mins =
+                            pendingSleepMinutes === "custom"
+                              ? parseInt(customSleepInput, 10)
+                              : pendingSleepMinutes;
+                          if (!mins || mins <= 0) return;
+                          setSleepMinutes(mins);
+                          setShowSleepPanel(false);
+                        }}
+                        className="flex-1 px-3 py-1.5 rounded bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium"
+                      >
+                        确定
+                      </button>
+                      {sleepMinutes > 0 && (
+                        <button
+                          onClick={() => {
+                            setSleepMinutes(0);
+                            setShowSleepPanel(false);
+                          }}
+                          className="px-3 py-1.5 rounded bg-red-500 hover:bg-red-600 text-white text-sm font-medium"
+                        >
+                          取消
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setShowSleepPanel(false)}
+                        className="px-3 py-1.5 rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 text-sm"
+                      >
+                        关闭
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
+
+          {/* Chapter switcher moved to side panel triggered from controls */}
+
+          {/* Book info — description, publisher, ISBN, etc. */}
+          {book && (
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-2 space-y-3">
+              {book.description && (
+                <div>
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">
+                    简介
+                  </h4>
+                  <p
+                    className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line"
+                    style={{
+                      display: "-webkit-box",
+                      WebkitLineClamp: 6,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {book.description}
+                  </p>
+                </div>
+              )}
+              <dl className="text-xs space-y-1.5">
+                {book.author && (
+                  <div className="flex gap-2">
+                    <dt className="w-14 shrink-0 text-gray-500 dark:text-gray-400">
+                      作者
+                    </dt>
+                    <dd className="text-gray-800 dark:text-gray-200">
+                      {book.author}
+                    </dd>
+                  </div>
+                )}
+                {book.publisher && (
+                  <div className="flex gap-2">
+                    <dt className="w-14 shrink-0 text-gray-500 dark:text-gray-400">
+                      出版社
+                    </dt>
+                    <dd className="text-gray-800 dark:text-gray-200">
+                      {book.publisher}
+                    </dd>
+                  </div>
+                )}
+                {book.isbn && (
+                  <div className="flex gap-2">
+                    <dt className="w-14 shrink-0 text-gray-500 dark:text-gray-400">
+                      ISBN
+                    </dt>
+                    <dd className="text-gray-800 dark:text-gray-200 font-mono">
+                      {book.isbn}
+                    </dd>
+                  </div>
+                )}
+                {book.language && (
+                  <div className="flex gap-2">
+                    <dt className="w-14 shrink-0 text-gray-500 dark:text-gray-400">
+                      语言
+                    </dt>
+                    <dd className="text-gray-800 dark:text-gray-200">
+                      {book.language}
+                    </dd>
+                  </div>
+                )}
+                {book.format && (
+                  <div className="flex gap-2">
+                    <dt className="w-14 shrink-0 text-gray-500 dark:text-gray-400">
+                      格式
+                    </dt>
+                    <dd className="text-gray-800 dark:text-gray-200 uppercase">
+                      {book.format}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          )}
+
+          {/* Keyboard hint — pinned to the bottom of the sidebar */}
+          <div className="mt-auto pt-3 border-t border-gray-200 dark:border-gray-700">
+            <p className="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed">
+              空格 播放/暂停
+              <br />
+              ← → 切换段落
+              <br />
+              点击段落或进度条跳转
+            </p>
+          </div>
+          </div>{/* /scrollable inner wrapper */}
         </div>
 
-        <div className="flex-1 flex flex-col">
-          <h2 className="px-6 pt-4 text-lg font-semibold text-gray-900 dark:text-white">
-            {chapterTitle}
-          </h2>
-          <div
-            ref={contentRef}
-            className="flex-1 p-6 overflow-y-auto"
-            style={{ maxHeight: "calc(100vh - 300px)" }}
-          >
+        {/* Paragraphs — right side, body only */}
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-gray-50 dark:bg-gray-900">
+          <div className="flex-1 p-6 overflow-y-auto min-h-0">
             {paragraphs.length > 0 ? (
-              <div className="text-lg leading-relaxed space-y-4">
-                {paragraphs.map((p, idx) => (
-                  <p
-                    key={p.id}
-                    ref={(el) => {
-                      paragraphRefs.current[idx] = el;
-                    }}
-                    data-paragraph-id={p.id}
-                    className={`transition-colors duration-300 rounded px-2 py-1 ${
-                      idx === currentIndex
-                        ? "bg-amber-100/80 dark:bg-amber-900/40 font-medium ring-1 ring-amber-300"
-                        : "opacity-70"
-                    }`}
-                    onClick={() => managerRef.current?.jumpTo(idx)}
-                  >
-                    {p.text}
-                  </p>
-                ))}
+              <div className="text-lg leading-relaxed space-y-3 max-w-3xl mx-auto">
+                {paragraphs.map((p, idx) => {
+                  const isCurrent = idx === progress.paragraphIndex;
+                  const isPast = idx < progress.paragraphIndex;
+                  return (
+                    <p
+                      key={p.id}
+                      ref={(el) => {
+                        paragraphRefs.current[idx] = el;
+                      }}
+                      data-paragraph-id={p.id}
+                      onClick={() => manager.jumpTo(idx)}
+                      className={`transition-all duration-200 rounded-lg px-3 py-2 cursor-pointer ${
+                        isCurrent
+                          ? "bg-amber-100/80 dark:bg-amber-900/40 font-medium ring-2 ring-amber-300 dark:ring-amber-700 scale-[1.01]"
+                          : isPast
+                            ? "opacity-50"
+                            : "opacity-80 hover:opacity-100"
+                      }`}
+                    >
+                      {p.text}
+                    </p>
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-12 text-gray-500">
@@ -470,11 +1000,69 @@ export default function ReaderTTS() {
               </div>
             )}
           </div>
-          <div className="bg-gray-100 dark:bg-gray-800/50 p-2 text-center text-xs text-gray-500 dark:text-gray-400">
-            空格 播放/暂停 | 左右方向键 切换段落 | 点击段落或进度条跳转
-          </div>
         </div>
       </main>
+
+      {/* Chapter side panel */}
+      {showChapterPanel && (
+        <div
+          className="fixed inset-0 z-50 flex justify-end"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setShowChapterPanel(false)}
+          />
+          <div className="relative w-80 max-w-[90vw] h-full bg-white dark:bg-gray-800 shadow-2xl flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                章节列表
+              </h3>
+              <button
+                onClick={() => setShowChapterPanel(false)}
+                className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                aria-label="关闭"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {chapters.length === 0 ? (
+                <div className="p-6 text-center text-sm text-gray-500">
+                  暂无章节
+                </div>
+              ) : (
+                <ul>
+                  {chapters.map((c) => {
+                    const isActive = c.index === chapterIndex;
+                    return (
+                      <li key={c.index}>
+                        <button
+                          onClick={() => {
+                            handleChapterChange(c.index);
+                            setShowChapterPanel(false);
+                          }}
+                          className={`w-full text-left px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${
+                            isActive
+                              ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 font-medium"
+                              : "text-gray-700 dark:text-gray-200"
+                          }`}
+                        >
+                          <span className="inline-block w-8 text-xs text-gray-400">
+                            {c.index + 1}
+                          </span>
+                          {c.title}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

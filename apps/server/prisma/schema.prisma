@@ -167,13 +167,13 @@ model Collection {
 model CollectionItem {
   id           String   @id @default(uuid())
   collectionId String   @map("collection_id")
-  bookId       String   @map("book_id")
+  bookId       String?  @map("book_id")
   sortOrder    Int      @default(0) @map("sort_order")
   addedAt      DateTime @default(now()) @map("added_at")
 
   // Relations
   collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-  book       Book       @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  book       Book?      @relation(fields: [bookId], references: [id], onDelete: Cascade)
 
   @@unique([collectionId, bookId])
   @@index([collectionId])

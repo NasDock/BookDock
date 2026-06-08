@@ -1,10 +1,19 @@
 /**
- * useTTS — thin React wrapper around @bookdock/tts TTSManager.
+ * useTTS — React wrapper around @bookdock/tts TTSManager.
  *
- * The manager has been refactored to operate on Paragraph[] directly,
- * so this hook exposes play(paragraphs), pause, resume, stop, seek, jumpTo.
+ * Exposes the manager's full surface (play/pause/resume/stop/seek/jumpTo)
+ * plus a `playWithOverrides` entry point so the Reader-TTS page can
+ * locally switch provider/voice without mutating the global config.
  */
-import { Paragraph, TTSManager, TTSProgress, TTSState, TTSVoice } from '@bookdock/tts';
+import {
+    Paragraph,
+    TTSManager,
+    TTSOverrides,
+    TTSProgress,
+    TTSProvider,
+    TTSState,
+    TTSVoice,
+} from '@bookdock/tts';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface UseTTSReturn {
@@ -14,9 +23,11 @@ interface UseTTSReturn {
   error: string | null;
   progress: TTSProgress;
   voices: TTSVoice[];
+  providers: TTSProvider[];
+  currentProvider: string | null;
   rate: number;
   volume: number;
-  play: (paragraphs: Paragraph[], startIndex?: number) => Promise<void>;
+  play: (paragraphs: Paragraph[], startIndex?: number, overrides?: TTSOverrides) => Promise<void>;
   pause: () => void;
   resume: () => void;
   stop: () => void;
@@ -25,6 +36,8 @@ interface UseTTSReturn {
   setVoice: (voiceId: string) => void;
   setRate: (rate: number) => void;
   setVolume: (v: number) => void;
+  setProvider: (provider: string) => Promise<void>;
+  loadVoices: (provider: string, language?: string) => Promise<void>;
 }
 
 export function useTTS(): UseTTSReturn {
@@ -43,39 +56,66 @@ export function useTTS(): UseTTSReturn {
     isPlaying: false,
   });
   const [voices, setVoices] = useState<TTSVoice[]>([]);
+  const [providers, setProviders] = useState<TTSProvider[]>([]);
+  const [currentProvider, setCurrentProvider] = useState<string | null>(null);
   const [rate, setRateState] = useState(1.0);
   const [volume, setVolumeState] = useState(1.0);
 
   useEffect(() => {
-    manager.initialize('edge').then(() => setVoices(manager.getAvailableVoices()));
-    return () => { manager.stop(); };
+    let cancelled = false;
+    (async () => {
+      const ps = await manager.loadProviders();
+      if (cancelled) return;
+      setProviders(ps);
+      const defaultProvider = (ps.find((p) => p.enabled) || ps[0])?.name || 'edge';
+      const vs = await manager.loadVoices(defaultProvider);
+      if (cancelled) return;
+      setVoices(vs);
+      setCurrentProvider(manager.getVoicesProvider());
+    })();
+    return () => {
+      cancelled = true;
+      manager.stop();
+    };
   }, [manager]);
 
-  const play = useCallback(async (paragraphs: Paragraph[], startIndex = 0) => {
-    setError(null);
-    await manager.play(paragraphs, startIndex, {
-      onStart: () => setState('playing'),
-      onPause: () => setState('paused'),
-      onResume: () => setState('playing'),
-      onEnd: () => setState('idle'),
-      onError: (e) => { setError(e.message); setState('error'); },
-      onProgress: (p) => setProgress(p),
-      onParagraphChange: () => { /* progress event already fires */ },
-    });
-  }, [manager]);
+  const play = useCallback(
+    async (paragraphs: Paragraph[], startIndex = 0, overrides?: TTSOverrides) => {
+      setError(null);
+      await manager.play(paragraphs, startIndex, {
+        onStart: () => setState('playing'),
+        onPause: () => setState('paused'),
+        onResume: () => setState('playing'),
+        onEnd: () => setState('idle'),
+        onError: (e) => { setError(e.message); setState('error'); },
+        onProgress: (p) => setProgress(p),
+        onParagraphChange: () => { /* progress event already fires */ },
+      }, overrides);
+    },
+    [manager],
+  );
 
   const pause = useCallback(() => manager.pause(), [manager]);
   const resume = useCallback(() => manager.resume(), [manager]);
   const stop = useCallback(() => { manager.stop(); setState('idle'); }, [manager]);
-  const seek = useCallback(async (ratio: number) => {
-    await manager.seek(ratio);
-  }, [manager]);
-  const jumpTo = useCallback(async (idx: number) => {
-    await manager.jumpTo(idx);
-  }, [manager]);
+  const seek = useCallback(async (ratio: number) => { await manager.seek(ratio); }, [manager]);
+  const jumpTo = useCallback(async (idx: number) => { await manager.jumpTo(idx); }, [manager]);
   const setVoice = useCallback((id: string) => manager.setVoice(id), [manager]);
   const setRate = useCallback((r: number) => { setRateState(r); manager.setPlaybackRate(r); }, [manager]);
   const setVolume = useCallback((v: number) => { setVolumeState(v); manager.setVolume(v); }, [manager]);
+
+  const setProvider = useCallback(async (provider: string) => {
+    setCurrentProvider(provider);
+    setVoices([]); // clear until new list arrives
+    const vs = await manager.loadVoices(provider);
+    setVoices(vs);
+  }, [manager]);
+
+  const loadVoices = useCallback(async (provider: string, language?: string) => {
+    const vs = await manager.loadVoices(provider, language);
+    setVoices(vs);
+    setCurrentProvider(manager.getVoicesProvider());
+  }, [manager]);
 
   return {
     isPlaying: state === 'playing',
@@ -84,8 +124,12 @@ export function useTTS(): UseTTSReturn {
     error,
     progress,
     voices,
+    providers,
+    currentProvider,
     rate,
     volume,
-    play, pause, resume, stop, seek, jumpTo, setVoice, setRate, setVolume,
+    play, pause, resume, stop, seek, jumpTo,
+    setVoice, setRate, setVolume,
+    setProvider, loadVoices,
   };
 }
