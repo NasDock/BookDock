@@ -24,6 +24,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -262,7 +263,7 @@ export function TTSScreen() {
   }, []);
 
   const persistProgress = useCallback(
-    (idx: number, audioOffsetMs = 0) => {
+    async (idx: number, audioOffsetMs = 0) => {
       const apiClient = getApiClient();
       const ttsPayload = {
         bookId: book.id,
@@ -279,14 +280,14 @@ export function TTSScreen() {
         paragraphIndex: idx,
         audioOffsetMs,
       };
-      Promise.all([
-        apiClient.saveTtsProgress(ttsPayload).catch(() => {
-          /* ignore */
-        }),
-        apiClient.saveBookLastRead(lastReadPayload).catch(() => {
-          /* ignore */
-        }),
-      ]);
+      try {
+        await Promise.all([
+          apiClient.saveTtsProgress(ttsPayload),
+          apiClient.saveBookLastRead(lastReadPayload),
+        ]);
+      } catch {
+        /* ignore */
+      }
     },
     [book.id, chapterIndex, paragraphs.length, voiceId, provider],
   );
@@ -308,13 +309,34 @@ export function TTSScreen() {
           status?.isLoaded && typeof status.positionMillis === "number"
             ? status.positionMillis
             : 0;
-        persistProgress(currentParagraph, offsetMs);
+        await persistProgress(currentParagraph, offsetMs);
       } catch {
-        persistProgress(currentParagraph, 0);
+        await persistProgress(currentParagraph, 0);
       }
     });
     return unsubscribe;
   }, [currentParagraph, navigation, persistProgress]);
+
+  // ── Persist progress when app goes to background ────────────────────
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      if (nextAppState === "background" || nextAppState === "inactive") {
+        void (async () => {
+          try {
+            const status = await soundRef.current?.getStatusAsync();
+            const offsetMs =
+              status?.isLoaded && typeof status.positionMillis === "number"
+                ? status.positionMillis
+                : 0;
+            await persistProgress(currentParagraph, offsetMs);
+          } catch {
+            await persistProgress(currentParagraph, 0);
+          }
+        })();
+      }
+    });
+    return () => subscription.remove();
+  }, [currentParagraph, persistProgress]);
 
   const prefetchParagraph = useCallback(
     async (idx: number) => {
@@ -483,7 +505,7 @@ export function TTSScreen() {
       try {
         const status = await soundRef.current?.getStatusAsync();
         if (status?.isLoaded && typeof status.positionMillis === "number") {
-          persistProgress(paraIdx, status.positionMillis);
+          await persistProgress(paraIdx, status.positionMillis);
         }
       } catch {
         /* ignore */
@@ -520,7 +542,7 @@ export function TTSScreen() {
         setIsPaused(true);
         ttsStore.setState("paused");
         if (status?.isLoaded && typeof status.positionMillis === "number") {
-          persistProgress(currentParagraph, status.positionMillis);
+          await persistProgress(currentParagraph, status.positionMillis);
         }
       } catch {
         /* ignore */
@@ -529,7 +551,7 @@ export function TTSScreen() {
   }, [currentParagraph, persistProgress, ttsStore]);
 
   const handleStop = useCallback(async () => {
-    persistProgress(currentParagraph, 0);
+    await persistProgress(currentParagraph, 0);
     await cleanupAudio();
     setIsPlaying(false);
     setIsPaused(false);
@@ -545,7 +567,7 @@ export function TTSScreen() {
         playParagraph(idx);
       } else {
         setCurrentParagraph(idx);
-        persistProgress(idx);
+        void persistProgress(idx);
       }
     },
     [paragraphs.length, isPlaying, isPaused, playParagraph, persistProgress],
