@@ -338,7 +338,12 @@ export class TtsService {
     fileUrl: string,
     fileSize: number,
   ): Promise<void> {
-    // TtsAudioFile.bookId is optional; store null when no book is associated.
+    // TtsAudioFile.bookId is NOT NULL in the schema. Synthesise calls
+    // from the TTSController already enforce a real bookId, but the
+    // legacy test / direct callers may pass nothing — fall back to a
+    // sentinel UUID so we still record the cache row instead of
+    // failing the whole request.
+    const fallbackBookId = "00000000-0000-0000-0000-000000000000";
     try {
       const existing = await this.prisma.ttsAudioFile.findFirst({
         where: { contentHash },
@@ -352,7 +357,7 @@ export class TtsService {
       }
       await this.prisma.ttsAudioFile.create({
         data: {
-          bookId: bookId || undefined,
+          bookId: bookId || fallbackBookId,
           filePath,
           fileUrl,
           fileSize: BigInt(fileSize),

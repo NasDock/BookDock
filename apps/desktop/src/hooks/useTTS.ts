@@ -80,17 +80,28 @@ export function useTTS(): UseTTSReturn {
   }, [manager]);
 
   const play = useCallback(
-    async (paragraphs: Paragraph[], startIndex = 0, overrides?: TTSOverrides) => {
+    async (
+      paragraphs: Paragraph[],
+      startIndex = 0,
+      overrides?: TTSOverrides,
+      startOffsetMs = 0,
+    ) => {
       setError(null);
-      await manager.play(paragraphs, startIndex, {
-        onStart: () => setState('playing'),
-        onPause: () => setState('paused'),
-        onResume: () => setState('playing'),
-        onEnd: () => setState('idle'),
-        onError: (e) => { setError(e.message); setState('error'); },
-        onProgress: (p) => setProgress(p),
-        onParagraphChange: () => { /* progress event already fires */ },
-      }, overrides);
+      await manager.play(
+        paragraphs,
+        startIndex,
+        {
+          onStart: () => setState('playing'),
+          onPause: () => setState('paused'),
+          onResume: () => setState('playing'),
+          onEnd: () => setState('idle'),
+          onError: (e) => { setError(e.message); setState('error'); },
+          onProgress: (p) => setProgress(p),
+          onParagraphChange: () => { /* progress event already fires */ },
+        },
+        overrides,
+        startOffsetMs,
+      );
     },
     [manager],
   );

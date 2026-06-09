@@ -119,6 +119,9 @@ export function TTSScreen() {
   const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [currentParagraph, setCurrentParagraph] = useState(0);
   const [paragraphProgress, setParagraphProgress] = useState(0); // 0..1 within the current paragraph
+  /** ms offset within the saved paragraph to resume at, populated
+   *  by loadChapter() and consumed on the next play. */
+  const [resumeOffsetMs, setResumeOffsetMs] = useState(0);
 
   const soundRef = useRef<Audio.Sound | null>(null);
   const prefetchedRef = useRef<Map<string, string>>(new Map()); // paragraphId → audio URI
@@ -215,13 +218,25 @@ export function TTSScreen() {
       setParagraphs(pRes.data.paragraphs);
       setCurrentParagraph(0);
       setParagraphProgress(0);
+      setResumeOffsetMs(0);
       prefetchedRef.current.clear();
-      // Resume from saved progress
+      // Resume from saved cloud progress (cross-device sync)
       try {
         const prog = await apiClient.getTtsProgress(book.id, ci);
         if (prog.success && prog.data && !Array.isArray(prog.data)) {
+          const rec = prog.data;
+          // Apply saved voice/provider so the first synthesis uses them
+          if (rec.provider) {
+            setProvider(rec.provider);
+            ttsStore.setSelectedProvider(rec.provider);
+          }
+          if (rec.voice) {
+            setVoiceId(rec.voice);
+          }
+          // Stash the byte offset for the next play() call
+          setResumeOffsetMs(Math.max(0, rec.audioOffsetMs || 0));
           setCurrentParagraph(
-            Math.min(prog.data.paragraphIndex, pRes.data.paragraphs.length - 1),
+            Math.min(rec.paragraphIndex, pRes.data.paragraphs.length - 1),
           );
         }
       } catch {
@@ -247,13 +262,14 @@ export function TTSScreen() {
   }, []);
 
   const persistProgress = useCallback(
-    (idx: number) => {
+    (idx: number, audioOffsetMs = 0) => {
       const apiClient = getApiClient();
       apiClient
         .saveTtsProgress({
           bookId: book.id,
           chapterIndex,
           paragraphIndex: idx,
+          audioOffsetMs,
           voice: voiceId,
           provider,
           totalParagraphs: paragraphs.length,
@@ -318,7 +334,11 @@ export function TTSScreen() {
       const para = paragraphs[idx];
       setCurrentParagraph(idx);
       setParagraphProgress(0);
-      persistProgress(idx);
+      // The first call after a saved cloud resume carries the offset
+      // we want to skip into; persist progress only once we've actually
+      // landed at that position.
+      const startOffsetMs = resumeOffsetMs;
+      setResumeOffsetMs(0);
       // Prefetch the next paragraph in the background
       prefetchParagraph(idx + 1);
 
@@ -349,7 +369,7 @@ export function TTSScreen() {
           uris.push(uri);
         }
         // Play chunks sequentially. Chained via status callback.
-        await playChunksSequentially(uris, idx);
+        await playChunksSequentially(uris, idx, startOffsetMs);
       } catch (e) {
         console.error("TTS paragraph error", e);
         setIsLoadingAudio(false);
@@ -363,9 +383,9 @@ export function TTSScreen() {
       book.id,
       cleanupAudio,
       paragraphs,
-      persistProgress,
       prefetchParagraph,
       provider,
+      resumeOffsetMs,
       ttsStore,
       voiceId,
       voices,
@@ -375,7 +395,7 @@ export function TTSScreen() {
   /** Play a list of audio URIs sequentially. After the last one finishes,
    *  auto-advance to the next paragraph. */
   const playChunksSequentially = useCallback(
-    async (uris: string[], paraIdx: number) => {
+    async (uris: string[], paraIdx: number, startOffsetMs = 0) => {
       if (uris.length === 0) return;
       const apiClient = getApiClient();
       // Mark progress at chunk 0
@@ -412,16 +432,37 @@ export function TTSScreen() {
           )
             .then(({ sound }) => {
               soundRef.current = sound;
+              // Seek into the audio when the caller asked to resume at
+              // a specific offset (set by cloud-progress restore).
+              // Only the first chunk honors the offset; subsequent
+              // chunks start from 0.
+              if (i === 0 && startOffsetMs > 0) {
+                sound
+                  .setStatusAsync({ positionMillis: startOffsetMs })
+                  .catch(() => {
+                    /* seek failures are non-fatal */
+                  });
+              }
             })
             .catch(reject);
         });
       }
       // After all chunks are done, the last callback already advanced
-      // to the next paragraph. Store the chosen voice for persistence.
+      // to the next paragraph. Store the chosen voice for persistence
+      // and overwrite the just-restored paragraph record with the
+      // current audioOffsetMs so subsequent saves don't collapse to 0.
       const v = voices.find((x) => x.id === voiceId);
       if (v) ttsStore.setSelectedVoice(v);
+      try {
+        const status = await soundRef.current?.getStatusAsync();
+        if (status?.isLoaded && typeof status.positionMillis === "number") {
+          persistProgress(paraIdx, status.positionMillis);
+        }
+      } catch {
+        /* ignore */
+      }
     },
-    [playParagraph, ttsStore, voiceId, voices],
+    [persistProgress, playParagraph, ttsStore, voiceId, voices],
   );
 
   const handlePlayPause = useCallback(async () => {

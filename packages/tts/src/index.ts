@@ -96,6 +96,14 @@ export class TTSManager {
   private providersLoaded = false;
   /** Per-call overrides set by the most recent play() call. */
   private activeOverrides: TTSOverrides | null = null;
+  /** Last payload that was actually written to the server. Lets callers
+   *  (e.g. Reader-TTS) read back the most recent server-side state
+   *  for resume UI. */
+  private lastSavedProgress: TtsProgressPayload | null = null;
+  /** The ms offset within the current paragraph's audio where playback
+   *  should resume. Set by callers via play(startOffsetMs) and
+   *  consumed by playCurrent(). */
+  private pendingOffsetMs = 0;
 
   async initialize(provider = 'edge'): Promise<void> {
     await this.loadProviders();
@@ -145,6 +153,12 @@ export class TTSManager {
   setConfig(cfg: TTSConfig) { this.cfg = { ...this.cfg, ...cfg }; }
   setProvider(p: string) { this.cfg.provider = p; }
   setVoice(voiceId: string) { this.cfg.voiceId = voiceId; }
+
+  /** Read the live configuration (bookId / provider / voice / rate /
+   *  volume). Useful for callers that need the most recent values
+   *  without waiting for the React effect to flush stale state
+   *  into the manager. */
+  getConfig(): TTSConfig { return { ...this.cfg }; }
   setRate(rate: number) {
     this.cfg.rate = rate;
     if (this.audio) this.audio.playbackRate = Math.max(0.25, Math.min(4, rate));
@@ -160,6 +174,7 @@ export class TTSManager {
     startIndex = 0,
     callbacks: TTSEventCallbacks = {},
     overrides?: TTSOverrides,
+    startOffsetMs = 0,
   ): Promise<void> {
     if (!paragraphs.length) {
       callbacks.onError?.(new Error('No paragraphs to play'));
@@ -170,6 +185,7 @@ export class TTSManager {
     this.cb = callbacks;
     this.currentIndex = Math.max(0, Math.min(startIndex, paragraphs.length - 1));
     this.activeOverrides = overrides || null;
+    this.pendingOffsetMs = Math.max(0, startOffsetMs);
     // If the voice/provider changed, drop the cache so the new request
     // goes through with the new audio URL.
     if (overrides && (overrides.provider !== undefined || overrides.voiceId !== undefined)) {
@@ -308,6 +324,15 @@ export class TTSManager {
     this.attachAudioListeners(autoAdvance);
     try {
       await this.audio.play();
+      // Resume from a specific position within the first chunk's audio.
+      // Used by play(startOffsetMs) when restoring server-side progress.
+      if (this.pendingOffsetMs > 0) {
+        const dur = this.audio.duration;
+        if (Number.isFinite(dur) && dur > 0) {
+          this.audio.currentTime = Math.min(this.pendingOffsetMs / 1000, dur);
+        }
+        this.pendingOffsetMs = 0;
+      }
     } catch (err) {
       this.cb.onError?.(err as Error);
       return;
@@ -425,11 +450,19 @@ export class TTSManager {
       provider: this.cfg.provider,
       totalParagraphs: this.paragraphs.length,
     };
+    this.lastSavedProgress = payload;
     this.api.saveTtsProgress(payload).catch(() => {
       // Persistence failures are non-fatal; just log.
     });
     // suppress unused-arg warnings; force is reserved for future use
     void force;
+  }
+
+  /** Most recent payload that the manager wrote to the server. Useful
+   *  for UI to show "last saved" status / for the resume flow to read
+   *  back the audioOffsetMs. */
+  getLastSavedProgress(): TtsProgressPayload | null {
+    return this.lastSavedProgress;
   }
 }
 
