@@ -108,8 +108,25 @@ export default function BookDetail() {
     if (book) navigate(`/book/${book.id}`);
   }, [navigate, book]);
 
-  const handleTTS = useCallback(() => {
-    if (book) navigate(`/book/${book.id}/tts`);
+  const handleTTS = useCallback(async () => {
+    if (!book) return;
+    // Deep-link straight to the user's last listened chapter so they
+    // can resume mid-book without having to scroll back. Falls back to
+    // chapter 0 if there's no recorded progress yet.
+    try {
+      const api = getApiClient();
+      const res = await api.getBookLastRead(book.id);
+      console.log('[BookDetail] getBookLastRead res:', res);
+      const ci =
+        res.success && res.data && Number.isFinite(res.data.chapterIndex)
+          ? Math.max(0, res.data.chapterIndex)
+          : 0;
+      console.log('[BookDetail] navigating to ci:', ci);
+      navigate(`/book/${book.id}/tts?ci=${ci}`);
+    } catch (e) {
+      console.error('[BookDetail] getBookLastRead error:', e);
+      navigate(`/book/${book.id}/tts?ci=0`);
+    }
   }, [navigate, book]);
 
   const handleToggleFavorite = useCallback(async () => {

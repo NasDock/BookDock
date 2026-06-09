@@ -45,7 +45,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { getCoverImageUrl } from "../utils/network";
 
 const TTS_CONFIG_KEY = "bookdock-tts-config";
@@ -70,6 +70,7 @@ function loadStoredConfig(): StoredTtsConfig {
 
 export default function ReaderTTS() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   // ── Book + chapter state ─────────────────────────────────────────────
@@ -222,31 +223,49 @@ export default function ReaderTTS() {
           return;
         }
         setChapters(chRes.data);
-        // Resume from the most recently updated chapter on the server,
-        // so closing the page and reopening takes the user back to where
-        // they left off (across chapters). Falls back to chapter 0 when
-        // there is no saved progress yet.
+        // Chapter index resolution, in priority order:
+        //   1. ?ci=N in the URL  (deep-link / "继续听书" button target)
+        //   2. GET /books/:id/last-read  (global "last listened" pointer)
+        //   3. GET /tts/progress?bookId=... — most recently updated row
+        //      across all chapters (legacy fallback, kept for users with
+        //      old per-chapter progress but no BookLastRead row yet)
+        //   4. 0
         let ci = 0;
-        try {
-          const allRes = await apiClient.getTtsProgress(id);
-          if (
-            allRes.success &&
-            Array.isArray(allRes.data) &&
-            allRes.data.length > 0
-          ) {
-            const latest = [...allRes.data].sort(
-              (a, b) =>
-                new Date(b.updatedAt).getTime() -
-                new Date(a.updatedAt).getTime(),
-            )[0];
-            ci = Math.max(
-              0,
-              Math.min(latest.chapterIndex, chRes.data.length - 1),
-            );
+        const ciParam = searchParams.get("ci");
+        console.log('[Reader-TTS] URL ciParam:', ciParam);
+        if (ciParam !== null) {
+          const parsed = parseInt(ciParam, 10);
+          if (Number.isFinite(parsed) && parsed >= 0) {
+            ci = parsed;
           }
-        } catch {
-          /* fall back to chapter 0 */
+        } else {
+          try {
+            const lastRes = await apiClient.getBookLastRead(id);
+            console.log('[Reader-TTS] getBookLastRead res:', lastRes);
+            if (lastRes.success && lastRes.data) {
+              ci = lastRes.data.chapterIndex;
+            } else {
+              const allRes = await apiClient.getTtsProgress(id);
+              if (
+                allRes.success &&
+                Array.isArray(allRes.data) &&
+                allRes.data.length > 0
+              ) {
+                const latest = [...allRes.data].sort(
+                  (a, b) =>
+                    new Date(b.updatedAt).getTime() -
+                    new Date(a.updatedAt).getTime(),
+                )[0];
+                ci = latest.chapterIndex;
+              }
+            }
+          } catch (e) {
+            console.error('[Reader-TTS] getBookLastRead error:', e);
+          }
         }
+        console.log('[Reader-TTS] resolved ci:', ci, 'chapters:', chRes.data.length);
+        ci = Math.max(0, Math.min(ci, chRes.data.length - 1));
+        console.log('[Reader-TTS] clamped ci:', ci);
         await loadChapter(apiClient, id, ci);
       } catch (err) {
         setError((err as Error).message);
@@ -274,14 +293,14 @@ export default function ReaderTTS() {
     setChapterTitle(r.data.title);
     setParagraphs(r.data.paragraphs);
     paragraphRefs.current = new Array(r.data.paragraphs.length).fill(null);
-    setProgress((p) => ({
-      ...p,
-      paragraphIndex: 0,
-      totalParagraphs: r.data!.paragraphs.length,
-      paragraphProgress: 0,
-      chapterProgress: 0,
-      currentText: "",
-    }));
+
+    // Default reset values for the chapter (used when no saved progress
+    // exists). We'll either commit these or overwrite paragraphIndex
+    // with the cloud-saved value below — in a single setProgress call
+    // so the two updates can't be merged away by React.
+    let resumeParaIdx = 0;
+    let resumeOffset = 0;
+
     // Resume from saved cloud progress (cross-device sync)
     try {
       const p = await apiClient.getTtsProgress(bookId, ci);
@@ -303,22 +322,27 @@ export default function ReaderTTS() {
           setVoices(vs);
           if (rec.voice) setVoiceId(rec.voice);
         }
-        // Stash offsetMs on the page so the next play() call resumes
-        // mid-paragraph instead of from the start.
-        setResumeOffsetMs(Math.max(0, rec.audioOffsetMs || 0));
-        setProgress((prev) => ({
-          ...prev,
-          paragraphIndex: Math.min(
-            rec.paragraphIndex,
-            r.data!.paragraphs.length - 1,
-          ),
-        }));
-      } else {
-        setResumeOffsetMs(0);
+        // Clamp saved paragraph index against the freshly loaded chapter
+        // (chapter length may have changed since the progress was saved).
+        resumeParaIdx = Math.max(
+          0,
+          Math.min(rec.paragraphIndex, r.data!.paragraphs.length - 1),
+        );
+        resumeOffset = Math.max(0, rec.audioOffsetMs || 0);
       }
     } catch {
-      setResumeOffsetMs(0);
+      /* fall back to defaults */
     }
+
+    setProgress({
+      paragraphIndex: resumeParaIdx,
+      totalParagraphs: r.data!.paragraphs.length,
+      paragraphProgress: 0,
+      chapterProgress: resumeParaIdx / Math.max(1, r.data!.paragraphs.length),
+      currentText: "",
+      isPlaying: false,
+    });
+    setResumeOffsetMs(resumeOffset);
   };
 
   // ── Playback handlers ────────────────────────────────────────────────

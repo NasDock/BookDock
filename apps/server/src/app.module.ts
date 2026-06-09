@@ -16,11 +16,13 @@ import { MembershipModule } from './modules/membership/membership.module';
 import { ReadingProgressModule } from './modules/reading-progress/reading-progress.module';
 import { RecommendationModule } from './modules/recommendation/recommendation.module';
 import { SourceModule } from './modules/source/source.module';
+import { BookLastReadModule } from './modules/tts/book-last-read.module';
 import { TtsProgressModule } from './modules/tts/tts-progress.module';
 import { TtsModule } from './modules/tts/tts.module';
 import { VipModule } from './modules/vip/vip.module';
 
 import { HealthController } from './health.controller';
+
 
 @Module({
   imports: [
@@ -40,6 +42,7 @@ import { HealthController } from './health.controller';
     ReadingProgressModule,
     TtsModule,
     TtsProgressModule,
+    BookLastReadModule,
     AdminModule,
     MembershipModule,
     VipModule,

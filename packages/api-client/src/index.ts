@@ -160,6 +160,23 @@ export interface TtsProgressRecord {
   updatedAt: string;
 }
 
+export interface BookLastReadPayload {
+  bookId: string;
+  chapterIndex: number;
+  paragraphIndex?: number;
+  audioOffsetMs?: number;
+}
+
+export interface BookLastReadRecord {
+  id: string;
+  userId: string;
+  bookId: string;
+  chapterIndex: number;
+  paragraphIndex: number;
+  audioOffsetMs: number;
+  updatedAt: string;
+}
+
 export interface EbookSource {
   id: string;
   name: string;
@@ -406,6 +423,17 @@ class ApiClient {
     const { data } = await this.client.get('/tts/progress', {
       params: chapterIndex !== undefined ? { bookId, chapterIndex } : { bookId },
     });
+    return data;
+  }
+
+  // ── Global "last listened" pointer ──────────────────────────────────
+  async saveBookLastRead(p: BookLastReadPayload): Promise<ApiResponse<BookLastReadRecord>> {
+    const { data } = await this.client.post(`/books/${p.bookId}/last-read`, p);
+    return data;
+  }
+
+  async getBookLastRead(bookId: string): Promise<ApiResponse<BookLastReadRecord | null>> {
+    const { data } = await this.client.get(`/books/${bookId}/last-read`);
     return data;
   }
 

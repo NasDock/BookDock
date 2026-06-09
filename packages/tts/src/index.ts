@@ -13,6 +13,7 @@
  *   - `seek(globalProgress)` finds the paragraph + audio offset for any
  *     0..1 position and jumps there.
  */
+import type { BookLastReadPayload } from '@bookdock/api-client';
 import {
     getApiClient,
     Paragraph,
@@ -451,8 +452,20 @@ export class TTSManager {
       totalParagraphs: this.paragraphs.length,
     };
     this.lastSavedProgress = payload;
-    this.api.saveTtsProgress(payload).catch(() => {
-      // Persistence failures are non-fatal; just log.
+    this.api.saveTtsProgress(payload).catch((err) => {
+      console.error('[TTSManager] saveTtsProgress failed:', err);
+    });
+    // Mirror the latest position into the global "last listened" pointer
+    // so the book detail page's "继续听书" button can deep-link straight
+    // back here across devices.
+    const lastRead: BookLastReadPayload = {
+      bookId: payload.bookId,
+      chapterIndex: payload.chapterIndex,
+      paragraphIndex: payload.paragraphIndex,
+      audioOffsetMs: payload.audioOffsetMs,
+    };
+    this.api.saveBookLastRead(lastRead).catch((err) => {
+      console.error('[TTSManager] saveBookLastRead failed:', err);
     });
     // suppress unused-arg warnings; force is reserved for future use
     void force;

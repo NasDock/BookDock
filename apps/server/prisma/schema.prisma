@@ -56,6 +56,7 @@ model User {
   ttsJobs         TtsJob[]
   ttsAudioFiles   TtsAudioFile[]
   ttsProgress     TtsReadingProgress[]
+  lastRead        BookLastRead[]
   ttsConfig       UserTtsConfig?
   sessions        Session[]
   apiKeys         ApiKey[]
@@ -98,6 +99,7 @@ model Book {
   ttsJobs         TtsJob[]
   ttsAudioFiles   TtsAudioFile[]
   ttsProgress     TtsReadingProgress[]
+  lastRead        BookLastRead[]
   bookTags        BookTag[]
   bookAuthors     BookAuthor[]
 
@@ -342,6 +344,28 @@ model TtsReadingProgress {
   @@unique([userId, bookId, chapterIndex])
   @@index([userId, bookId])
   @@map("tts_reading_progress")
+}
+
+/// Global "where the user last listened" pointer — one row per (user, book).
+/// Used as the entry point for the "继续听书" button on the book detail page
+/// and for cross-device resume. Distinct from `TtsReadingProgress` (per-chapter
+/// detail); this row is upserted on every paragraph change / pause / exit and
+/// always points at the most recently listened (chapter, paragraph).
+model BookLastRead {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  bookId         String   @map("book_id")
+  chapterIndex   Int      @map("chapter_index")
+  paragraphIndex Int      @default(0) @map("paragraph_index")
+  audioOffsetMs  Int      @default(0) @map("audio_offset_ms")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bookId])
+  @@index([userId, bookId])
+  @@map("book_last_read")
 }
 
 /// Per-user TTS config (e.g. per-user Mi TTS API key).
