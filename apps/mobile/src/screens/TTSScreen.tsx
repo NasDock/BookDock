@@ -264,19 +264,29 @@ export function TTSScreen() {
   const persistProgress = useCallback(
     (idx: number, audioOffsetMs = 0) => {
       const apiClient = getApiClient();
-      apiClient
-        .saveTtsProgress({
-          bookId: book.id,
-          chapterIndex,
-          paragraphIndex: idx,
-          audioOffsetMs,
-          voice: voiceId,
-          provider,
-          totalParagraphs: paragraphs.length,
-        })
-        .catch(() => {
+      const ttsPayload = {
+        bookId: book.id,
+        chapterIndex,
+        paragraphIndex: idx,
+        audioOffsetMs,
+        voice: voiceId,
+        provider,
+        totalParagraphs: paragraphs.length,
+      };
+      const lastReadPayload = {
+        bookId: book.id,
+        chapterIndex,
+        paragraphIndex: idx,
+        audioOffsetMs,
+      };
+      Promise.all([
+        apiClient.saveTtsProgress(ttsPayload).catch(() => {
           /* ignore */
-        });
+        }),
+        apiClient.saveBookLastRead(lastReadPayload).catch(() => {
+          /* ignore */
+        }),
+      ]);
     },
     [book.id, chapterIndex, paragraphs.length, voiceId, provider],
   );
@@ -288,6 +298,23 @@ export function TTSScreen() {
     if (url.startsWith("http")) return url;
     return `${apiClient.serverBaseURL}${url}`;
   };
+
+  // ── Persist latest position when user leaves the screen ─────────────
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("beforeRemove", async () => {
+      try {
+        const status = await soundRef.current?.getStatusAsync();
+        const offsetMs =
+          status?.isLoaded && typeof status.positionMillis === "number"
+            ? status.positionMillis
+            : 0;
+        persistProgress(currentParagraph, offsetMs);
+      } catch {
+        persistProgress(currentParagraph, 0);
+      }
+    });
+    return unsubscribe;
+  }, [currentParagraph, navigation, persistProgress]);
 
   const prefetchParagraph = useCallback(
     async (idx: number) => {
@@ -487,24 +514,29 @@ export function TTSScreen() {
   const handlePause = useCallback(async () => {
     if (soundRef.current) {
       try {
+        const status = await soundRef.current.getStatusAsync();
         await soundRef.current.pauseAsync();
         setIsPlaying(false);
         setIsPaused(true);
         ttsStore.setState("paused");
+        if (status?.isLoaded && typeof status.positionMillis === "number") {
+          persistProgress(currentParagraph, status.positionMillis);
+        }
       } catch {
         /* ignore */
       }
     }
-  }, [ttsStore]);
+  }, [currentParagraph, persistProgress, ttsStore]);
 
   const handleStop = useCallback(async () => {
+    persistProgress(currentParagraph, 0);
     await cleanupAudio();
     setIsPlaying(false);
     setIsPaused(false);
     setCurrentParagraph(0);
     setParagraphProgress(0);
     ttsStore.setState("idle");
-  }, [cleanupAudio, ttsStore]);
+  }, [cleanupAudio, currentParagraph, persistProgress, ttsStore]);
 
   const handleJumpToParagraph = useCallback(
     (idx: number) => {

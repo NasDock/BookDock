@@ -160,6 +160,9 @@ export class TTSManager {
    *  without waiting for the React effect to flush stale state
    *  into the manager. */
   getConfig(): TTSConfig { return { ...this.cfg }; }
+  getCurrentOffsetMs(): number {
+    return this.audio ? Math.round(this.audio.currentTime * 1000) : 0;
+  }
   setRate(rate: number) {
     this.cfg.rate = rate;
     if (this.audio) this.audio.playbackRate = Math.max(0.25, Math.min(4, rate));
@@ -205,17 +208,17 @@ export class TTSManager {
     }
   }
 
-  pause(): void {
+  async pause(): Promise<void> {
     if (this.state === 'playing' && this.audio) {
       this.audio.pause();
       this.state = 'paused';
       this.progress.isPlaying = false;
       this.cb.onPause?.();
-      this.persistProgress();
+      await this.persistProgress();
     }
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.detachAudioListeners(this.audio);
     if (this.audio) {
       this.audio.pause();
@@ -227,7 +230,7 @@ export class TTSManager {
     this.cache.clear();
     this.audio = null;
     this.activeOverrides = null;
-    this.persistProgress(true);
+    await this.persistProgress(true);
   }
 
   async seek(globalProgress: number): Promise<void> {
@@ -356,7 +359,7 @@ export class TTSManager {
     }
 
     this.prefetch(this.currentIndex + 1);
-    this.persistProgress();
+    await this.persistProgress();
   }
 
   private _onTimeUpdate = () => {
@@ -370,7 +373,7 @@ export class TTSManager {
     const now = Date.now();
     if (now - this.lastSaveAt > 5000) {
       this.lastSaveAt = now;
-      this.persistProgress();
+      void this.persistProgress();
     }
   };
 
@@ -380,7 +383,7 @@ export class TTSManager {
       this.state = 'idle';
       this.progress.isPlaying = false;
       this.cb.onEnd?.();
-      this.persistProgress(true);
+      void this.persistProgress(true);
       return;
     }
     this.playCurrent(true).catch((e) => this.cb.onError?.(e as Error));
@@ -440,7 +443,7 @@ export class TTSManager {
     return { ...this.cfg, ...(this.activeOverrides || {}) };
   }
 
-  private persistProgress(force = false) {
+  private async persistProgress(force = false): Promise<void> {
     if (!this.cfg.bookId) return;
     const payload: TtsProgressPayload = {
       bookId: this.cfg.bookId,
@@ -452,9 +455,6 @@ export class TTSManager {
       totalParagraphs: this.paragraphs.length,
     };
     this.lastSavedProgress = payload;
-    this.api.saveTtsProgress(payload).catch((err) => {
-      console.error('[TTSManager] saveTtsProgress failed:', err);
-    });
     // Mirror the latest position into the global "last listened" pointer
     // so the book detail page's "继续听书" button can deep-link straight
     // back here across devices.
@@ -464,9 +464,14 @@ export class TTSManager {
       paragraphIndex: payload.paragraphIndex,
       audioOffsetMs: payload.audioOffsetMs,
     };
-    this.api.saveBookLastRead(lastRead).catch((err) => {
-      console.error('[TTSManager] saveBookLastRead failed:', err);
-    });
+    try {
+      await Promise.all([
+        this.api.saveTtsProgress(payload),
+        this.api.saveBookLastRead(lastRead),
+      ]);
+    } catch (err) {
+      console.error('[TTSManager] persistProgress failed:', err);
+    }
     // suppress unused-arg warnings; force is reserved for future use
     void force;
   }

@@ -153,7 +153,7 @@ export default function ReaderTTS() {
       }
     })();
     return () => {
-      manager.stop();
+      void manager.stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [manager]);
@@ -191,7 +191,7 @@ export default function ReaderTTS() {
       voiceId,
       rate,
       volume,
-      bookId: bookIdRef.current,
+      bookId: book?.id || bookIdRef.current,
       chapterIndex: chapterIndexRef.current,
     });
     // Live rate/volume adjustments while audio is playing
@@ -200,7 +200,18 @@ export default function ReaderTTS() {
       manager.setVolume(volume);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [manager, provider, voiceId, rate, volume]);
+  }, [manager, provider, voiceId, rate, volume, book?.id]);
+
+  // ── Flush progress when the page is closed or refreshed ─────────────
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      void manager.stop();
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [manager]);
 
   // ── Book + chapter fetch ─────────────────────────────────────────────
   useEffect(() => {
@@ -431,7 +442,7 @@ export default function ReaderTTS() {
   const handleChapterChange = useCallback(
     async (ci: number) => {
       if (ci === chapterIndex) return;
-      manager.stop();
+      await manager.stop();
       setState("idle");
       const apiClient = getApiClient();
       await loadChapter(apiClient, bookIdRef.current!, ci);
@@ -591,8 +602,41 @@ export default function ReaderTTS() {
           <div className="sticky top-0 z-20 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center px-4 h-14">
               <button
-                onClick={() => {
-                  manager.stop();
+                onClick={async () => {
+                  const offsetMs = manager.getCurrentOffsetMs();
+                  console.log("[Reader-TTS] back clicked", {
+                    bookId: book?.id,
+                    chapterIndex: chapterIndexRef.current,
+                    paragraphIndex: progress.paragraphIndex,
+                    offsetMs,
+                  });
+                  await manager.stop();
+                  // Ensure the global last-read pointer is flushed even if
+                  // the manager's internal config lacked a bookId.
+                  if (book?.id) {
+                    const apiClient = getApiClient();
+                    console.log("[Reader-TTS] sending saveBookLastRead", {
+                      bookId: book.id,
+                      chapterIndex: chapterIndexRef.current,
+                      paragraphIndex: progress.paragraphIndex,
+                      audioOffsetMs: offsetMs,
+                    });
+                    void apiClient
+                      .saveBookLastRead({
+                        bookId: book.id,
+                        chapterIndex: chapterIndexRef.current,
+                        paragraphIndex: progress.paragraphIndex,
+                        audioOffsetMs: offsetMs,
+                      })
+                      .then((r) =>
+                        console.log("[Reader-TTS] saveBookLastRead result", r),
+                      )
+                      .catch((e) =>
+                        console.error("[Reader-TTS] saveBookLastRead error", e),
+                      );
+                  } else {
+                    console.warn("[Reader-TTS] no book.id, skipping last-read");
+                  }
                   navigate(-1);
                 }}
                 className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white shrink-0"

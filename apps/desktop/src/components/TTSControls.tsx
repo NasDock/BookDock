@@ -34,7 +34,9 @@ export const TTSControls: React.FC<Props> = ({
       setVoices(vs);
       if (vs[0]) setVoice(vs[0].id);
     });
-    return () => manager.stop();
+    return () => {
+      void manager.stop();
+    };
   }, [manager]);
 
   const handlePlay = async () => {
