@@ -10,7 +10,7 @@ import { BookMetadataService } from '../book-metadata/book-metadata.service';
 
 import { EPub } from 'epub';
 import { createReadStream, existsSync, statSync } from 'fs';
-import { readdir, readFile, rename, stat } from 'fs/promises';
+import { copyFile, readdir, readFile, rename, stat, unlink } from 'fs/promises';
 import * as iconv from 'iconv-lite';
 import { join } from 'path';
 import { BookFormat } from '../../common/types/prisma-compat';
@@ -133,7 +133,17 @@ export class BooksService implements OnModuleInit {
       counter++;
     }
 
-    await rename(file.path, finalDestPath);
+    try {
+      await rename(file.path, finalDestPath);
+    } catch (err: any) {
+      // EXDEV: cross-device link not permitted — fall back to copy + unlink
+      if (err.code === 'EXDEV') {
+        await copyFile(file.path, finalDestPath);
+        await unlink(file.path);
+      } else {
+        throw err;
+      }
+    }
 
     const fileStat = statSync(finalDestPath);
     const title = finalFileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
