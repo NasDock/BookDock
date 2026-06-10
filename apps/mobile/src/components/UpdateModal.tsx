@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { UpdateInfo } from '../../hooks/useCheckUpdate';
-import { useTheme } from '../utils/theme';
+import { useThemeColors } from '../utils/theme';
 
 interface UpdateModalProps {
   visible: boolean;
@@ -26,7 +26,7 @@ export const UpdateModal = ({
 }: UpdateModalProps) => {
   const isDownloading = isUpdating || progress > 0;
 
-  const { colors } = useTheme();
+  const colors = useThemeColors('light');
 
   return (
     <Modal
