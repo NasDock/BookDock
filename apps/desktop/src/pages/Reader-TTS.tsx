@@ -140,6 +140,8 @@ export default function ReaderTTS() {
   const paragraphRefs = useRef<(HTMLParagraphElement | null)[]>([]);
   const bookIdRef = useRef<string | undefined>(undefined);
   const chapterIndexRef = useRef(0);
+  const paragraphsRef = useRef<Paragraph[]>([]);
+  const chaptersRef = useRef<{ title: string; index: number }[]>([]);
 
   // ── Load providers on mount ──────────────────────────────────────────
   useEffect(() => {
@@ -234,6 +236,7 @@ export default function ReaderTTS() {
           return;
         }
         setChapters(chRes.data);
+    chaptersRef.current = chRes.data;
         // Chapter index resolution, in priority order:
         //   1. ?ci=N in the URL  (deep-link / "继续听书" button target)
         //   2. GET /books/:id/last-read  (global "last listened" pointer)
@@ -303,6 +306,7 @@ export default function ReaderTTS() {
     }
     setChapterTitle(r.data.title);
     setParagraphs(r.data.paragraphs);
+    paragraphsRef.current = r.data.paragraphs;
     paragraphRefs.current = new Array(r.data.paragraphs.length).fill(null);
 
     // Default reset values for the chapter (used when no saved progress
@@ -392,7 +396,46 @@ export default function ReaderTTS() {
         onStart: () => setState("playing"),
         onPause: () => setState("paused"),
         onResume: () => setState("playing"),
-        onEnd: () => setState("idle"),
+        onEnd: async () => {
+          setState("idle");
+          // Auto-advance to next chapter when current chapter ends
+          const nextChapterIndex = chapterIndexRef.current + 1;
+          if (nextChapterIndex < chaptersRef.current.length) {
+            const apiClient = getApiClient();
+            await loadChapter(apiClient, bookIdRef.current!, nextChapterIndex);
+            // Update URL to reflect new chapter
+            navigate(`/book/${bookIdRef.current}/tts?ci=${nextChapterIndex}`, { replace: true });
+            // Wait for state to settle then start playing with fresh paragraphs
+            setTimeout(() => {
+              const cfg = manager.getConfig();
+              const freshOverrides = {
+                provider: cfg.provider,
+                voiceId: cfg.voiceId,
+                rate: cfg.rate,
+                volume: cfg.volume,
+              };
+              manager.play(
+                paragraphsRef.current,
+                0,
+                {
+                  onStart: () => setState("playing"),
+                  onPause: () => setState("paused"),
+                  onResume: () => setState("playing"),
+                  onEnd: () => setState("idle"),
+                  onError: (e) => {
+                    showError(e.message || "朗读失败");
+                    setState("error");
+                  },
+                  onProgress: (p) => setProgress(p),
+                  onParagraphChange: (idx) =>
+                    setProgress((prev) => ({ ...prev, paragraphIndex: idx })),
+                },
+                freshOverrides,
+                0,
+              ).catch((e) => console.error("Auto-play next chapter failed", e));
+            }, 800);
+          }
+        },
         onError: (e) => {
           showError(e.message || "朗读失败");
           setState("error");
@@ -729,7 +772,7 @@ export default function ReaderTTS() {
               <div className="relative">
                 <button
                   onClick={() => setShowTtsSettings((v) => !v)}
-                  className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+                  className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200"
                   title="TTS 设置"
                   aria-label="TTS 设置"
                 >
@@ -822,7 +865,7 @@ export default function ReaderTTS() {
               <div className="relative">
                 <button
                   onClick={() => setShowSpeedMenu((v) => !v)}
-                  className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 relative"
+                  className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 relative"
                   title={`倍速 ${rate.toFixed(1)}x`}
                   aria-label="倍速"
                 >
@@ -847,7 +890,7 @@ export default function ReaderTTS() {
                             setRate(r);
                             setShowSpeedMenu(false);
                           }}
-                          className={`block w-full px-4 py-1.5 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                          className={`block w-full px-4 py-1.5 text-sm text-left text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 ${
                             rate === r
                               ? "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 font-semibold"
                               : ""
@@ -863,7 +906,7 @@ export default function ReaderTTS() {
 
               <button
                 onClick={handleSkipBack}
-                className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+                className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200"
                 title="上一段"
                 aria-label="上一段"
               >
@@ -890,7 +933,7 @@ export default function ReaderTTS() {
               </button>
               <button
                 onClick={handleSkipForward}
-                className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+                className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200"
                 title="下一段"
                 aria-label="下一段"
               >
@@ -900,7 +943,7 @@ export default function ReaderTTS() {
               {/* Chapter picker */}
               <button
                 onClick={() => setShowChapterPanel(true)}
-                className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
+                className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200"
                 title="章节"
                 aria-label="章节"
                 disabled={chapters.length === 0}
@@ -920,7 +963,7 @@ export default function ReaderTTS() {
                       sleepMinutes > 0 ? String(sleepMinutes) : "",
                     );
                   }}
-                  className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 relative"
+                  className="p-2.5 rounded-full bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 relative"
                   title={
                     sleepMinutes > 0
                       ? `定时关闭 ${formatSleepRemaining()}`
@@ -1136,7 +1179,7 @@ export default function ReaderTTS() {
         <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-gray-50 dark:bg-gray-900">
           <div className="flex-1 p-6 overflow-y-auto min-h-0">
             {paragraphs.length > 0 ? (
-              <div className="text-lg leading-relaxed space-y-3 max-w-3xl mx-auto">
+              <div className="text-lg leading-relaxed space-y-3">
                 {paragraphs.map((p, idx) => {
                   const isCurrent = idx === progress.paragraphIndex;
                   const isPast = idx < progress.paragraphIndex;
@@ -1148,7 +1191,7 @@ export default function ReaderTTS() {
                       }}
                       data-paragraph-id={p.id}
                       onClick={() => manager.jumpTo(idx)}
-                      className={`transition-all duration-200 rounded-lg px-3 py-2 cursor-pointer ${
+                      className={`transition-all duration-200 rounded-lg px-3 py-2 cursor-pointer text-gray-900 dark:text-gray-100 ${
                         isCurrent
                           ? "bg-amber-100/80 dark:bg-amber-900/40 font-medium ring-2 ring-amber-300 dark:ring-amber-700 scale-[1.01]"
                           : isPast

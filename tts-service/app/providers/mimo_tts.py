@@ -64,19 +64,21 @@ class MimoTTSProvider(TTSProvider):
     ) -> None:
         # endpoint can be either the full path (/v1/audio/speech) or just
         # the base (/v1). We normalise to base + /audio/speech.
-        raw = (endpoint or os.environ.get("MI_TTS_ENDPOINT", "")).strip().rstrip("/")
+        raw = (endpoint or os.environ.get("TTS_MIMO_ENDPOINT", "") or os.environ.get("MI_TTS_ENDPOINT", "")).strip().rstrip("/")
         if raw.endswith("/audio/speech"):
             self.base_url = raw[: -len("/audio/speech")]
         elif raw:
             self.base_url = raw
         else:
             self.base_url = DEFAULT_BASE_URL
-        self.audio_path = os.environ.get("MI_TTS_AUDIO_PATH", "/audio/speech")
+        self.audio_path = os.environ.get("TTS_MIMO_AUDIO_PATH", "") or os.environ.get("MI_TTS_AUDIO_PATH", "/audio/speech")
 
-        self.api_key = api_key or os.environ.get("MIMO_API_KEY", "") \
+        self.api_key = api_key or os.environ.get("TTS_MIMO_API_TOKEN", "") \
+            or os.environ.get("MIMO_API_KEY", "") \
             or os.environ.get("MI_TTS_API_KEY", "")
-        self.model = model or os.environ.get("MI_TTS_MODEL", "mimo-tts")
-        self.timeout = float(os.environ.get("MI_TTS_TIMEOUT", str(timeout)))
+        self.model = model or os.environ.get("TTS_MIMO_MODEL", "") \
+            or os.environ.get("MI_TTS_MODEL", "mimo-tts")
+        self.timeout = float(os.environ.get("TTS_MIMO_TIMEOUT", "") or os.environ.get("MI_TTS_TIMEOUT", str(timeout)))
 
     @property
     def endpoint(self) -> str:
@@ -117,8 +119,9 @@ class MimoTTSProvider(TTSProvider):
     ) -> bytes:
         if not self.configured:
             raise ProviderError(
-                "MiMo TTS is not configured. Set MIMO_API_KEY (or "
-                "MI_TTS_API_KEY) and MI_TTS_ENDPOINT in the environment.",
+                "MiMo TTS is not configured. Set TTS_MIMO_API_TOKEN (or "
+                "MIMO_API_KEY / MI_TTS_API_KEY) and TTS_MIMO_ENDPOINT (or "
+                "MI_TTS_ENDPOINT) in the environment.",
                 status_code=503,
                 provider=self.name,
             )

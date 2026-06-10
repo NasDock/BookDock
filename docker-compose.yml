@@ -20,6 +20,9 @@ services:
       # NAS / data paths inside container
       NAS_EBOOK_PATH: /data/ebooks
       CACHE_PATH: /data/covers
+      # MiMo TTS provider (optional — fill in to enable Xiaomi TTS)
+      TTS_MIMO_API_TOKEN: sk-xxxx
+      TTS_MIMO_MODEL: mimo-v2.5-tts
     volumes:
       # Database persistence
       - bookdock-db:/data/db

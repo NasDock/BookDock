@@ -143,14 +143,13 @@ logfile=/var/log/supervisor/supervisord.log
 pidfile=/var/run/supervisord.pid
 
 [program:tts]
-command=python3 -m uvicorn app.main:app --host 0.0.0.0 --port 5000 --app-dir /app/tts-service
+command=/app/tts-service/start.sh
 autostart=true
 autorestart=true
 stdout_logfile=/dev/stdout
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
-environment=EDGE_TTS_ENABLED="1",MI_TTS_ENABLED="1",TTS_PORT="5000"
 
 [program:api]
 command=node /app/dist/main.js

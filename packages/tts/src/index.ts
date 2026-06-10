@@ -152,8 +152,22 @@ export class TTSManager {
   getProgress(): TTSProgress { return this.progress; }
 
   setConfig(cfg: TTSConfig) { this.cfg = { ...this.cfg, ...cfg }; }
-  setProvider(p: string) { this.cfg.provider = p; }
-  setVoice(voiceId: string) { this.cfg.voiceId = voiceId; }
+  setProvider(p: string) {
+    if (this.cfg.provider !== p) {
+      this._clearCache();
+    }
+    this.cfg.provider = p;
+  }
+  setVoice(voiceId: string) {
+    if (this.cfg.voiceId !== voiceId) {
+      this._clearCache();
+    }
+    this.cfg.voiceId = voiceId;
+  }
+  private _clearCache() {
+    this.cache.forEach((c) => { try { URL.revokeObjectURL(c.url); } catch { /* ignore */ } });
+    this.cache.clear();
+  }
 
   /** Read the live configuration (bookId / provider / voice / rate /
    *  volume). Useful for callers that need the most recent values
@@ -312,6 +326,10 @@ export class TTSManager {
             audio.load();
           });
           entry.loaded = true;
+        } else {
+          // Ensure cached audio reflects the latest rate / volume settings
+          entry.audio.playbackRate = eff.rate ?? 1.0;
+          entry.audio.volume = eff.volume ?? 1.0;
         }
         audios.push(entry.audio);
       }
