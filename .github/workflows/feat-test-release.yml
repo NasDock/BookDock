@@ -100,11 +100,6 @@ jobs:
           NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
         run: pnpm install --no-frozen-lockfile
 
-      - name: Prebuild Android
-        run: |
-          cd apps/mobile
-          npx expo prebuild --platform android
-
       - name: Build Android APK
         run: |
           cd apps/mobile/android
