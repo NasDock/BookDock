@@ -121,9 +121,9 @@ export function BookDetailScreen() {
     navigation.navigate('Reader', { book });
   }, [navigation, book]);
 
-  const handleTTS = useCallback(async () => {
-    Alert.alert('提示', '功能正在开发中，敬请期待！');
-  }, []);
+  const handleTTS = useCallback(() => {
+    navigation.navigate('TTSReader', { book });
+  }, [navigation, book]);
 
   const handleToggleFavorite = useCallback(async () => {
     try {
