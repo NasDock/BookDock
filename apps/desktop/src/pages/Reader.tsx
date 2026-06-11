@@ -53,46 +53,52 @@ interface SelectionMenuProps {
   onDismiss: () => void;
 }
 
-function SelectionMenu({ position, selectedText, onNote, onHighlight, onDismiss }: SelectionMenuProps) {
-  if (!selectedText) return null;
+function SelectionMenu({ position, onNote, onHighlight, onDismiss }: SelectionMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onDismiss();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [onDismiss]);
 
   return (
-    <>
-      {/* Backdrop to dismiss */}
-      <div className="fixed inset-0 z-40" onClick={onDismiss} />
-      {/* Floating menu */}
-      <div
-        className="fixed z-50 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 p-1 flex gap-1"
-        style={{ left: position.x, top: position.y, transform: 'translate(-50%, -100%)', marginTop: '-8px' }}
+    <div
+      ref={menuRef}
+      className="fixed z-50 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 px-1 flex gap-1"
+      style={{ left: position.x, top: position.y, transform: 'translate(-50%, -120%)' }}
+    >
+      <button
+        onClick={onHighlight}
+        className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
       >
-        <button
-          onClick={onNote}
-          className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-md transition-colors"
-        >
-          <MessageSquarePlus className="w-4 h-4 text-blue-500" />
-          记笔记
-        </button>
-        <button
-          onClick={onHighlight}
-          className="flex items-center gap-1 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-yellow-50 dark:hover:bg-yellow-900/30 rounded-md transition-colors"
-        >
-          <Highlighter className="w-4 h-4 text-yellow-500" />
-          高亮
-        </button>
-      </div>
-    </>
+        <Highlighter className="w-4 h-4 text-amber-500" />
+        高亮
+      </button>
+      <button
+        onClick={onNote}
+        className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+      >
+        <MessageSquarePlus className="w-4 h-4 text-blue-500" />
+        笔记
+      </button>
+    </div>
   );
 }
 
+// ==================== Note Modal ====================
 interface NoteModalProps {
   isOpen: boolean;
   selectedText: string;
-  bookTitle: string;
   onClose: () => void;
   onSave: (note: string) => void;
 }
 
-function NoteModal({ isOpen, selectedText, bookTitle, onClose, onSave }: NoteModalProps) {
+function NoteModal({ isOpen, selectedText, onClose, onSave }: NoteModalProps) {
   const [noteText, setNoteText] = useState('');
 
   useEffect(() => {
@@ -102,364 +108,183 @@ function NoteModal({ isOpen, selectedText, bookTitle, onClose, onSave }: NoteMod
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full mx-4 p-6 z-50">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-          <MessageSquare className="w-5 h-5 text-blue-500" />
-          记笔记
-        </h3>
-        <div className="mb-4">
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">选中的文本</p>
-          <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-3 text-sm text-gray-700 dark:text-gray-300 max-h-24 overflow-y-auto">
-            {selectedText}
-          </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full mx-4 p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">添加笔记</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
         </div>
-        <div className="mb-4">
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">书籍</p>
-          <p className="text-sm text-gray-700 dark:text-gray-300">{bookTitle}</p>
+        <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border-l-4 border-amber-400">
+          <p className="text-sm text-gray-600 dark:text-gray-300 italic">{selectedText}</p>
         </div>
         <textarea
           value={noteText}
           onChange={(e) => setNoteText(e.target.value)}
-          placeholder="输入你的笔记..."
-          className="w-full h-24 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none text-sm mb-4"
+          placeholder="写下你的想法..."
+          className="w-full h-32 px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
         />
-        <div className="flex gap-3 justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-          >
-            取消
-          </button>
-          <button
-            onClick={() => { onSave(noteText); setNoteText(''); }}
-            className="px-4 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
-          >
-            保存
-          </button>
+        <div className="flex justify-end gap-3 mt-4">
+          <Button onClick={onClose}>取消</Button>
+          <Button onClick={() => { onSave(noteText); onClose(); }}>保存</Button>
         </div>
       </div>
     </div>
   );
 }
 
-// ==================== Chapter Drawer (TOC) - LEFT ====================
-interface ChapterDrawerProps {
-  chapters: { title: string; index: number }[];
+// ==================== TOC Panel ====================
+interface TocPanelProps {
+  chapters: Array<{ title: string; index: number }>;
   currentChapter: number;
-  isOpen: boolean;
+  onSelect: (index: number) => void;
   onClose: () => void;
-  onSelectChapter: (index: number) => void;
+  bookTitle: string;
 }
 
-function ChapterDrawer({ chapters, currentChapter, isOpen, onClose, onSelectChapter }: ChapterDrawerProps) {
-  const listRef = useRef<HTMLDivElement>(null);
+function TocPanel({ chapters, currentChapter, onSelect, onClose, bookTitle }: TocPanelProps) {
+  const currentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isOpen && listRef.current) {
-      const active = listRef.current.querySelector('[data-active="true"]');
-      if (active) {
-        active.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      }
+    if (currentRef.current) {
+      currentRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, [isOpen]);
-
-  if (!isOpen) return null;
+  }, []);
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 transition-opacity"
-        onClick={onClose}
-      />
-      {/* Drawer - LEFT */}
-      <div className="fixed top-0 left-0 bottom-0 w-80 max-w-[85vw] bg-white dark:bg-gray-900 shadow-2xl z-50 flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2"><BookOpen className="w-5 h-5" /> 目录</h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"
-          >
-            <X className="w-4 h-4" />
+      <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
+      <div className="fixed left-0 top-0 bottom-0 z-50 w-80 bg-white dark:bg-gray-800 shadow-xl flex flex-col">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white truncate pr-2">{bookTitle}</h2>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors flex-shrink-0">
+            <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
-
-        {/* Chapter list */}
-        <div ref={listRef} className="flex-1 overflow-y-auto py-2">
-          {chapters.length === 0 ? (
-            <div className="text-center py-12 text-gray-400 dark:text-gray-500">
-              <div className="mb-2 flex justify-center"><BookOpen className="w-8 h-8" /></div>
-              <p className="text-sm">暂无章节信息</p>
+        <div className="flex-1 overflow-y-auto py-2">
+          {chapters.map((chapter) => (
+            <div
+              key={chapter.index}
+              ref={chapter.index === currentChapter ? currentRef : null}
+              onClick={() => { onSelect(chapter.index); onClose(); }}
+              className={`px-4 py-3 cursor-pointer text-sm transition-colors ${
+                chapter.index === currentChapter
+                  ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium border-r-2 border-blue-500'
+                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+              }`}
+            >
+              {chapter.title}
             </div>
-          ) : (
-            <div className="space-y-0.5 px-2">
-              {chapters.map((chapter, idx) => {
-                const isActive = chapter.index === currentChapter;
-                return (
-                  <button
-                    key={chapter.index}
-                    data-active={isActive}
-                    onClick={() => {
-                      onSelectChapter(chapter.index);
-                      onClose();
-                    }}
-                    className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${
-                      isActive
-                        ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium'
-                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`text-xs min-w-[1.5rem] text-center ${
-                          isActive ? 'text-blue-500' : 'text-gray-400 dark:text-gray-500'
-                        }`}
-                      >
-                        {idx + 1}
-                      </span>
-                      <span className="truncate">{chapter.title}</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Footer info */}
-        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-700 text-xs text-gray-400 dark:text-gray-500 text-center">
-          共 {chapters.length} 章 · 当前第 {currentChapter + 1} 章
+          ))}
         </div>
       </div>
     </>
   );
 }
 
-// ==================== Settings Drawer - RIGHT ====================
-interface SettingsDrawerProps {
-  mode: ReaderMode;
+// ==================== Settings Panel ====================
+interface SettingsPanelProps {
   fontSize: number;
   lineHeight: number;
   fontFamily: string;
   margin: number;
-  onModeChange: (mode: ReaderMode) => void;
+  mode: ReaderMode;
   onFontSizeChange: (size: number) => void;
   onLineHeightChange: (height: number) => void;
   onFontFamilyChange: (family: string) => void;
   onMarginChange: (margin: number) => void;
-  isOpen: boolean;
+  onModeChange: (mode: ReaderMode) => void;
   onClose: () => void;
-  bookmarks: Bookmark[];
-  onAddBookmark: () => void;
-  onGoToBookmark: (bookmark: Bookmark) => void;
 }
 
-function SettingsDrawer({
-  mode,
-  fontSize,
-  lineHeight,
-  fontFamily,
-  margin,
-  onModeChange,
-  onFontSizeChange,
-  onLineHeightChange,
-  onFontFamilyChange,
-  onMarginChange,
-  isOpen,
-  onClose,
-  bookmarks,
-  onAddBookmark,
-  onGoToBookmark,
-}: SettingsDrawerProps) {
-  const [activeTab, setActiveTab] = useState<'display' | 'bookmarks'>('display');
-
-  if (!isOpen) return null;
-
+function SettingsPanel({
+  fontSize, lineHeight, fontFamily, margin, mode,
+  onFontSizeChange, onLineHeightChange, onFontFamilyChange, onMarginChange, onModeChange, onClose
+}: SettingsPanelProps) {
   return (
     <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 transition-opacity"
-        onClick={onClose}
-      />
-      {/* Drawer - RIGHT */}
-      <div className="fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] bg-white dark:bg-gray-900 shadow-2xl z-50 flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white"><Settings className="w-5 h-5 inline mr-1" /> 设置</h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"
-          >
-            <X className="w-4 h-4" />
+      <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
+      <div className="fixed right-0 top-0 bottom-0 z-50 w-80 bg-white dark:bg-gray-800 shadow-xl flex flex-col">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">阅读设置</h2>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+            <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
-
-        {/* Tabs */}
-        <div className="flex border-b border-gray-200 dark:border-gray-700 px-5">
-          <button
-            onClick={() => setActiveTab('display')}
-            className={`flex-1 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'display'
-                ? 'text-blue-500 border-b-2 border-blue-500'
-                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-            }`}
-          >
-            <BookOpen className="w-4 h-4 inline mr-1" /> 显示
-          </button>
-          <button
-            onClick={() => setActiveTab('bookmarks')}
-            className={`flex-1 py-3 text-sm font-medium transition-colors ${
-              activeTab === 'bookmarks'
-                ? 'text-blue-500 border-b-2 border-blue-500'
-                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-            }`}
-          >
-            <Bookmark className="w-4 h-4 inline mr-1" /> 书签 ({bookmarks.length})
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {activeTab === 'display' ? (
-            <div className="space-y-5">
-              {/* Reading mode */}
-              <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
-                  阅读主题
-                </label>
-                <div className="flex gap-2">
-                  {(['light', 'dark', 'sepia'] as ReaderMode[]).map((m) => (
-                    <button
-                      key={m}
-                      onClick={() => onModeChange(m)}
-                      className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                        mode === m
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      {m === 'light' ? <Sun className="w-5 h-5 mx-auto" /> : m === 'dark' ? <Moon className="w-5 h-5 mx-auto" /> : <ScrollText className="w-5 h-5 mx-auto" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Font size */}
-              <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex justify-between">
-                  <span>字体大小</span>
-                  <span className="text-blue-500">{fontSize}px</span>
-                </label>
-                <input
-                  type="range"
-                  min="12"
-                  max="32"
-                  value={fontSize}
-                  onChange={(e) => onFontSizeChange(parseInt(e.target.value))}
-                  className="w-full accent-blue-500"
-                />
-                <div className="flex justify-between text-xs text-gray-400 mt-1">
-                  <span style={{ fontSize: '12px' }}>A</span>
-                  <span style={{ fontSize: '22px' }}>A</span>
-                </div>
-              </div>
-
-              {/* Line height */}
-              <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex justify-between">
-                  <span>行间距</span>
-                  <span className="text-blue-500">{lineHeight.toFixed(1)}</span>
-                </label>
-                <input
-                  type="range"
-                  min="1.2"
-                  max="2.5"
-                  step="0.1"
-                  value={lineHeight}
-                  onChange={(e) => onLineHeightChange(parseFloat(e.target.value))}
-                  className="w-full accent-blue-500"
-                />
-              </div>
-
-              {/* Font family */}
-              <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  字体
-                </label>
-                <select
-                  value={fontFamily}
-                  onChange={(e) => onFontFamilyChange(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          {/* Theme */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">主题</label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { mode: 'light' as ReaderMode, label: '白天', icon: Sun },
+                { mode: 'dark' as ReaderMode, label: '夜间', icon: Moon },
+                { mode: 'sepia' as ReaderMode, label: ' sepia', icon: BookOpen },
+              ].map(({ mode: m, label, icon: Icon }) => (
+                <button
+                  key={m}
+                  onClick={() => onModeChange(m)}
+                  className={`flex flex-col items-center gap-1 p-3 rounded-lg border transition-colors ${
+                    mode === m
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                      : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                  }`}
                 >
-                  <option value="Georgia, serif">衬线字体 (Georgia)</option>
-                  <option value="Merriweather, serif">阅读字体 (Merriweather)</option>
-                  <option value="system-ui, sans-serif">系统字体</option>
-                  <option value="Arial, sans-serif">Arial</option>
-                  <option value="Tahoma, sans-serif">Tahoma</option>
-                  <option value="'Noto Serif SC', serif">思源宋体</option>
-                  <option value="'Noto Sans SC', sans-serif">思源黑体</option>
-                </select>
-              </div>
-
-              {/* Margin */}
-              <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex justify-between">
-                  <span>页面边距</span>
-                  <span className="text-blue-500">{margin}px</span>
-                </label>
-                <input
-                  type="range"
-                  min="20"
-                  max="120"
-                  value={margin}
-                  onChange={(e) => onMarginChange(parseInt(e.target.value))}
-                  className="w-full accent-blue-500"
-                />
-              </div>
+                  <Icon className="w-5 h-5" />
+                  <span className="text-xs">{label}</span>
+                </button>
+              ))}
             </div>
-          ) : (
-            <div className="space-y-3">
-              <Button onClick={onAddBookmark} className="w-full flex items-center justify-center gap-1" size="sm">
-                <Plus className="w-4 h-4" /> 添加书签
-              </Button>
+          </div>
 
-              {bookmarks.length === 0 ? (
-                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                  <div className="mb-2 flex justify-center"><Bookmark className="w-10 h-10" /></div>
-                  <p className="text-sm">暂无书签</p>
-                  <p className="text-xs mt-1">点击上方按钮添加书签</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {bookmarks.map((bookmark) => (
-                    <button
-                      key={bookmark.id}
-                      onClick={() => onGoToBookmark(bookmark)}
-                      className="w-full p-3 text-left bg-gray-50 dark:bg-gray-700/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="text-sm font-medium text-gray-900 dark:text-white">
-                            书签 - {bookmark.percentage}%
-                          </p>
-                          {bookmark.note && (
-                            <p className="text-xs text-gray-500 mt-1">{bookmark.note}</p>
-                          )}
-                        </div>
-                        <span className="text-xs text-gray-400">
-                          {new Date(bookmark.createdAt).toLocaleDateString('zh-CN')}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
+          {/* Font Size */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">字号 {fontSize}px</label>
+            <input
+              type="range" min="12" max="32" value={fontSize}
+              onChange={(e) => onFontSizeChange(Number(e.target.value))}
+              className="w-full"
+            />
+            <div className="flex justify-between text-xs text-gray-400 mt-1">
+              <span>12px</span>
+              <span>32px</span>
             </div>
-          )}
+          </div>
+
+          {/* Line Height */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">行距 {lineHeight}</label>
+            <input
+              type="range" min="1.2" max="2.5" step="0.1" value={lineHeight}
+              onChange={(e) => onLineHeightChange(Number(e.target.value))}
+              className="w-full"
+            />
+          </div>
+
+          {/* Margin */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">边距 {margin}px</label>
+            <input
+              type="range" min="16" max="64" value={margin}
+              onChange={(e) => onMarginChange(Number(e.target.value))}
+              className="w-full"
+            />
+          </div>
+
+          {/* Font Family */}
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">字体</label>
+            <select
+              value={fontFamily}
+              onChange={(e) => onFontFamilyChange(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            >
+              <option value="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">系统默认</option>
+              <option value="'Noto Serif SC', 'Source Han Serif SC', serif">思源宋体</option>
+              <option value="'Noto Sans SC', 'Source Han Sans SC', sans-serif">思源黑体</option>
+            </select>
+          </div>
         </div>
       </div>
     </>
@@ -475,25 +300,37 @@ interface PdfViewerProps {
 
 function PdfViewer({ url, currentPage, onPdfLoaded }: PdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [pdfDoc, setPdfDoc] = useState<any>(null);
-  const [scale, setScale] = useState(1.5);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const pdfDocRef = useRef<any>(null);
+  const renderTaskRef = useRef<any>(null);
+  const pageSizeRef = useRef<{ width: number; height: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const hasReportedLoad = useRef(false);
+  const [ready, setReady] = useState(false);
 
   // Load PDF
   useEffect(() => {
     let cancelled = false;
-    hasReportedLoad.current = false;
+    setLoading(true);
+    setError(null);
+    setReady(false);
+    pdfDocRef.current = null;
+    pageSizeRef.current = null;
 
     const loadPdf = async () => {
       try {
-        setLoading(true);
-        setError(null);
         const loadingTask = pdfjsLib.getDocument(url);
         const pdf = await loadingTask.promise;
         if (cancelled) return;
-        setPdfDoc(pdf);
+        pdfDocRef.current = pdf;
+
+        // Get first page size for aspect ratio
+        const firstPage = await pdf.getPage(1);
+        const unscaledViewport = firstPage.getViewport({ scale: 1 });
+        pageSizeRef.current = {
+          width: unscaledViewport.width,
+          height: unscaledViewport.height,
+        };
 
         // Extract outline (bookmarks / table of contents)
         let outline: Array<{ title: string; page: number }> = [];
@@ -521,82 +358,156 @@ function PdfViewer({ url, currentPage, onPdfLoaded }: PdfViewerProps) {
           console.warn('Failed to extract PDF outline:', e);
         }
 
-        if (!cancelled && !hasReportedLoad.current) {
-          hasReportedLoad.current = true;
-          onPdfLoaded({ totalPages: pdf.numPages, outline });
+        onPdfLoaded({ totalPages: pdf.numPages, outline });
+        if (!cancelled) {
+          setLoading(false);
+          setReady(true);
         }
       } catch (err: any) {
-        if (!cancelled) setError(err.message || '加载 PDF 失败');
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setError(err.message || '加载 PDF 失败');
+          setLoading(false);
+        }
       }
     };
 
     loadPdf();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+      }
+    };
   }, [url, onPdfLoaded]);
+
+  // Calculate scale based on container size
+  const calculateScale = useCallback(() => {
+    const container = containerRef.current;
+    const pageSize = pageSizeRef.current;
+    if (!container || !pageSize) return 1.5;
+
+    const padding = 32; // p-4 = 16px * 2
+    const availableWidth = container.clientWidth - padding;
+    const availableHeight = container.clientHeight - padding;
+
+    const scaleX = availableWidth / pageSize.width;
+    const scaleY = availableHeight / pageSize.height;
+
+    // Fit to container while maintaining aspect ratio
+    return Math.min(scaleX, scaleY);
+  }, []);
 
   // Render page
   useEffect(() => {
-    if (!pdfDoc || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const pdf = pdfDocRef.current;
+    if (!canvas || !pdf || loading) return;
 
     const renderPage = async () => {
+      // Cancel any ongoing render
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+        renderTaskRef.current = null;
+      }
+
       try {
-        const page = await pdfDoc.getPage(currentPage);
-        const canvas = canvasRef.current!;
-        const context = canvas.getContext('2d')!;
+        const page = await pdf.getPage(currentPage);
+        const context = canvas.getContext('2d');
+        if (!context) return;
+
+        const scale = calculateScale();
         const viewport = page.getViewport({ scale });
-        canvas.height = viewport.height;
+
+        // Set canvas pixel dimensions
         canvas.width = viewport.width;
-        await page.render({ canvasContext: context, viewport }).promise;
+        canvas.height = viewport.height;
+        // Set CSS dimensions to match
+        canvas.style.width = `${viewport.width}px`;
+        canvas.style.height = `${viewport.height}px`;
+
+        // Clear and render
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        renderTaskRef.current = page.render({ canvasContext: context, viewport });
+        await renderTaskRef.current.promise;
+        renderTaskRef.current = null;
       } catch (err: any) {
-        setError(err.message || '渲染页面失败');
+        if (err.name !== 'RenderingCancelledException') {
+          setError(err.message || '渲染页面失败');
+        }
       }
     };
 
     renderPage();
-  }, [pdfDoc, currentPage, scale]);
+  }, [ready, currentPage, loading, calculateScale]);
 
-  // Wheel zoom
+  // Handle window resize
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        setScale((s) => Math.max(0.5, Math.min(3, s + (e.deltaY > 0 ? -0.1 : 0.1))));
+    const handleResize = () => {
+      // Trigger re-render with new scale
+      if (ready && pdfDocRef.current) {
+        const canvas = canvasRef.current;
+        const pdf = pdfDocRef.current;
+        if (!canvas || !pdf) return;
+
+        const renderPage = async () => {
+          if (renderTaskRef.current) {
+            renderTaskRef.current.cancel();
+            renderTaskRef.current = null;
+          }
+          try {
+            const page = await pdf.getPage(currentPage);
+            const context = canvas.getContext('2d');
+            if (!context) return;
+            const scale = calculateScale();
+            const viewport = page.getViewport({ scale });
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            canvas.style.width = `${viewport.width}px`;
+            canvas.style.height = `${viewport.height}px`;
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            renderTaskRef.current = page.render({ canvasContext: context, viewport });
+            await renderTaskRef.current.promise;
+            renderTaskRef.current = null;
+          } catch (err: any) {
+            if (err.name !== 'RenderingCancelledException') {
+              console.error('Resize render error:', err);
+            }
+          }
+        };
+        renderPage();
       }
     };
-    canvas.addEventListener('wheel', handleWheel, { passive: false });
-    return () => canvas.removeEventListener('wheel', handleWheel);
-  }, []);
 
-  if (loading) {
-    return (
-      <div className="fixed inset-0 pt-14 pb-16 flex items-center justify-center bg-white dark:bg-gray-900">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto"></div>
-          <p className="mt-4 text-gray-600 dark:text-gray-400">加载 PDF 中...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="fixed inset-0 pt-14 pb-16 flex items-center justify-center bg-white dark:bg-gray-900">
-        <div className="text-center text-red-500">
-          <p>PDF 加载失败</p>
-          <p className="text-sm mt-2">{error}</p>
-        </div>
-      </div>
-    );
-  }
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [ready, currentPage, calculateScale]);
 
   return (
     <div className="fixed inset-0 pt-14 pb-16 bg-white dark:bg-gray-900 flex flex-col">
-      <div className="flex-1 overflow-auto flex justify-center p-4">
-        <canvas ref={canvasRef} className="shadow-lg" />
+      <div ref={containerRef} className="flex-1 overflow-hidden flex justify-center items-center p-4">
+        <canvas
+          ref={canvasRef}
+          className="shadow-lg"
+          style={{
+            visibility: loading || error ? 'hidden' : 'visible',
+          }}
+        />
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto"></div>
+              <p className="mt-4 text-gray-600 dark:text-gray-400">加载 PDF 中...</p>
+            </div>
+          </div>
+        )}
+        {error && !loading && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-center text-red-500">
+              <p>PDF 加载失败</p>
+              <p className="text-sm mt-2">{error}</p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -643,201 +554,111 @@ function ReaderControls({
   showToc,
   showSettings,
   onNavigateTts,
-  scrollContainerRef,
   isPdf = false,
 }: ReaderControlsProps) {
-  const [hidden, setHidden] = useState(false);
-  const lastScrollY = useRef(0);
-  const hideTimer = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    const container = scrollContainerRef?.current;
-    if (!container) return;
-
-    const handleScroll = () => {
-      const currentY = container.scrollTop;
-      if (currentY > lastScrollY.current && currentY > 60) {
-        setHidden(true);
-      } else if (currentY < lastScrollY.current) {
-        setHidden(false);
-      }
-      lastScrollY.current = currentY;
-    };
-
-    container.addEventListener('scroll', handleScroll, { passive: true });
-    return () => container.removeEventListener('scroll', handleScroll);
-  }, [scrollContainerRef]);
-
-  const handleMouseEnterTop = () => {
-    if (hideTimer.current) clearTimeout(hideTimer.current);
-    setHidden(false);
-  };
-
-  const handleMouseLeaveTop = () => {
-    hideTimer.current = setTimeout(() => setHidden(true), 2000);
-  };
-
-  const handleMouseEnterBottom = () => {
-    if (hideTimer.current) clearTimeout(hideTimer.current);
-    setHidden(false);
-  };
-
-  const handleMouseLeaveBottom = () => {
-    hideTimer.current = setTimeout(() => setHidden(true), 2000);
-  };
-
-  const barTransition = 'transform 0.3s ease-in-out';
-
-  const isFirst = currentChapter === 0;
-  const isLast = currentChapter >= totalChapters - 1;
+  const progress = totalChapters > 0 ? Math.round(((currentChapter + 1) / totalChapters) * 100) : 0;
 
   return (
     <>
       {/* Top bar */}
-      <div
-        className="fixed top-0 left-0 right-0 z-50"
-        onMouseEnter={handleMouseEnterTop}
-        onMouseLeave={handleMouseLeaveTop}
-      >
-        <div
-          className="bg-white/70 dark:bg-gray-900/70 backdrop-blur-md border-b border-white/20 dark:border-gray-700/30 shadow-sm"
-          style={{ transform: hidden ? 'translateY(-100%)' : 'translateY(0)', transition: barTransition }}
+      <div className="fixed top-0 left-0 right-0 h-14 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 z-30">
+        <button
+          onClick={onGoBack}
+          className="flex items-center gap-1 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
         >
-          <div className="flex items-center justify-between px-4 h-14 relative">
-            {/* Left: back */}
-            <button
-              onClick={onGoBack}
-              className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors z-10"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm hidden sm:inline">返回</span>
-            </button>
-
-            {/* Center: chapter title */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <h1
-                className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate max-w-[60%] text-center"
-                title={chapterTitle}
-              >
-                {isPdf
-                  ? `${chapterTitle || 'PDF'} · 第 ${currentChapter + 1} / ${totalChapters} 页`
-                  : chapterTitle || `第 ${currentChapter + 1} 章`}
-              </h1>
-            </div>
-
-            {/* Right: settings */}
-            <button
-              onClick={onToggleSettings}
-              className={`p-2 rounded-lg transition-colors z-10 ${
-                showSettings
-                  ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
-                  : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
-              }`}
-              title="设置"
-            >
-              <Settings className="w-5 h-5" />
-            </button>
-          </div>
+          <ArrowLeft className="w-5 h-5" />
+          <span className="text-sm">返回</span>
+        </button>
+        <div className="flex-1 mx-4 text-center">
+          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+            {book?.title || '阅读中'}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            {isPdf ? `${book?.title || ''} · 第 ${currentChapter + 1} / ${totalChapters} 页` : chapterTitle}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onToggleSettings}
+            className={`p-2 rounded-lg transition-colors ${showSettings ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+          >
+            <Settings className="w-5 h-5" />
+          </button>
         </div>
       </div>
 
-      {/* Bottom navigation bar */}
-      <div
-        className="fixed bottom-0 left-0 right-0 z-50"
-        onMouseEnter={handleMouseEnterBottom}
-        onMouseLeave={handleMouseLeaveBottom}
-      >
-        <div
-          className="bg-white/70 dark:bg-gray-900/70 backdrop-blur-md border-t border-white/20 dark:border-gray-700/30"
-          style={{ transform: hidden ? 'translateY(100%)' : 'translateY(0)', transition: barTransition }}
-        >
-          <div className="flex items-center justify-between gap-1 sm:gap-2 py-2 px-3 sm:px-4">
-            {/* Left: TOC + Bookmark */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={onToggleToc}
-                className={`p-2 sm:p-2.5 rounded-lg transition-colors ${
-                  showToc
-                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
-                    : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
-                }`}
-                title="目录"
-              >
-                <BookOpen className="w-5 h-5" />
-              </button>
-              <button
-                onClick={onAddBookmark}
-                className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-400"
-                title="添加书签"
-              >
-                <Bookmark className="w-5 h-5" />
-              </button>
-            </div>
+      {/* Bottom bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 z-30">
+        {/* Progress bar */}
+        <div className="px-4 pt-2">
+          <input
+            type="range"
+            min="0"
+            max={totalChapters - 1}
+            value={currentChapter}
+            onChange={(e) => onGoToPage(Number(e.target.value))}
+            className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
+          />
+          <div className="flex justify-between text-xs text-gray-400 mt-1">
+            <span>{progress}%</span>
+            <span>{currentChapter + 1} / {totalChapters}</span>
+            <span>100%</span>
+          </div>
+        </div>
 
-            {/* Center: prev + progress + next */}
-            <div className="flex items-center gap-1 sm:gap-2 flex-1 justify-center max-w-md">
-              <button
-                onClick={onPrevPage}
-                className="p-2 sm:p-2.5 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={isFirst}
-                title={isPdf ? '上一页' : '上一章'}
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
+        {/* Controls */}
+        <div className="flex items-center justify-between px-4 py-2">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onToggleToc}
+              className={`p-2 rounded-lg transition-colors ${showToc ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+              title="目录"
+            >
+              <BookOpen className="w-5 h-5" />
+            </button>
+            <button
+              onClick={onAddBookmark}
+              className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              title="添加书签"
+            >
+              <Bookmark className="w-5 h-5" />
+            </button>
+          </div>
 
-              <div className="flex-1 mx-1 sm:mx-2">
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={totalChapters > 0 ? Math.round(((currentChapter + 1) / totalChapters) * 100) : 0}
-                  onChange={(e) => {
-                    const pct = parseInt(e.target.value);
-                    const targetPage = Math.round((pct / 100) * totalChapters);
-                    onGoToPage(Math.max(1, targetPage));
-                  }}
-                  className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:hover:bg-blue-600"
-                />
-                <div className="flex justify-between text-[10px] text-gray-400 mt-0.5 px-1">
-                  <span>0%</span>
-                  <span className="text-blue-500 font-medium">
-                    {totalChapters > 0 ? Math.round(((currentChapter + 1) / totalChapters) * 100) : 0}%
-                  </span>
-                  <span>100%</span>
-                </div>
-              </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onPrevPage}
+              disabled={currentChapter <= 0}
+              className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              title={isPdf ? '上一页' : '上一章'}
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <button
+              onClick={onNextPage}
+              disabled={currentChapter >= totalChapters - 1}
+              className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              title={isPdf ? '下一页 (→)' : '下一章 (→)'}
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
 
-              <button
-                onClick={onNextPage}
-                className="p-2 sm:p-2.5 rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={isLast}
-                title={isPdf ? '下一页 (→)' : '下一章 (→)'}
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Right: TTS + Timer */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={onNavigateTts}
-                className="p-2 sm:p-2.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-400"
-                title="听书模式"
-              >
-                <Volume2 className="w-5 h-5" />
-              </button>
-              <button
-                onClick={onToggleAutoScroll}
-                className={`p-2 sm:p-2.5 rounded-lg transition-colors ${
-                  isAutoScroll
-                    ? 'bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400'
-                    : 'hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400'
-                }`}
-                title={isAutoScroll ? '关闭自动滚动' : '开启自动滚动'}
-              >
-                <Timer className="w-5 h-5" />
-              </button>
-            </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onNavigateTts}
+              className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              title="语音朗读"
+            >
+              <Volume2 className="w-5 h-5" />
+            </button>
+            <button
+              onClick={onToggleAutoScroll}
+              className={`p-2 rounded-lg transition-colors ${isAutoScroll ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+              title="自动滚动"
+            >
+              <Timer className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </div>
@@ -845,34 +666,51 @@ function ReaderControls({
   );
 }
 
-// ==================== Main Reader Component ====================
+// ==================== Main Reader ====================
 export default function Reader() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const [book, setBook] = useState<Book | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showToc, setShowToc] = useState(false);
-  const [isAutoScroll, setIsAutoScroll] = useState(false);
-  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const { user } = useAuthStore();
+  const contentRef = useRef<HTMLDivElement>(null);
+  const scrollPositionRef = useRef(0);
+  const shouldResetScrollRef = useRef(false);
   const autoScrollTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [book, setBook] = useState<Book | null>(null);
+  const [chapters, setChapters] = useState<Array<{ title: string; content?: string }>>([]);
+  const [currentChapter, setCurrentChapter] = useState(0);
+  const [chapterContent, setChapterContent] = useState('');
+  const [isChapterLoading, setIsChapterLoading] = useState(false);
+  const [readerError, setReaderError] = useState<string | null>(null);
+  const [pendingScrollTop, setPendingScrollTop] = useState<number | null>(null);
+
+  const [showToc, setShowToc] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [highlights, setHighlights] = useState<Highlight[]>([]);
+
+  const [selectedText, setSelectedText] = useState('');
+  const [selectionMenuPos, setSelectionMenuPos] = useState({ x: 0, y: 0 });
+  const [showSelectionMenu, setShowSelectionMenu] = useState(false);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [noteSelectedText, setNoteSelectedText] = useState('');
+
+  const [noteSavedToast, setNoteSavedToast] = useState(false);
+  const [highlightSavedToast, setHighlightSavedToast] = useState(false);
+
+  const [isAutoScroll, setIsAutoScroll] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfTotalPages, setPdfTotalPages] = useState(0);
   const [pdfOutline, setPdfOutline] = useState<Array<{ title: string; page: number }>>([]);
   const isPdf = book ? (book.fileType || book.format) === 'pdf' : false;
 
   // ── Note & Highlight state ────────────────────────────────────────────
-  const [selectedText, setSelectedText] = useState('');
-  const [noteSelectedText, setNoteSelectedText] = useState('');
-  const [selectionMenuPos, setSelectionMenuPos] = useState({ x: 0, y: 0 });
-  const [showSelectionMenu, setShowSelectionMenu] = useState(false);
-  const [showNoteModal, setShowNoteModal] = useState(false);
-  const [notes, setNotes] = useState<Note[]>([]);
-  const [highlights, setHighlights] = useState<Highlight[]>([]);
-  const [noteSavedToast, setNoteSavedToast] = useState(false);
-  const [highlightSavedToast, setHighlightSavedToast] = useState(false);
+  const [showNoteModalState, setShowNoteModalState] = useState(false);
+  const [noteSelectedTextState, setNoteSelectedTextState] = useState('');
 
   const {
     mode,
@@ -887,41 +725,54 @@ export default function Reader() {
     setMargin,
   } = useReaderStore();
 
-  // Load bookmarks from localStorage
+  // Fetch book
   useEffect(() => {
-    if (!id) return;
-    try {
-      const stored = localStorage.getItem(`bookdock_bookmarks_${id}`);
-      if (stored) {
-        setBookmarks(JSON.parse(stored));
+    const fetchBook = async () => {
+      if (!id) return;
+      try {
+        const api = getApiClient();
+        const res = await api.getBook(id);
+        if (res.success && res.data) {
+          setBook(res.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch book:', err);
       }
-    } catch {
-      // Ignore
-    }
+    };
+    fetchBook();
   }, [id]);
 
-  // Save bookmarks to localStorage
-  const saveBookmarks = useCallback((newBookmarks: Bookmark[]) => {
-    if (!id) return;
-    setBookmarks(newBookmarks);
-    localStorage.setItem(`bookdock_bookmarks_${id}`, JSON.stringify(newBookmarks));
+  // Fetch bookmarks, notes, highlights
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!id) return;
+      try {
+        const api = getApiClient();
+        const [notesRes, hlRes] = await Promise.all([
+          api.getNotes({ bookId: id }),
+          api.getHighlights(id),
+        ]);
+        if (notesRes.success && notesRes.data) setNotes(notesRes.data.items || []);
+        if (hlRes.success && hlRes.data) setHighlights(hlRes.data);
+      } catch (err) {
+        console.error('Failed to fetch reader data:', err);
+      }
+    };
+    fetchData();
   }, [id]);
 
-  const [chapters, setChapters] = useState<{ title: string; index: number }[]>([]);
-  const [currentChapter, setCurrentChapter] = useState(0);
-  const [chapterContent, setChapterContent] = useState('');
-  const [isChapterLoading, setIsChapterLoading] = useState(false);
-  const [readerError, setReaderError] = useState<string | null>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const scrollPositionRef = useRef(0);
-  const prevChapterRef = useRef(0);
-  const shouldResetScrollRef = useRef(false);
-  const [pendingScrollTop, setPendingScrollTop] = useState<number | null>(null);
-
+  // ── Scroll helpers ───────────────────────────────────────────────────
   const getCurrentScrollTop = useCallback(() => {
-    const elementScrollTop = contentRef.current?.scrollTop ?? 0;
-    if (elementScrollTop > 0) return elementScrollTop;
-    return window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    if (contentRef.current) return contentRef.current.scrollTop;
+    return window.scrollY || document.documentElement.scrollTop;
+  }, []);
+
+  const resetScroll = useCallback(() => {
+    if (contentRef.current) {
+      contentRef.current.scrollTop = 0;
+    }
+    window.scrollTo({ top: 0 });
+    scrollPositionRef.current = 0;
   }, []);
 
   const applyScrollTop = useCallback((top: number, behavior: ScrollBehavior = 'auto') => {
@@ -1027,102 +878,202 @@ export default function Reader() {
           setReaderError((err as Error).message);
         }
       } finally {
-        if (!cancelled) {
-          setIsChapterLoading(false);
-        }
+        if (!cancelled) setIsChapterLoading(false);
       }
     };
 
     fetchContent();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [id, currentChapter, chapters.length, book, isPdf]);
 
-  const resetScroll = useCallback(() => {
-    scrollPositionRef.current = 0;
-    shouldResetScrollRef.current = true;
-    setPendingScrollTop(null);
+  // Apply pending scroll after content loads
+  useEffect(() => {
+    if (pendingScrollTop !== null && !isChapterLoading && chapterContent) {
+      const timer = setTimeout(() => {
+        applyScrollTop(pendingScrollTop);
+        setPendingScrollTop(null);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [pendingScrollTop, isChapterLoading, chapterContent, applyScrollTop]);
+
+  // Apply scroll reset when chapter changes
+  useEffect(() => {
+    if (shouldResetScrollRef.current) {
+      shouldResetScrollRef.current = false;
+      resetScroll();
+    }
+  }, [currentChapter, resetScroll]);
+
+  // ── Keyboard shortcuts ───────────────────────────────────────────────
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (showNoteModal || showSettings) return;
+
+      switch (e.key) {
+        case 'ArrowLeft':
+        case 'PageUp':
+          e.preventDefault();
+          prevPage();
+          break;
+        case 'ArrowRight':
+        case 'PageDown':
+        case ' ':
+          e.preventDefault();
+          nextPage();
+          break;
+        case 'Escape':
+          if (showToc) setShowToc(false);
+          if (showSettings) setShowSettings(false);
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showToc, showSettings, showNoteModal, currentChapter, chapters.length]);
+
+  // ── Auto save scroll position ────────────────────────────────────────
+  useEffect(() => {
+    if (isPdf) return;
+
+    let saveTimer: NodeJS.Timeout;
+    const handleScroll = () => {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        const scrollTop = getCurrentScrollTop();
+        if (Math.abs(scrollTop - scrollPositionRef.current) > 50) {
+          saveReadingPosition(scrollTop, 'scroll');
+        }
+      }, 500);
+    };
+
+    const el = contentRef.current;
+    if (el) el.addEventListener('scroll', handleScroll);
+    window.addEventListener('scroll', handleScroll);
+
+    return () => {
+      clearTimeout(saveTimer);
+      if (el) el.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, [isPdf, getCurrentScrollTop, saveReadingPosition]);
+
+  // ── Auto scroll ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (isAutoScroll && contentRef.current) {
+      autoScrollTimerRef.current = setInterval(() => {
+        if (contentRef.current) {
+          contentRef.current.scrollTop += 2;
+        }
+      }, 50);
+    } else if (autoScrollTimerRef.current) {
+      clearInterval(autoScrollTimerRef.current);
+    }
+
+    return () => {
+      if (autoScrollTimerRef.current) {
+        clearInterval(autoScrollTimerRef.current);
+      }
+    };
+  }, [isAutoScroll]);
+
+  // ── Text selection for notes/highlights ──────────────────────────────
+  const handleTextSelection = useCallback(() => {
+    if (isPdf) return;
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      setShowSelectionMenu(false);
+      return;
+    }
+
+    const text = selection.toString().trim();
+    if (!text || text.length < 2) {
+      setShowSelectionMenu(false);
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    const firstRect = range.getClientRects()[0] || rect;
+    setSelectedText(text);
+    setSelectionMenuPos({ x: firstRect.left + firstRect.width / 2, y: firstRect.top });
+    setShowSelectionMenu(true);
+  }, [isPdf]);
+
+  useEffect(() => {
+    if (isPdf) return;
+
+    const handleMouseUp = () => {
+      setTimeout(handleTextSelection, 10);
+    };
+
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => document.removeEventListener('mouseup', handleMouseUp);
+  }, [handleTextSelection, isPdf]);
+
+  // ── Navigation ───────────────────────────────────────────────────────
+  const prevPage = useCallback(() => {
+    setCurrentChapter((prev) => {
+      const next = Math.max(0, prev - 1);
+      if (next !== prev) {
+        if (!isPdf) resetScroll();
+      }
+      return next;
+    });
+  }, [isPdf, resetScroll]);
+
+  const nextPage = useCallback(() => {
+    setCurrentChapter((prev) => {
+      const max = isPdf ? pdfTotalPages - 1 : chapters.length - 1;
+      const next = Math.min(max, prev + 1);
+      if (next !== prev) {
+        if (!isPdf) resetScroll();
+      }
+      return next;
+    });
+  }, [isPdf, chapters.length, pdfTotalPages, resetScroll]);
+
+  const handleGoToPage = useCallback((page: number) => {
+    setCurrentChapter(page);
+    if (!isPdf) resetScroll();
+  }, [isPdf, resetScroll]);
+
+  const handleGoBack = useCallback(() => {
+    saveReadingPosition(getCurrentScrollTop(), 'exit');
+    navigate(-1);
+  }, [navigate, saveReadingPosition, getCurrentScrollTop]);
+
+  const handlePdfLoaded = useCallback(({ totalPages, outline }: { totalPages: number; outline: Array<{ title: string; page: number }> }) => {
+    setPdfTotalPages(totalPages);
+    setPdfOutline(outline);
   }, []);
+
+  // ── Bookmarks ────────────────────────────────────────────────────────
+  const saveBookmarksToServer = useCallback((bookmarksToSave: Bookmark[]) => {
+    if (!id || bookmarksToSave.length === 0) return;
+    // TODO: implement server-side bookmark saving
+    console.log('Saving bookmarks:', bookmarksToSave);
+  }, [id]);
 
   const handleAddBookmark = useCallback(() => {
     if (!book) return;
     const newBookmark: Bookmark = {
       id: Date.now().toString(),
       cfi: '',
-      position: currentChapter,
+      position: getCurrentScrollTop(),
       createdAt: new Date().toISOString(),
       percentage: Math.round(((currentChapter + 1) / (isPdf ? pdfTotalPages : chapters.length)) * 100),
     };
-    saveBookmarks([...bookmarks, newBookmark]);
-  }, [book, currentChapter, chapters.length, bookmarks, saveBookmarks, isPdf, pdfTotalPages]);
+    const newBookmarks = [...bookmarks, newBookmark];
+    setBookmarks(newBookmarks);
+    saveBookmarksToServer(newBookmarks);
+    setNoteSavedToast(true);
+    setTimeout(() => setNoteSavedToast(false), 2000);
+  }, [book, currentChapter, chapters.length, bookmarks, isPdf, pdfTotalPages, getCurrentScrollTop, saveBookmarksToServer]);
 
-  const handleGoToBookmark = useCallback((bookmark: Bookmark) => {
-    setCurrentChapter(bookmark.position);
-    setShowSettings(false);
-    resetScroll();
-  }, [resetScroll]);
-
-  // ── Selection & Note/Highlight handlers ─────────────────────────────────
-  const handleTextSelection = useCallback(() => {
-    if (isPdf) return; // PDF files disabled
-    if (showNoteModal) return;
-
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
-      setShowSelectionMenu(false);
-      setSelectedText('');
-      return;
-    }
-    const text = selection.toString().trim();
-    if (!text || text.length < 2) {
-      setShowSelectionMenu(false);
-      setSelectedText('');
-      return;
-    }
-    const range = selection.getRangeAt(0);
-    const contentElement = contentRef.current;
-    const anchorNode = selection.anchorNode;
-    const focusNode = selection.focusNode;
-    if (
-      !contentElement ||
-      !anchorNode ||
-      !focusNode ||
-      !contentElement.contains(anchorNode) ||
-      !contentElement.contains(focusNode)
-    ) {
-      setShowSelectionMenu(false);
-      setSelectedText('');
-      return;
-    }
-
-    const rect = range.getBoundingClientRect();
-    const firstRect = range.getClientRects()[0] || rect;
-    setSelectedText(text);
-    setSelectionMenuPos({ x: firstRect.left + firstRect.width / 2, y: firstRect.top });
-    setShowSelectionMenu(true);
-  }, [isPdf, showNoteModal]);
-
-  const handleDismissMenu = useCallback(() => {
-    setShowSelectionMenu(false);
-    setSelectedText('');
-    window.getSelection()?.removeAllRanges();
-  }, []);
-
-  const handleNoteClick = useCallback(() => {
-    setNoteSelectedText(selectedText);
-    setShowSelectionMenu(false);
-    setShowNoteModal(true);
-  }, [selectedText]);
-
-  const handleCloseNoteModal = useCallback(() => {
-    setShowNoteModal(false);
-    setSelectedText('');
-    setNoteSelectedText('');
-    window.getSelection()?.removeAllRanges();
-  }, []);
-
+  // ── Notes ────────────────────────────────────────────────────────────
   const handleSaveNote = useCallback(async (noteText: string) => {
     const quotedText = noteSelectedText || selectedText;
     if (!book || !quotedText) return;
@@ -1152,6 +1103,7 @@ export default function Reader() {
     window.getSelection()?.removeAllRanges();
   }, [book, noteSelectedText, selectedText, currentChapter, chapters.length]);
 
+  // ── Highlights ───────────────────────────────────────────────────────
   const handleHighlightClick = useCallback(async () => {
     if (!book || !selectedText) return;
     const highlightedText = selectedText.trim();
@@ -1174,7 +1126,6 @@ export default function Reader() {
     } catch (err) {
       console.error('Failed to save highlight:', err);
     }
-    // Apply DOM highlight effect
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
       const range = selection.getRangeAt(0);
@@ -1188,311 +1139,17 @@ export default function Reader() {
       try {
         range.surroundContents(mark);
       } catch (e) {
-        // Cross-element selection: fallback to no DOM highlight
         console.warn('Cannot highlight cross-element selection');
       }
       selection.removeAllRanges();
     }
   }, [book, selectedText]);
 
-  // Auto scroll
-  useEffect(() => {
-    if (isAutoScroll && contentRef.current) {
-      autoScrollTimerRef.current = setInterval(() => {
-        if (contentRef.current) {
-          contentRef.current.scrollTop += 2;
-        }
-      }, 50);
-    } else if (autoScrollTimerRef.current) {
-      clearInterval(autoScrollTimerRef.current);
-    }
-
-    return () => {
-      if (autoScrollTimerRef.current) {
-        clearInterval(autoScrollTimerRef.current);
-      }
-    };
-  }, [isAutoScroll]);
-
-  // Fetch book
-  useEffect(() => {
-    const fetchBook = async () => {
-      if (!id) return;
-
-      setIsLoading(true);
-      try {
-        const apiClient = getApiClient();
-        const response = await apiClient.getBook(id);
-
-        if (response.success && response.data) {
-          setBook(response.data);
-        } else {
-          setError(response.error || '加载书籍失败');
-        }
-      } catch (err) {
-        setError((err as Error).message);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchBook();
-  }, [id]);
-
-  const handleGoBack = useCallback(() => {
-    navigate(-1);
-  }, [navigate]);
-
-  const handleModeChange = useCallback((newMode: ReaderMode) => {
-    setMode(newMode);
-  }, [setMode]);
-
-  const handleFontSizeChange = useCallback((newSize: number) => {
-    setFontSize(newSize);
-  }, [setFontSize]);
-
-  const handleLineHeightChange = useCallback((newHeight: number) => {
-    setLineHeight(newHeight);
-  }, [setLineHeight]);
-
-  const handleFontFamilyChange = useCallback((newFamily: string) => {
-    setFontFamily(newFamily);
-  }, [setFontFamily]);
-
-  const handleMarginChange = useCallback((newMargin: number) => {
-    setMargin(newMargin);
-  }, [setMargin]);
-
-  const handlePdfLoaded = useCallback(({ totalPages, outline }: { totalPages: number; outline: Array<{ title: string; page: number }> }) => {
-    setPdfTotalPages(totalPages);
-    setPdfOutline(outline);
-  }, []);
-
-  const handleGoToPage = useCallback((page: number) => {
-    setCurrentChapter(page - 1);
-    if (!isPdf) resetScroll();
-  }, [isPdf, resetScroll]);
-
-  const handleGoToChapter = useCallback((index: number) => {
-    setCurrentChapter(index);
-    if (!isPdf) {
-      scrollPositionRef.current = 0;
-      shouldResetScrollRef.current = true;
-      setPendingScrollTop(null);
-      applyScrollTop(0);
-    }
-  }, [isPdf, applyScrollTop]);
-
-  const prevPage = useCallback(() => {
-    setCurrentChapter((prev) => Math.max(0, prev - 1));
-    if (!isPdf) resetScroll();
-  }, [isPdf, resetScroll]);
-
-  const nextPage = useCallback(() => {
-    const max = isPdf ? pdfTotalPages - 1 : chapters.length - 1;
-    setCurrentChapter((prev) => Math.min(max, prev + 1));
-    if (!isPdf) resetScroll();
-  }, [isPdf, chapters.length, pdfTotalPages, resetScroll]);
-
-  // Keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return;
-      }
-
-      switch (e.key) {
-        case 'ArrowLeft':
-        case 'PageUp':
-          e.preventDefault();
-          prevPage();
-          break;
-        case 'ArrowRight':
-        case 'PageDown':
-        case ' ':
-          e.preventDefault();
-          nextPage();
-          break;
-        case 'Home':
-          e.preventDefault();
-          setCurrentChapter(0);
-          if (!isPdf) resetScroll();
-          break;
-        case 'End':
-          e.preventDefault();
-          setCurrentChapter(isPdf ? pdfTotalPages - 1 : chapters.length - 1);
-          if (!isPdf) resetScroll();
-          break;
-        case 'Escape':
-          setShowSettings(false);
-          setShowToc(false);
-          break;
-        case 'b':
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            handleAddBookmark();
-          }
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [nextPage, prevPage, chapters.length, handleAddBookmark, resetScroll, isPdf, pdfTotalPages]);
-
-  // Show the note/highlight menu only after a drag selection completes.
-  useEffect(() => {
-    if (isPdf) return; // PDF files disabled
-    const handleSelectionEnd = () => {
-      window.setTimeout(handleTextSelection, 0);
-    };
-    document.addEventListener('mouseup', handleSelectionEnd);
-    document.addEventListener('touchend', handleSelectionEnd);
-    return () => {
-      document.removeEventListener('mouseup', handleSelectionEnd);
-      document.removeEventListener('touchend', handleSelectionEnd);
-    };
-  }, [isPdf, handleTextSelection]);
-
-  // Touch swipe handling
-  useEffect(() => {
-    let touchStartX = 0;
-    let touchEndX = 0;
-
-    const handleTouchStart = (e: TouchEvent) => {
-      touchStartX = e.changedTouches[0].screenX;
-    };
-
-    const handleTouchEnd = (e: TouchEvent) => {
-      touchEndX = e.changedTouches[0].screenX;
-      const diff = touchStartX - touchEndX;
-
-      if (Math.abs(diff) > 100) {
-        if (diff > 0) {
-          nextPage();
-        } else {
-          prevPage();
-        }
-      }
-    };
-
-    window.addEventListener('touchstart', handleTouchStart, { passive: true });
-    window.addEventListener('touchend', handleTouchEnd, { passive: true });
-
-    return () => {
-      window.removeEventListener('touchstart', handleTouchStart);
-      window.removeEventListener('touchend', handleTouchEnd);
-    };
-  }, [nextPage, prevPage]);
-
-  const handleToggleAutoScroll = () => {
-    setIsAutoScroll(!isAutoScroll);
-  };
-
-  const handleNavigateTts = useCallback(async () => {
-    if (!id) return;
-    
-    const { refreshVipStatus, plusToken } = useAuthStore.getState();
-    
-    if (!plusToken) {
-      navigate('/member-login', { state: { from: location.pathname } });
-      return;
-    }
-    
-    const vipNow = await refreshVipStatus();
-    if (!vipNow) {
-      navigate('/membership', { state: { from: location.pathname } });
-      return;
-    }
-    
-    navigate(`/book/${id}/tts`);
-  }, [id, navigate, location.pathname]);
-
-  // Track the first visible line position + debounced save on scroll stop
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-
-    let scrollSaveTimer: NodeJS.Timeout | null = null;
-
-    const handler = () => {
-      const top = getCurrentScrollTop();
-      scrollPositionRef.current = top;
-
-      if (scrollSaveTimer) clearTimeout(scrollSaveTimer);
-      scrollSaveTimer = setTimeout(() => {
-        saveReadingPosition(top, 'scroll progress');
-      }, 1500);
-    };
-
-    el.addEventListener('scroll', handler, { passive: true });
-    window.addEventListener('scroll', handler, { passive: true });
-    return () => {
-      el.removeEventListener('scroll', handler);
-      window.removeEventListener('scroll', handler);
-      if (scrollSaveTimer) {
-        clearTimeout(scrollSaveTimer);
-        saveReadingPosition(getCurrentScrollTop(), 'scroll progress');
-      }
-    };
-  }, [getCurrentScrollTop, saveReadingPosition]);
-
-  // Save immediately when chapter changes
-  useEffect(() => {
-    if (!id || chapters.length === 0 || pendingScrollTop !== null) return;
-    if (prevChapterRef.current === currentChapter) return;
-    prevChapterRef.current = currentChapter;
-
-    const scrollTop = scrollPositionRef.current;
-    saveReadingPosition(scrollTop, 'chapter progress');
-  }, [id, currentChapter, chapters.length, pendingScrollTop, saveReadingPosition]);
-
-  // Restore or reset scroll position after new chapter content renders
-  useEffect(() => {
-    if (!chapterContent || !contentRef.current) return;
-
-    if (pendingScrollTop !== null) {
-      const target = pendingScrollTop;
-      const timer = setTimeout(() => {
-        applyScrollTop(target);
-        setPendingScrollTop(null);
-        saveReadingPosition(target, 'restored progress');
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-
-    if (shouldResetScrollRef.current) {
-      const timer = setTimeout(() => {
-        applyScrollTop(0, 'smooth');
-        shouldResetScrollRef.current = false;
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [applyScrollTop, chapterContent, pendingScrollTop, saveReadingPosition]);
-
-  // Save the current first visible line when leaving the reader.
-  useEffect(() => {
-    const saveOnExit = () => saveReadingPosition(getCurrentScrollTop(), 'exit progress');
-
-    window.addEventListener('pagehide', saveOnExit);
-    window.addEventListener('beforeunload', saveOnExit);
-
-    return () => {
-      saveOnExit();
-      window.removeEventListener('pagehide', saveOnExit);
-      window.removeEventListener('beforeunload', saveOnExit);
-    };
-  }, [getCurrentScrollTop, saveReadingPosition]);
-
-  // Build TOC chapters for PDF
+  // ── TOC chapters ─────────────────────────────────────────────────────
   const pdfTocChapters = useMemo(() => {
     if (!isPdf || pdfTotalPages === 0) return [];
-    // If PDF has outline/bookmarks, use them; otherwise fall back to page numbers
     if (pdfOutline.length > 0) {
-      return pdfOutline.map((item, idx) => ({
-        title: item.title,
-        index: item.page - 1,
-      }));
+      return pdfOutline.map((item) => ({ title: item.title, index: item.page - 1 }));
     }
     return Array.from({ length: pdfTotalPages }, (_, i) => ({
       title: `第 ${i + 1} 页`,
@@ -1500,144 +1157,20 @@ export default function Reader() {
     }));
   }, [isPdf, pdfTotalPages, pdfOutline]);
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto"></div>
-          <p className="mt-4 text-gray-600 dark:text-gray-400">加载书籍中...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || readerError) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="text-center max-w-md mx-auto px-4">
-          <div className="mb-4 flex justify-center"><BookOpen className="w-16 h-16 text-red-400" /></div>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-            {error || readerError}
-          </h2>
-          <div className="flex gap-3 justify-center mt-6">
-            <Button onClick={() => navigate('/')}>返回书库</Button>
-            <Button variant="secondary" onClick={() => window.location.reload()}>重试</Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const tocChapters: Array<{ title: string; index: number }> = isPdf ? pdfTocChapters : chapters.map((c, i) => ({ title: c.title, index: i }));
+  const totalChapters = isPdf ? pdfTotalPages : chapters.length;
 
   if (!book) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="text-center">
-          <div className="mb-4 flex justify-center"><BookOpen className="w-16 h-16 text-gray-400" /></div>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">书籍不存在</h2>
-          <Button onClick={() => navigate('/')}>返回书库</Button>
-        </div>
+        <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
       </div>
     );
   }
 
-  const tocChapters = isPdf ? pdfTocChapters : chapters;
-  const totalChapters = isPdf ? pdfTotalPages : chapters.length;
-
   return (
-    <div
-      className={`min-h-screen ${
-        mode === 'dark'
-          ? 'bg-gray-900 text-gray-100'
-          : mode === 'sepia'
-          ? 'bg-amber-50 text-amber-900'
-          : 'bg-white text-gray-900'
-      }`}
-    >
-      {/* Selection menu (floating toolbar when text is selected) */}
-      {!isPdf && showSelectionMenu && (
-        <SelectionMenu
-          position={selectionMenuPos}
-          selectedText={selectedText}
-          onNote={handleNoteClick}
-          onHighlight={handleHighlightClick}
-          onDismiss={handleDismissMenu}
-        />
-      )}
-
-      {/* Note modal */}
-      <NoteModal
-        isOpen={showNoteModal}
-        selectedText={noteSelectedText}
-        bookTitle={book?.title || ''}
-        onClose={handleCloseNoteModal}
-        onSave={handleSaveNote}
-      />
-
-      {/* Note saved toast */}
-      {noteSavedToast && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium animate-in fade-in slide-in-from-top-2">
-          ✅ 笔记已保存
-        </div>
-      )}
-
-      {/* Highlight saved toast */}
-      {highlightSavedToast && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-yellow-500 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium animate-in fade-in slide-in-from-top-2">
-          ✅ 高亮已保存
-        </div>
-      )}
-
-      <ReaderControls
-        book={book}
-        currentChapter={currentChapter}
-        totalChapters={totalChapters}
-        chapterTitle={isPdf ? book.title : chapters[currentChapter]?.title || ''}
-        mode={mode}
-        onPrevPage={prevPage}
-        onNextPage={nextPage}
-        onGoBack={handleGoBack}
-        onGoToPage={handleGoToPage}
-        onToggleAutoScroll={handleToggleAutoScroll}
-        isAutoScroll={isAutoScroll}
-        onToggleToc={() => setShowToc(!showToc)}
-        onToggleSettings={() => setShowSettings(!showSettings)}
-        onAddBookmark={handleAddBookmark}
-        showToc={showToc}
-        showSettings={showSettings}
-        onNavigateTts={handleNavigateTts}
-        scrollContainerRef={contentRef}
-        isPdf={isPdf}
-      />
-
-      {/* Chapter Drawer (TOC) - LEFT */}
-      <ChapterDrawer
-        chapters={tocChapters}
-        currentChapter={currentChapter}
-        isOpen={showToc}
-        onClose={() => setShowToc(false)}
-        onSelectChapter={handleGoToChapter}
-      />
-
-      {/* Settings Drawer - RIGHT */}
-      <SettingsDrawer
-        mode={mode}
-        fontSize={fontSize}
-        lineHeight={lineHeight}
-        fontFamily={fontFamily}
-        margin={margin}
-        onModeChange={handleModeChange}
-        onFontSizeChange={handleFontSizeChange}
-        onLineHeightChange={handleLineHeightChange}
-        onFontFamilyChange={handleFontFamilyChange}
-        onMarginChange={handleMarginChange}
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-        bookmarks={bookmarks}
-        onAddBookmark={handleAddBookmark}
-        onGoToBookmark={handleGoToBookmark}
-      />
-
-      {/* Reader container */}
+    <div className="fixed inset-0 bg-white dark:bg-gray-900">
+      {/* PDF Viewer */}
       {isPdf && pdfUrl ? (
         <PdfViewer
           url={pdfUrl}
@@ -1665,43 +1198,117 @@ export default function Reader() {
           }}
         >
           {isChapterLoading && (
-            <div className="flex items-center justify-center h-64">
+            <div className="flex items-center justify-center py-20">
               <div className="animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
             </div>
           )}
 
-          {!isChapterLoading && chapterContent && (
-            <div>
-              {/* Chapter title */}
-              <h2
-                className="text-xl sm:text-2xl font-bold mb-6 pb-4 border-b border-gray-200 dark:border-gray-700"
-                style={{ fontFamily }}
-              >
-                {chapters[currentChapter]?.title || `第 ${currentChapter + 1} 章`}
-              </h2>
-              {isPdf ? (
-                <div className="whitespace-pre-wrap leading-relaxed">
-                  {chapterContent}
-                </div>
-              ) : book?.format === 'epub' || book?.fileType === 'epub' || book?.format === 'mobi' || book?.fileType === 'mobi' || book?.format === 'azw3' || book?.fileType === 'azw3' ? (
-                <div
-                  className="leading-relaxed epub-content"
-                  style={{ fontFamily, fontSize: `${fontSize}px`, lineHeight }}
-                  dangerouslySetInnerHTML={{ __html: chapterContent }}
-                />
-              ) : (
-                <div className="whitespace-pre-wrap leading-relaxed">
-                  {chapterContent}
-                </div>
-              )}
+          {readerError && (
+            <div className="text-center py-20 text-red-500">
+              <p>{readerError}</p>
             </div>
           )}
 
-          {!isChapterLoading && !chapterContent && !readerError && (
-            <div className="flex items-center justify-center h-64 text-gray-500">
-              本章无内容
-            </div>
+          {!isChapterLoading && !readerError && (
+            <div
+              className="max-w-3xl mx-auto"
+              dangerouslySetInnerHTML={{ __html: chapterContent }}
+            />
           )}
+        </div>
+      )}
+
+      {/* Controls */}
+      <ReaderControls
+        book={book}
+        currentChapter={currentChapter}
+        totalChapters={totalChapters}
+        chapterTitle={isPdf ? book.title : chapters[currentChapter]?.title || ''}
+        mode={mode}
+        onPrevPage={prevPage}
+        onNextPage={nextPage}
+        onGoBack={handleGoBack}
+        onGoToPage={handleGoToPage}
+        onToggleAutoScroll={() => setIsAutoScroll(!isAutoScroll)}
+        isAutoScroll={isAutoScroll}
+        onToggleToc={() => setShowToc(!showToc)}
+        onToggleSettings={() => setShowSettings(!showSettings)}
+        onAddBookmark={handleAddBookmark}
+        showToc={showToc}
+        showSettings={showSettings}
+        onNavigateTts={() => navigate(`/reader/${id}/tts`)}
+        scrollContainerRef={contentRef}
+        isPdf={isPdf}
+      />
+
+      {/* TOC Panel */}
+      {showToc && (
+        <TocPanel
+          chapters={tocChapters}
+          currentChapter={currentChapter}
+          onSelect={handleGoToPage}
+          onClose={() => setShowToc(false)}
+          bookTitle={book.title}
+        />
+      )}
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <SettingsPanel
+          fontSize={fontSize}
+          lineHeight={lineHeight}
+          fontFamily={fontFamily}
+          margin={margin}
+          mode={mode}
+          onFontSizeChange={setFontSize}
+          onLineHeightChange={setLineHeight}
+          onFontFamilyChange={setFontFamily}
+          onMarginChange={setMargin}
+          onModeChange={setMode}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {/* Selection Menu */}
+      {showSelectionMenu && (
+        <SelectionMenu
+          position={selectionMenuPos}
+          selectedText={selectedText}
+          onNote={() => {
+            setNoteSelectedText(selectedText);
+            setShowSelectionMenu(false);
+            setShowNoteModal(true);
+          }}
+          onHighlight={handleHighlightClick}
+          onDismiss={() => {
+            setShowSelectionMenu(false);
+            window.getSelection()?.removeAllRanges();
+          }}
+        />
+      )}
+
+      {/* Note Modal */}
+      <NoteModal
+        isOpen={showNoteModal}
+        selectedText={noteSelectedText || selectedText}
+        onClose={() => {
+          setShowNoteModal(false);
+          setSelectedText('');
+          setNoteSelectedText('');
+          window.getSelection()?.removeAllRanges();
+        }}
+        onSave={handleSaveNote}
+      />
+
+      {/* Toasts */}
+      {noteSavedToast && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-4 py-2 rounded-lg text-sm shadow-lg z-50">
+          笔记已保存
+        </div>
+      )}
+      {highlightSavedToast && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 bg-gray-900 text-white px-4 py-2 rounded-lg text-sm shadow-lg z-50">
+          高亮已保存
         </div>
       )}
     </div>
