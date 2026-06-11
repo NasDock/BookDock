@@ -78,53 +78,31 @@ RUN SOURCE_PRISMA=$(find /app/node_modules/.pnpm -path '*/@prisma+client@*/node_
       cp -r "$SOURCE_PRISMA" "$TARGET_PRISMA/"; \
     fi
 
-# ── Stage 4: TTS Model Downloader ────────────────────────────────────────────
-FROM python:${PYTHON_VERSION}-slim AS tts-model-builder
-
-RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
-
-# Download default voice model (HuggingFace - GitHub release 404)
-ENV PIPER_MODEL_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx"
-ENV PIPER_MODEL_JSON_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json"
-
-RUN mkdir -p /models && \
-    curl -L --fail -o /models/voice.onnx "$PIPER_MODEL_URL" && \
-    curl -L --fail -o /models/voice.onnx.json "$PIPER_MODEL_JSON_URL"
-
 
 # ── Stage 5: Production Runner ───────────────────────────────────────────────
 FROM node:${NODE_VERSION}-bookworm AS runner
 
 LABEL org.opencontainers.image.title="BookDock"
-LABEL org.opencontainers.image.description="BookDock all-in-one: API + Web + TTS"
+LABEL org.opencontainers.image.description="BookDock all-in-one: API + Web + TTS (Edge/Mi)"
 LABEL maintainer="BookDock Team"
 
 WORKDIR /app
 
-# Install Python 3.11, pip, runtime deps, and TTS Python packages directly
+# Install Python 3.11, pip, runtime deps, and TTS Python packages.
+# Edge TTS only needs stdlib + httpx; no heavy native deps.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.11 \
     python3-pip \
-    python3.11-venv \
-    libespeak1 \
-    libsndfile1 \
-    espeak-ng \
-    sox \
-    libsox-fmt-mp3 \
     supervisor \
     tini \
     && rm -rf /var/lib/apt/lists/* \
     && pip3 install --break-system-packages --no-cache-dir \
-    piper-tts \
-    onnxruntime \
+    edge-tts \
+    httpx \
     fastapi \
     uvicorn \
     pydantic \
-    aiofiles \
     && npm install -g prisma@5.22.0
-
-# Copy voice model
-COPY --from=tts-model-builder /models /models
 
 # Copy deployed server (self-contained with all deps)
 COPY --from=server-builder /app/server-deploy ./
@@ -149,9 +127,12 @@ ENV DATABASE_URL=file:/data/db/bookdock.db
 ENV NAS_EBOOK_PATH=/data/ebooks
 ENV NAS_AUDIO_PATH=/data/audio
 ENV SOURCE_LOCAL_PATH=/data/sources
-ENV PIPER_VOICE_PATH=/models/voice.onnx
-ENV PIPER_SAMPLE_RATE=22050
-ENV PIPER_PORT=5000
+ENV TTS_SERVICE_URL=http://localhost:5000
+ENV TTS_DEFAULT_PROVIDER=edge
+ENV TTS_AUDIO_CACHE_DIR=/data/audio
+ENV TTS_PORT=5000
+ENV EDGE_TTS_ENABLED=1
+ENV MI_TTS_ENABLED=1
 
 # Write supervisord config
 RUN cat > /etc/supervisor/conf.d/bookdock.conf << 'EOF'
@@ -162,14 +143,13 @@ logfile=/var/log/supervisor/supervisord.log
 pidfile=/var/run/supervisord.pid
 
 [program:tts]
-command=python3 -m uvicorn tts_service:app --host 0.0.0.0 --port 5000 --app-dir /app/tts-service
+command=/app/tts-service/start.sh
 autostart=true
 autorestart=true
 stdout_logfile=/dev/stdout
 stdout_logfile_maxbytes=0
 stderr_logfile=/dev/stderr
 stderr_logfile_maxbytes=0
-environment=PIPER_VOICE_PATH="/models/voice.onnx",PIPER_SAMPLE_RATE="22050",PIPER_PORT="5000"
 
 [program:api]
 command=node /app/dist/main.js

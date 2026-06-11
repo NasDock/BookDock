@@ -6,11 +6,12 @@ on:
       - "feat/test"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-desktop:
     name: Build Desktop (${{ matrix.platform }})
-    permissions:
-      contents: write
     strategy:
       matrix:
         include:
@@ -69,8 +70,6 @@ jobs:
   build-android:
     name: Build Android
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -100,11 +99,6 @@ jobs:
           NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
         run: pnpm install --no-frozen-lockfile
 
-      - name: Prebuild Android
-        run: |
-          cd apps/mobile
-          npx expo prebuild --platform android
-
       - name: Build Android APK
         run: |
           cd apps/mobile/android
@@ -129,5 +123,4 @@ jobs:
           draft: true
           files: |
             ${{ steps.prepare_apk.outputs.apk_path }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}

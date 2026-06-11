@@ -1,7 +1,7 @@
-import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { TTSVoice } from '@bookdock/api-client';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { create } from 'zustand';
+import { createJSONStorage, persist } from 'zustand/middleware';
 
 type TTSState = 'idle' | 'playing' | 'paused' | 'loading';
 
@@ -10,6 +10,7 @@ interface TTSStoreState {
   currentBookId: string | null;
   currentPosition: number;
   totalLength: number;
+  selectedProvider: string | null;
   selectedVoice: TTSVoice | null;
   availableVoices: TTSVoice[];
   playbackRate: number;
@@ -20,6 +21,7 @@ interface TTSStoreState {
   setState: (state: TTSState) => void;
   setCurrentBook: (bookId: string | null, position?: number, totalLength?: number) => void;
   setPosition: (position: number) => void;
+  setSelectedProvider: (provider: string) => void;
   setSelectedVoice: (voice: TTSVoice | null) => void;
   setAvailableVoices: (voices: TTSVoice[]) => void;
   setPlaybackRate: (rate: number) => void;
@@ -35,6 +37,7 @@ export const useTTSStore = create<TTSStoreState>()(
       currentBookId: null,
       currentPosition: 0,
       totalLength: 0,
+      selectedProvider: null,
       selectedVoice: null,
       availableVoices: [],
       playbackRate: 1.0,
@@ -42,7 +45,7 @@ export const useTTSStore = create<TTSStoreState>()(
       isAutoPlay: true,
 
       setState: (state) => set({ state }),
-      
+
       setCurrentBook: (bookId, position = 0, totalLength = 0) => set({
         currentBookId: bookId,
         currentPosition: position,
@@ -51,6 +54,8 @@ export const useTTSStore = create<TTSStoreState>()(
       }),
 
       setPosition: (position) => set({ currentPosition: position }),
+
+      setSelectedProvider: (provider) => set({ selectedProvider: provider }),
 
       setSelectedVoice: (voice) => set({ selectedVoice: voice }),
 
@@ -73,6 +78,7 @@ export const useTTSStore = create<TTSStoreState>()(
       name: 'bookdock-tts',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
+        selectedProvider: state.selectedProvider,
         selectedVoice: state.selectedVoice,
         playbackRate: state.playbackRate,
         volume: state.volume,

@@ -1,24 +1,21 @@
 // @ts-nocheck
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate, useParams } from "react-router-dom";
 import { getApiClient, type Book, type Collection } from "@bookdock/api-client";
-import { getCoverImageUrl } from "../utils/network";
 import {
   ArrowLeft,
   BookOpen,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  FolderOpen,
   Headphones,
   Heart,
-  FolderOpen,
-  ChevronRight,
-  ChevronDown,
-  ChevronUp,
-  Tag,
-  Building,
-  Calendar,
-  X,
   Plus,
   StickyNote,
+  X,
 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { getCoverImageUrl } from "../utils/network";
 
 function getBookGradient(title: string): string {
   const gradients = [
@@ -52,16 +49,21 @@ export default function BookDetail() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const [book, setBook] = useState<Book | null>(null);
-  const [chapters, setChapters] = useState<{ title: string; index: number }[]>([]);
+  const [chapters, setChapters] = useState<{ title: string; index: number }[]>(
+    [],
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
   const [descExpanded, setDescExpanded] = useState(false);
   const [showAllChapters, setShowAllChapters] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [showCollectionModal, setShowCollectionModal] = useState(false);
-  const [showCreateCollectionModal, setShowCreateCollectionModal] = useState(false);
+  const [showCreateCollectionModal, setShowCreateCollectionModal] =
+    useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
-  const [addingCollectionId, setAddingCollectionId] = useState<string | null>(null);
+  const [addingCollectionId, setAddingCollectionId] = useState<string | null>(
+    null,
+  );
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   // 加载书籍详情
@@ -75,7 +77,9 @@ export default function BookDetail() {
         const [bookRes, chapterRes, favRes] = await Promise.all([
           api.getBook(id),
           api.getChapters(id),
-          api.checkFavorite(id).catch(() => ({ success: false, data: { isFavorite: false } })),
+          api
+            .checkFavorite(id)
+            .catch(() => ({ success: false, data: { isFavorite: false } })),
         ]);
         if (!cancelled) {
           if (bookRes.success && bookRes.data) {
@@ -95,16 +99,35 @@ export default function BookDetail() {
       }
     }
     loadDetails();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const handleRead = useCallback(() => {
     if (book) navigate(`/book/${book.id}`);
   }, [navigate, book]);
 
-  const handleTTS = useCallback(() => {
-    alert("功能正在开发中，敬请期待！");
-  }, []);
+  const handleTTS = useCallback(async () => {
+    if (!book) return;
+    // Deep-link straight to the user's last listened chapter so they
+    // can resume mid-book without having to scroll back. Falls back to
+    // chapter 0 if there's no recorded progress yet.
+    try {
+      const api = getApiClient();
+      const res = await api.getBookLastRead(book.id);
+      console.log('[BookDetail] getBookLastRead res:', res);
+      const ci =
+        res.success && res.data && Number.isFinite(res.data.chapterIndex)
+          ? Math.max(0, res.data.chapterIndex)
+          : 0;
+      console.log('[BookDetail] navigating to ci:', ci);
+      navigate(`/book/${book.id}/tts?ci=${ci}`);
+    } catch (e) {
+      console.error('[BookDetail] getBookLastRead error:', e);
+      navigate(`/book/${book.id}/tts?ci=0`);
+    }
+  }, [navigate, book]);
 
   const handleToggleFavorite = useCallback(async () => {
     if (!book) return;
@@ -135,24 +158,27 @@ export default function BookDetail() {
     }
   }, []);
 
-  const handleAddToCollection = useCallback(async (collectionId: string) => {
-    if (!book) return;
-    setAddingCollectionId(collectionId);
-    try {
-      const api = getApiClient();
-      const res = await api.addBookToCollection(collectionId, book.id);
-      if (res.success) {
-        alert("已添加到书单");
-        setShowCollectionModal(false);
-      } else {
-        alert(res.message || "添加失败");
+  const handleAddToCollection = useCallback(
+    async (collectionId: string) => {
+      if (!book) return;
+      setAddingCollectionId(collectionId);
+      try {
+        const api = getApiClient();
+        const res = await api.addBookToCollection(collectionId, book.id);
+        if (res.success) {
+          alert("已添加到书单");
+          setShowCollectionModal(false);
+        } else {
+          alert(res.message || "添加失败");
+        }
+      } catch {
+        alert("添加失败");
+      } finally {
+        setAddingCollectionId(null);
       }
-    } catch {
-      alert("添加失败");
-    } finally {
-      setAddingCollectionId(null);
-    }
-  }, [book]);
+    },
+    [book],
+  );
 
   const handleCreateCollection = useCallback(async () => {
     if (!book) return;
@@ -165,7 +191,10 @@ export default function BookDetail() {
       const api = getApiClient();
       const createRes = await api.createCollection({ name });
       if (createRes.success && createRes.data) {
-        const addRes = await api.addBookToCollection(createRes.data.id, book.id);
+        const addRes = await api.addBookToCollection(
+          createRes.data.id,
+          book.id,
+        );
         if (addRes.success) {
           alert("已创建书单并添加书籍");
           setShowCreateCollectionModal(false);
@@ -182,7 +211,10 @@ export default function BookDetail() {
     }
   }, [newCollectionName, book]);
 
-  const metadata = useMemo(() => parseMetadata((book as any)?.metadata), [book]);
+  const metadata = useMemo(
+    () => parseMetadata((book as any)?.metadata),
+    [book],
+  );
 
   if (isLoading) {
     return (
@@ -239,7 +271,9 @@ export default function BookDetail() {
                     }}
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                   >
-                    <Heart className={`w-4 h-4 ${isFavorite ? "text-red-500 fill-current" : "text-gray-500 dark:text-gray-400"}`} />
+                    <Heart
+                      className={`w-4 h-4 ${isFavorite ? "text-red-500 fill-current" : "text-gray-500 dark:text-gray-400"}`}
+                    />
                     <span className="text-sm text-gray-700 dark:text-gray-200">
                       {isFavorite ? "取消收藏" : "收藏"}
                     </span>
@@ -253,7 +287,9 @@ export default function BookDetail() {
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                   >
                     <StickyNote className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                    <span className="text-sm text-gray-700 dark:text-gray-200">查看笔记</span>
+                    <span className="text-sm text-gray-700 dark:text-gray-200">
+                      查看笔记
+                    </span>
                   </button>
                   <div className="border-t border-gray-100 dark:border-gray-700" />
                   <button
@@ -264,7 +300,9 @@ export default function BookDetail() {
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                   >
                     <FolderOpen className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                    <span className="text-sm text-gray-700 dark:text-gray-200">添加到书单</span>
+                    <span className="text-sm text-gray-700 dark:text-gray-200">
+                      添加到书单
+                    </span>
                   </button>
                 </div>
               </>
@@ -302,7 +340,9 @@ export default function BookDetail() {
               {/* 作者 - 优先使用 authors 数组 */}
               {(book as any).authors?.length > 0 ? (
                 <div className="flex items-start gap-3">
-                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">作者</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">
+                    作者
+                  </span>
                   <div className="flex flex-wrap gap-2">
                     {(book as any).authors.map((a: any) => (
                       <button
@@ -317,46 +357,77 @@ export default function BookDetail() {
                 </div>
               ) : book.author ? (
                 <div className="flex items-start gap-3">
-                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">作者</span>
-                  <span className="text-sm text-gray-700 dark:text-gray-300">{book.author}</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">
+                    作者
+                  </span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    {book.author}
+                  </span>
                 </div>
               ) : null}
               {metadata.tags && metadata.tags.length > 0 && (
                 <div className="flex items-start gap-3">
-                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">标签</span>
-                  <span className="text-sm text-gray-700 dark:text-gray-300">{metadata.tags.join('、')}</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">
+                    标签
+                  </span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    {metadata.tags.join("、")}
+                  </span>
                 </div>
               )}
               {metadata.category && (
                 <div className="flex items-start gap-3">
-                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">分类</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">
+                    分类
+                  </span>
                   <span className="text-sm text-gray-700 dark:text-gray-300">
-                    {Array.isArray(metadata.category) ? metadata.category.join(" > ") : metadata.category}
+                    {Array.isArray(metadata.category)
+                      ? metadata.category.join(" > ")
+                      : metadata.category}
                   </span>
                 </div>
               )}
               {metadata.series && (
                 <div className="flex items-start gap-3">
-                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">丛书</span>
-                  <span className="text-sm text-gray-700 dark:text-gray-300">{metadata.series}</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">
+                    丛书
+                  </span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    {metadata.series}
+                  </span>
                 </div>
               )}
               {book.publisher && (
                 <div className="flex items-start gap-3">
-                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">出版社</span>
-                  <span className="text-sm text-gray-700 dark:text-gray-300">{book.publisher}</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">
+                    出版社
+                  </span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    {book.publisher}
+                  </span>
                 </div>
               )}
-              {(book.publishedDate || metadata.publishedDate || metadata.published || metadata.pub_date) && (
+              {(book.publishedDate ||
+                metadata.publishedDate ||
+                metadata.published ||
+                metadata.pub_date) && (
                 <div className="flex items-start gap-3">
-                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">出版日期</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">
+                    出版日期
+                  </span>
                   <span className="text-sm text-gray-700 dark:text-gray-300">
                     {(() => {
-                      const date = book.publishedDate || metadata.publishedDate || metadata.published || metadata.pub_date;
-                      if (date instanceof Date) return date.toISOString().split('T')[0];
-                      if (typeof date === 'string') {
+                      const date =
+                        book.publishedDate ||
+                        metadata.publishedDate ||
+                        metadata.published ||
+                        metadata.pub_date;
+                      if (date instanceof Date)
+                        return date.toISOString().split("T")[0];
+                      if (typeof date === "string") {
                         const d = new Date(date);
-                        if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+                        if (!isNaN(d.getTime()))
+                          return d.toISOString().split("T")[0];
                         return date;
                       }
                       return String(date);
@@ -366,42 +437,68 @@ export default function BookDetail() {
               )}
               {(book.totalPages || metadata.pages) && (
                 <div className="flex items-start gap-3">
-                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">页数</span>
-                  <span className="text-sm text-gray-700 dark:text-gray-300">{book.totalPages || metadata.pages} 页</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">
+                    页数
+                  </span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    {book.totalPages || metadata.pages} 页
+                  </span>
                 </div>
               )}
               {book.isbn && (
                 <div className="flex items-start gap-3">
-                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">ISBN</span>
-                  <span className="text-sm text-gray-700 dark:text-gray-300">{book.isbn}</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">
+                    ISBN
+                  </span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    {book.isbn}
+                  </span>
                 </div>
               )}
-              {book.language && book.language !== 'zh' && (
+              {book.language && book.language !== "zh" && (
                 <div className="flex items-start gap-3">
-                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">语言</span>
-                  <span className="text-sm text-gray-700 dark:text-gray-300">{book.language}</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">
+                    语言
+                  </span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    {book.language}
+                  </span>
                 </div>
               )}
               {book.format && (
                 <div className="flex items-start gap-3">
-                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">格式</span>
-                  <span className="text-sm text-gray-700 dark:text-gray-300">{book.format.toUpperCase()}</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">
+                    格式
+                  </span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    {book.format.toUpperCase()}
+                  </span>
                 </div>
               )}
               {metadata.rating && (
                 <div className="flex items-start gap-3">
-                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">豆瓣评分</span>
-                  <span className="text-sm text-amber-500">★ {metadata.rating}</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">
+                    豆瓣评分
+                  </span>
+                  <span className="text-sm text-amber-500">
+                    ★ {metadata.rating}
+                  </span>
                 </div>
               )}
               {book.fileSize && (
                 <div className="flex items-start gap-3">
-                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">文件大小</span>
-                  <span className="text-sm text-gray-700 dark:text-gray-300">{(book.fileSize / 1024 / 1024).toFixed(1)} MB</span>
+                  <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">
+                    文件大小
+                  </span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    {(book.fileSize / 1024 / 1024).toFixed(1)} MB
+                  </span>
                 </div>
               )}
               <div className="flex items-start gap-3">
-                <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">信息源</span>
+                <span className="text-sm text-gray-500 dark:text-gray-400 w-16 flex-shrink-0">
+                  信息源
+                </span>
                 {metadata.doubanUrl ? (
                   <a
                     href={metadata.doubanUrl}
@@ -412,7 +509,9 @@ export default function BookDetail() {
                     豆瓣 ↗
                   </a>
                 ) : (
-                  <span className="text-sm text-gray-700 dark:text-gray-300">豆瓣</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    豆瓣
+                  </span>
                 )}
               </div>
             </div>
@@ -438,10 +537,12 @@ export default function BookDetail() {
         </div>
 
         {/* 阅读进度 */}
-        {(book.readingProgress !== undefined && book.readingProgress > 0) && (
+        {book.readingProgress !== undefined && book.readingProgress > 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 mb-6 shadow-sm">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">阅读进度</h2>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                阅读进度
+              </h2>
               <button
                 onClick={handleRead}
                 className="px-4 py-1.5 text-sm text-blue-500 border border-blue-500 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
@@ -469,7 +570,9 @@ export default function BookDetail() {
         {/* 内容简介 */}
         {(book.description || metadata.summary) && (
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 mb-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">内容简介</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+              内容简介
+            </h2>
             <p
               className={`text-gray-700 dark:text-gray-300 leading-relaxed ${
                 descExpanded ? "" : "line-clamp-5"
@@ -497,7 +600,9 @@ export default function BookDetail() {
         {/* 作者简介 */}
         {metadata.authorIntro && (
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 mb-6 shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">作者简介</h2>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+              作者简介
+            </h2>
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="w-14 h-14 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 self-center sm:self-start">
                 <span className="text-xl font-bold text-white">
@@ -505,7 +610,9 @@ export default function BookDetail() {
                 </span>
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-gray-900 dark:text-white mb-1 text-center sm:text-left">{book.author}</h3>
+                <h3 className="font-semibold text-gray-900 dark:text-white mb-1 text-center sm:text-left">
+                  {book.author}
+                </h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed line-clamp-4">
                   {metadata.authorIntro}
                 </p>
@@ -518,26 +625,34 @@ export default function BookDetail() {
         {chapters.length > 0 && (
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 mb-6 shadow-sm">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">目录</h2>
-              <span className="text-sm text-gray-500 dark:text-gray-400">共 {chapters.length} 章</span>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                目录
+              </h2>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                共 {chapters.length} 章
+              </span>
             </div>
             <div className="space-y-1">
-              {(showAllChapters ? chapters : chapters.slice(0, 5)).map((chapter, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center gap-3 py-2.5 px-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg cursor-pointer transition-colors"
-                  onClick={handleRead}
-                >
-                  <span className="text-sm text-gray-400 w-8">{idx + 1}.</span>
-                  <span className="flex-1 text-gray-800 dark:text-gray-200 truncate">
-                    {chapter.title}
-                  </span>
-                  {idx < (book.currentPage || 0) && (
-                    <span className="text-xs text-green-500">已读</span>
-                  )}
-                  <ChevronRight className="w-4 h-4 text-gray-400" />
-                </div>
-              ))}
+              {(showAllChapters ? chapters : chapters.slice(0, 5)).map(
+                (chapter, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-3 py-2.5 px-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg cursor-pointer transition-colors"
+                    onClick={handleRead}
+                  >
+                    <span className="text-sm text-gray-400 w-8">
+                      {idx + 1}.
+                    </span>
+                    <span className="flex-1 text-gray-800 dark:text-gray-200 truncate">
+                      {chapter.title}
+                    </span>
+                    {idx < (book.currentPage || 0) && (
+                      <span className="text-xs text-green-500">已读</span>
+                    )}
+                    <ChevronRight className="w-4 h-4 text-gray-400" />
+                  </div>
+                ),
+              )}
             </div>
             {chapters.length > 5 && (
               <button
@@ -549,8 +664,6 @@ export default function BookDetail() {
             )}
           </div>
         )}
-
-
       </div>
 
       {/* 添加到书单 Modal */}
@@ -558,7 +671,9 @@ export default function BookDetail() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">添加到书单</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                添加到书单
+              </h3>
               <button
                 onClick={() => setShowCollectionModal(false)}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
@@ -582,12 +697,16 @@ export default function BookDetail() {
                     >
                       <div className="flex items-center gap-3">
                         <FolderOpen className="w-5 h-5 text-blue-500" />
-                        <span className="text-gray-900 dark:text-white font-medium">{col.name}</span>
+                        <span className="text-gray-900 dark:text-white font-medium">
+                          {col.name}
+                        </span>
                       </div>
                       {addingCollectionId === col.id ? (
                         <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500 border-t-transparent" />
                       ) : (
-                        <span className="text-sm text-gray-400">{col.bookCount ?? 0} 本</span>
+                        <span className="text-sm text-gray-400">
+                          {col.bookCount ?? 0} 本
+                        </span>
                       )}
                     </button>
                   ))}
@@ -615,7 +734,9 @@ export default function BookDetail() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md mx-4 p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">新建书单</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                新建书单
+              </h3>
               <button
                 onClick={() => setShowCreateCollectionModal(false)}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"

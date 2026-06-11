@@ -15,7 +15,6 @@ generator client {
 datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
-
 }
 
 // =============================================================================
@@ -30,65 +29,64 @@ datasource db {
 //   highlight
 // }
 
-
-
-
-
 // =============================================================================
 // Models
 // =============================================================================
 
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  username      String    @unique
-  passwordHash  String    @map("password_hash")
-  displayName   String?   @map("display_name")
-  role          String    @default("user")
-  avatarUrl     String?   @map("avatar_url")
-  preferences   String    @default("{}")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
-  lastLoginAt   DateTime? @map("last_login_at")
-  isActive      Boolean   @default(true) @map("is_active")
-  phone         String?   @unique @map("phone")
+  id           String    @id @default(uuid())
+  email        String    @unique
+  username     String    @unique
+  passwordHash String    @map("password_hash")
+  displayName  String?   @map("display_name")
+  role         String    @default("user")
+  avatarUrl    String?   @map("avatar_url")
+  preferences  String    @default("{}")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  lastLoginAt  DateTime? @map("last_login_at")
+  isActive     Boolean   @default(true) @map("is_active")
+  phone        String?   @unique @map("phone")
 
   // Relations
-  collections        Collection[]
-  readingProgress    ReadingProgress[]
-  bookmarks          Bookmark[]
-  favorites          Favorite[]
-  ttsJobs            TtsJob[]
-  ttsAudioFiles      TtsAudioFile[]
-  sessions           Session[]
-  apiKeys            ApiKey[]
-  vipMember          VipMember?
+  collections     Collection[]
+  readingProgress ReadingProgress[]
+  bookmarks       Bookmark[]
+  favorites       Favorite[]
+  ttsJobs         TtsJob[]
+  ttsAudioFiles   TtsAudioFile[]
+  ttsProgress     TtsReadingProgress[]
+  lastRead        BookLastRead[]
+  ttsConfig       UserTtsConfig?
+  sessions        Session[]
+  apiKeys         ApiKey[]
+  vipMember       VipMember?
 
   @@map("users")
 }
 
 model Book {
-  id            String      @id @default(uuid())
-  title         String     
-  author        String?    
-  authorSort    String?     @map("author_sort")
-  description   String?    
-  isbn          String?     @map("isbn")
-  publisher     String?    
-  publishedDate DateTime?   @map("published_date")
-  language      String      @default("en")
-  format        String      @default("other")
-  filePath      String      @map("file_path")
-  fileHash      String?     @map("file_hash")
-  fileSize      BigInt?     @map("file_size")
-  pageCount     Int?        @map("page_count")
-  coverUrl      String?     @map("cover_url")
-  metadata      String      @default("{}")
-  readCount     Int         @default(0) @map("read_count")
-  downloadCount Int         @default(0) @map("download_count")
-  createdAt     DateTime    @default(now()) @map("created_at")
-  updatedAt     DateTime    @updatedAt @map("updated_at")
-  isDeleted     Boolean     @default(false) @map("is_deleted")
+  id            String    @id @default(uuid())
+  title         String
+  author        String?
+  authorSort    String?   @map("author_sort")
+  description   String?
+  isbn          String?   @map("isbn")
+  publisher     String?
+  publishedDate DateTime? @map("published_date")
+  language      String    @default("en")
+  format        String    @default("other")
+  filePath      String    @map("file_path")
+  fileHash      String?   @map("file_hash")
+  fileSize      BigInt?   @map("file_size")
+  pageCount     Int?      @map("page_count")
+  coverUrl      String?   @map("cover_url")
+  metadata      String    @default("{}")
+  readCount     Int       @default(0) @map("read_count")
+  downloadCount Int       @default(0) @map("download_count")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  isDeleted     Boolean   @default(false) @map("is_deleted")
 
   // Full-text search (PostgreSQL tsvector - managed via raw SQL trigger)
   // ftsVector     Unsupported("tsvector")?
@@ -96,12 +94,14 @@ model Book {
   // Relations
   collectionItems CollectionItem[]
   readingProgress ReadingProgress[]
-  bookmarks      Bookmark[]
-  favorites      Favorite[]
-  ttsJobs        TtsJob[]
-  ttsAudioFiles  TtsAudioFile[]
-  bookTags       BookTag[]
-  bookAuthors    BookAuthor[]
+  bookmarks       Bookmark[]
+  favorites       Favorite[]
+  ttsJobs         TtsJob[]
+  ttsAudioFiles   TtsAudioFile[]
+  ttsProgress     TtsReadingProgress[]
+  lastRead        BookLastRead[]
+  bookTags        BookTag[]
+  bookAuthors     BookAuthor[]
 
   @@index([title])
   @@index([author])
@@ -114,17 +114,17 @@ model Book {
 }
 
 model Author {
-  id          String    @id @default(uuid())
-  name        String    @unique
-  nameSort    String?   @map("name_sort")
-  bio         String?   
-  avatarUrl   String?   @map("avatar_url")
-  birthDate   String?   @map("birth_date")
-  deathDate   String?   @map("death_date")
-  nationality String?   
-  source      String?   
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  id          String   @id @default(uuid())
+  name        String   @unique
+  nameSort    String?  @map("name_sort")
+  bio         String?
+  avatarUrl   String?  @map("avatar_url")
+  birthDate   String?  @map("birth_date")
+  deathDate   String?  @map("death_date")
+  nationality String?
+  source      String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
   books BookAuthor[]
@@ -148,19 +148,19 @@ model BookAuthor {
 }
 
 model Collection {
-  id          String    @id @default(uuid())
-  userId      String    @map("user_id")
-  name        String   
-  description String?  
-  coverUrl    String?   @map("cover_url")
-  isPublic    Boolean   @default(false) @map("is_public")
-  sortOrder   Int       @default(0) @map("sort_order")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  name        String
+  description String?
+  coverUrl    String?  @map("cover_url")
+  isPublic    Boolean  @default(false) @map("is_public")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
-  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items  CollectionItem[]
+  user  User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CollectionItem[]
 
   @@index([userId])
   @@map("collections")
@@ -169,13 +169,13 @@ model Collection {
 model CollectionItem {
   id           String   @id @default(uuid())
   collectionId String   @map("collection_id")
-  bookId       String   @map("book_id")
+  bookId       String?  @map("book_id")
   sortOrder    Int      @default(0) @map("sort_order")
   addedAt      DateTime @default(now()) @map("added_at")
 
   // Relations
   collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
-  book       Book       @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  book       Book?      @relation(fields: [bookId], references: [id], onDelete: Cascade)
 
   @@unique([collectionId, bookId])
   @@index([collectionId])
@@ -199,25 +199,25 @@ model Favorite {
 }
 
 model ReadingProgress {
-  id            String        @id @default(uuid())
-  userId        String        @map("user_id")
-  bookId        String        @map("book_id")
-  status        String        @default("unread")
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  bookId         String    @map("book_id")
+  status         String    @default("unread")
   // EPUB location
-  epubCfi       String?       @map("epub_cfi")
+  epubCfi        String?   @map("epub_cfi")
   // PDF location
-  pdfPage       Int?          @map("pdf_page")
+  pdfPage        Int?      @map("pdf_page")
   // Mobi location
-  mobiLocation  Int?          @map("mobi_location")
+  mobiLocation   Int?      @map("mobi_location")
   // Progress
-  progressPct   Float         @default(0) @map("progress_pct")
-  currentChapter Int?         @map("current_chapter")
-  scrollOffset  Int?          @map("scroll_offset")
-  timeSpentSecs Int           @default(0) @map("time_spent_secs")
-  lastReadAt    DateTime?     @map("last_read_at")
-  bookmarkNote  String?       @map("bookmark_note")
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
+  progressPct    Float     @default(0) @map("progress_pct")
+  currentChapter Int?      @map("current_chapter")
+  scrollOffset   Int?      @map("scroll_offset")
+  timeSpentSecs  Int       @default(0) @map("time_spent_secs")
+  lastReadAt     DateTime? @map("last_read_at")
+  bookmarkNote   String?   @map("bookmark_note")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -231,28 +231,28 @@ model ReadingProgress {
 }
 
 model Bookmark {
-  id             String    @id @default(uuid())
-  userId         String    @map("user_id")
-  bookId         String    @map("book_id")
-  chapterId      String?   @map("chapter_id")
-  cfi            String?  
-  percentage     Float?    @map("percentage")
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  bookId         String   @map("book_id")
+  chapterId      String?  @map("chapter_id")
+  cfi            String?
+  percentage     Float?   @map("percentage")
   // For highlights
-  startOffset    Int?      @map("start_offset")
-  endOffset      Int?      @map("end_offset")
-  text           String?  
+  startOffset    Int?     @map("start_offset")
+  endOffset      Int?     @map("end_offset")
+  text           String?
   // Legacy fields (kept for backwards compat)
-  title          String?  
-  location       String   
-  locationType   String        @default("cfi") @map("location_type")
-  type           String        @default("bookmark")
+  title          String?
+  location       String
+  locationType   String   @default("cfi") @map("location_type")
+  type           String   @default("bookmark")
   author         String?
-  bookTitle      String?       @map("book_title")
-  note           String?  
-  highlightText  String?   @map("highlight_text")
-  highlightColor String?   @map("highlight_color")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  bookTitle      String?  @map("book_title")
+  note           String?
+  highlightText  String?  @map("highlight_text")
+  highlightColor String?  @map("highlight_color")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -267,25 +267,25 @@ model Bookmark {
 }
 
 model TtsJob {
-  id          String        @id @default(uuid())
-  userId      String?       @map("user_id")
-  bookId      String?       @map("book_id")
-  status      String        @default("pending")
-  voice       String        @default("en_US-lessac-medium")
-  gender      String         @default("neutral")
-  sampleRate  Int           @default(22050)
-  startCfi    String?       @map("start_cfi")
-  endCfi      String?       @map("end_cfi")
-  outputPath  String?       @map("output_path")
-  outputUrl   String?       @map("output_url")
-  fileSize    BigInt?       @map("file_size")
-  durationSecs Float?       @map("duration_secs")
-  errorMessage String?      @map("error_message")
-  retryCount  Int           @default(0) @map("retry_count")
-  maxRetries Int            @default(3) @map("max_retries")
-  createdAt   DateTime      @default(now()) @map("created_at")
-  startedAt   DateTime?     @map("started_at")
-  completedAt DateTime?     @map("completed_at")
+  id           String    @id @default(uuid())
+  userId       String?   @map("user_id")
+  bookId       String?   @map("book_id")
+  status       String    @default("pending")
+  voice        String    @default("en_US-lessac-medium")
+  gender       String    @default("neutral")
+  sampleRate   Int       @default(22050)
+  startCfi     String?   @map("start_cfi")
+  endCfi       String?   @map("end_cfi")
+  outputPath   String?   @map("output_path")
+  outputUrl    String?   @map("output_url")
+  fileSize     BigInt?   @map("file_size")
+  durationSecs Float?    @map("duration_secs")
+  errorMessage String?   @map("error_message")
+  retryCount   Int       @default(0) @map("retry_count")
+  maxRetries   Int       @default(3) @map("max_retries")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  startedAt    DateTime? @map("started_at")
+  completedAt  DateTime? @map("completed_at")
 
   // Relations
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -299,34 +299,97 @@ model TtsJob {
 }
 
 model TtsAudioFile {
-  id            String    @id @default(uuid())
-  bookId        String    @map("book_id")
-  userId        String?   @map("user_id")
-  filePath      String    @map("file_path")
-  fileUrl       String?   @map("file_url")
-  fileSize      BigInt?   @map("file_size")
-  durationSecs  Float?    @map("duration_secs")
-  voice         String?  
-  sampleRate    Int?      @map("sample_rate")
-  startCfi      String?   @map("start_cfi")
-  endCfi        String?   @map("end_cfi")
-  contentHash   String?   @map("content_hash")
-  createdAt     DateTime  @default(now()) @map("created_at")
+  id           String   @id @default(uuid())
+  bookId       String   @map("book_id")
+  userId       String?  @map("user_id")
+  filePath     String   @map("file_path")
+  fileUrl      String?  @map("file_url")
+  fileSize     BigInt?  @map("file_size")
+  durationSecs Float?   @map("duration_secs")
+  voice        String?
+  sampleRate   Int?     @map("sample_rate")
+  startCfi     String?  @map("start_cfi")
+  endCfi       String?  @map("end_cfi")
+  contentHash  String?  @map("content_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   // Relations
-  book Book?  @relation(fields: [bookId], references: [id], onDelete: Cascade)
-  user User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  book Book? @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([bookId])
   @@index([userId])
+  @@index([contentHash])
   @@map("tts_audio_files")
 }
 
+/// Per-book TTS reading progress (server-authoritative).
+/// Resumable across devices; client writes here on paragraph change / pause / exit.
+model TtsReadingProgress {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  bookId          String   @map("book_id")
+  chapterIndex    Int      @map("chapter_index")
+  paragraphIndex  Int      @map("paragraph_index")
+  charOffset      Int      @default(0) @map("char_offset")
+  audioOffsetMs   Int      @default(0) @map("audio_offset_ms")
+  voice           String?  @map("voice")
+  provider        String?  @map("provider")
+  totalParagraphs Int      @default(0) @map("total_paragraphs")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bookId, chapterIndex])
+  @@index([userId, bookId])
+  @@map("tts_reading_progress")
+}
+
+/// Global "where the user last listened" pointer — one row per (user, book).
+/// Used as the entry point for the "继续听书" button on the book detail page
+/// and for cross-device resume. Distinct from `TtsReadingProgress` (per-chapter
+/// detail); this row is upserted on every paragraph change / pause / exit and
+/// always points at the most recently listened (chapter, paragraph).
+model BookLastRead {
+  id             String   @id @default(uuid())
+  userId         String   @map("user_id")
+  bookId         String   @map("book_id")
+  chapterIndex   Int      @map("chapter_index")
+  paragraphIndex Int      @default(0) @map("paragraph_index")
+  audioOffsetMs  Int      @default(0) @map("audio_offset_ms")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  book Book @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, bookId])
+  @@index([userId, bookId])
+  @@map("book_last_read")
+}
+
+/// Per-user TTS config (e.g. per-user Mi TTS API key).
+/// Single row per user; nullable for users who don't customize.
+model UserTtsConfig {
+  id              String   @id @default(uuid())
+  userId          String   @unique @map("user_id")
+  miApiKey        String?  @map("mi_api_key")
+  miEndpoint      String?  @map("mi_endpoint")
+  defaultVoice    String?  @map("default_voice")
+  defaultProvider String?  @map("default_provider")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_tts_config")
+}
+
 model Tag {
-  id        String    @id @default(uuid())
-  name      String    @unique
-  color     String?  
-  createdAt DateTime  @default(now()) @map("created_at")
+  id        String   @id @default(uuid())
+  name      String   @unique
+  color     String?
+  createdAt DateTime @default(now()) @map("created_at")
 
   // Relations
   bookTags BookTag[]
@@ -349,13 +412,13 @@ model BookTag {
 }
 
 model Session {
-  id           String    @id @default(uuid())
-  userId       String    @map("user_id")
-  refreshToken String    @map("refresh_token")
-  userAgent    String?   @map("user_agent")
-  ipAddress    String?   @map("ip_address")
-  expiresAt    DateTime  @map("expires_at")
-  createdAt    DateTime  @default(now()) @map("created_at")
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  refreshToken String   @map("refresh_token")
+  userAgent    String?  @map("user_agent")
+  ipAddress    String?  @map("ip_address")
+  expiresAt    DateTime @map("expires_at")
+  createdAt    DateTime @default(now()) @map("created_at")
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -366,14 +429,14 @@ model Session {
 }
 
 model ApiKey {
-  id          String    @id @default(uuid())
-  userId      String    @map("user_id")
-  name        String   
-  keyHash     String    @map("key_hash")
-  lastUsedAt  DateTime? @map("last_used_at")
-  expiresAt   DateTime? @map("expires_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  isActive    Boolean   @default(true) @map("is_active")
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  name       String
+  keyHash    String    @map("key_hash")
+  lastUsedAt DateTime? @map("last_used_at")
+  expiresAt  DateTime? @map("expires_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  isActive   Boolean   @default(true) @map("is_active")
 
   // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -404,7 +467,7 @@ model VipOrder {
   orderId   String    @unique @map("order_id")
   userId    String    @map("user_id")
   productId String    @map("product_id") // "year" | "lifetime"
-  amount    Float     // RMB (20 or 60)
+  amount    Float // RMB (20 or 60)
   status    String    @default("pending") @map("status") // "pending" | "paid" | "expired"
   paidAt    DateTime? @map("paid_at")
   createdAt DateTime  @default(now()) @map("created_at")
@@ -420,7 +483,7 @@ model IndexerJob {
   priority    Int       @default(0)
   status      String    @default("pending")
   attempts    Int       @default(0)
-  error       String?  
+  error       String?
   createdAt   DateTime  @default(now()) @map("created_at")
   processedAt DateTime? @map("processed_at")
 
@@ -430,11 +493,11 @@ model IndexerJob {
 }
 
 model SystemConfig {
-  id            String   @id @default(uuid())
-  key           String   @unique
-  value         String
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("system_configs")
 }

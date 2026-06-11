@@ -1,82 +1,151 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '@bookdock/auth';
-import { Button, Card, CardHeader, CardTitle, CardContent, CardFooter } from '@bookdock/ui';
-import { useThemeStore, useAuthStore } from '../stores/authStore';
-import { useReaderStore as useReaderStore2 } from '../stores/themeStore';
-import { getApiClient, User, type TTSVoice } from '@bookdock/api-client';
-import type { ReaderMode } from '@bookdock/ebook-reader';
-import { Monitor, Sun, Moon, ScrollText, Volume2, Star, Lock, HardDrive, Info, MousePointerClick, BookOpen, Hand } from 'lucide-react';
+import {
+  getApiClient,
+  User,
+  type TTSProvider,
+  type TTSVoice,
+} from "@bookdock/api-client";
+import { useAuth } from "@bookdock/auth";
+import type { ReaderMode } from "@bookdock/ebook-reader";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@bookdock/ui";
+import {
+  BookOpen,
+  Hand,
+  HardDrive,
+  Info,
+  Lock,
+  Monitor,
+  Moon,
+  MousePointerClick,
+  ScrollText,
+  Star,
+  Sun,
+  Volume2,
+} from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { useAuthStore, useThemeStore } from "../stores/authStore";
+import { useReaderStore as useReaderStore2 } from "../stores/themeStore";
 
 // ==================== Page Turn Mode ====================
-type PageTurnMode = 'swipe' | 'click' | 'scroll';
+type PageTurnMode = "swipe" | "click" | "scroll";
 
-const PAGE_TURN_PRESETS: Record<PageTurnMode, { icon: React.ReactNode; label: string; desc: string }> = {
-  swipe: { icon: <Hand className="w-5 h-5" />, label: '滑动翻页', desc: '左右滑动或点击屏幕边缘翻页' },
-  click: { icon: <MousePointerClick className="w-5 h-5" />, label: '点击翻页', desc: '点击屏幕中央或边缘翻页' },
-  scroll: { icon: <ScrollText className="w-5 h-5" />, label: '滚动模式', desc: '滚动阅读，支持自动滚动' },
+const PAGE_TURN_PRESETS: Record<
+  PageTurnMode,
+  { icon: React.ReactNode; label: string; desc: string }
+> = {
+  swipe: {
+    icon: <Hand className="w-5 h-5" />,
+    label: "滑动翻页",
+    desc: "左右滑动或点击屏幕边缘翻页",
+  },
+  click: {
+    icon: <MousePointerClick className="w-5 h-5" />,
+    label: "点击翻页",
+    desc: "点击屏幕中央或边缘翻页",
+  },
+  scroll: {
+    icon: <ScrollText className="w-5 h-5" />,
+    label: "滚动模式",
+    desc: "滚动阅读，支持自动滚动",
+  },
 };
 
 // ==================== Font Size Preset ====================
-type FontSizePreset = 'small' | 'medium' | 'large' | 'xlarge';
-const FONT_SIZE_PRESETS: Record<FontSizePreset, { label: string; size: number }> = {
-  small: { label: '小', size: 14 },
-  medium: { label: '中', size: 18 },
-  large: { label: '大', size: 22 },
-  xlarge: { label: '特大', size: 26 },
+type FontSizePreset = "small" | "medium" | "large" | "xlarge";
+const FONT_SIZE_PRESETS: Record<
+  FontSizePreset,
+  { label: string; size: number }
+> = {
+  small: { label: "小", size: 14 },
+  medium: { label: "中", size: 18 },
+  large: { label: "大", size: 22 },
+  xlarge: { label: "特大", size: 26 },
 };
 
 // ==================== Line Height Preset ====================
-type LineHeightPreset = 'compact' | 'normal' | 'spacious';
-const LINE_HEIGHT_PRESETS: Record<LineHeightPreset, { label: string; height: number }> = {
-  compact: { label: '紧凑', height: 1.4 },
-  normal: { label: '标准', height: 1.8 },
-  spacious: { label: '宽松', height: 2.2 },
+type LineHeightPreset = "compact" | "normal" | "spacious";
+const LINE_HEIGHT_PRESETS: Record<
+  LineHeightPreset,
+  { label: string; height: number }
+> = {
+  compact: { label: "紧凑", height: 1.4 },
+  normal: { label: "标准", height: 1.8 },
+  spacious: { label: "宽松", height: 2.2 },
 };
 
 // ==================== Reader Theme Preset ====================
-const READER_THEME_PRESETS: Record<ReaderMode, { icon: React.ReactNode; label: string; bg: string; text: string }> = {
-  light: { icon: <Sun className="w-5 h-5" />, label: '浅色', bg: '#ffffff', text: '#333333' },
-  dark: { icon: <Moon className="w-5 h-5" />, label: '深色', bg: '#1a1a1a', text: '#e0e0e0' },
-  sepia: { icon: <ScrollText className="w-5 h-5" />, label: '护眼', bg: '#f5ebe0', text: '#5c4b37' },
+const READER_THEME_PRESETS: Record<
+  ReaderMode,
+  { icon: React.ReactNode; label: string; bg: string; text: string }
+> = {
+  light: {
+    icon: <Sun className="w-5 h-5" />,
+    label: "浅色",
+    bg: "#ffffff",
+    text: "#333333",
+  },
+  dark: {
+    icon: <Moon className="w-5 h-5" />,
+    label: "深色",
+    bg: "#1a1a1a",
+    text: "#e0e0e0",
+  },
+  sepia: {
+    icon: <ScrollText className="w-5 h-5" />,
+    label: "护眼",
+    bg: "#f5ebe0",
+    text: "#5c4b37",
+  },
 };
 
 // ==================== Password Change Section ====================
 function PasswordChangeSection() {
   const { user } = useAuth();
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [message, setMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage(null);
 
     if (newPassword.length < 6) {
-      setMessage({ type: 'error', text: '新密码长度至少为6位' });
+      setMessage({ type: "error", text: "新密码长度至少为6位" });
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setMessage({ type: 'error', text: '两次输入的密码不一致' });
+      setMessage({ type: "error", text: "两次输入的密码不一致" });
       return;
     }
 
     setIsLoading(true);
     try {
       const apiClient = getApiClient();
-      const response = await apiClient.updateUser(user!.id, { password: newPassword } as Partial<User>);
+      const response = await apiClient.updateUser(user!.id, {
+        password: newPassword,
+      } as Partial<User>);
       if (response.success) {
-        setMessage({ type: 'success', text: '密码修改成功' });
-        setCurrentPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
+        setMessage({ type: "success", text: "密码修改成功" });
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
       } else {
-        setMessage({ type: 'error', text: response.error || '修改失败' });
+        setMessage({ type: "error", text: response.error || "修改失败" });
       }
     } catch {
-      setMessage({ type: 'error', text: '修改失败，请稍后重试' });
+      setMessage({ type: "error", text: "修改失败，请稍后重试" });
     } finally {
       setIsLoading(false);
     }
@@ -85,7 +154,9 @@ function PasswordChangeSection() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle><Lock className="w-5 h-5 inline mr-1" /> 修改密码</CardTitle>
+        <CardTitle>
+          <Lock className="w-5 h-5 inline mr-1" /> 修改密码
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleChangePassword} className="space-y-4">
@@ -126,12 +197,14 @@ function PasswordChangeSection() {
             />
           </div>
           {message && (
-            <div className={`p-3 rounded-lg text-sm ${message.type === 'success' ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>
+            <div
+              className={`p-3 rounded-lg text-sm ${message.type === "success" ? "bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400" : "bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400"}`}
+            >
               {message.text}
             </div>
           )}
           <Button type="submit" disabled={isLoading} className="w-full">
-            {isLoading ? '修改中...' : '修改密码'}
+            {isLoading ? "修改中..." : "修改密码"}
           </Button>
         </form>
       </CardContent>
@@ -142,7 +215,10 @@ function PasswordChangeSection() {
 // ==================== Storage Section ====================
 function StorageSection() {
   const { user } = useAuth();
-  const [storageInfo, setStorageInfo] = useState<{ used: number; limit: number } | null>(null);
+  const [storageInfo, setStorageInfo] = useState<{
+    used: number;
+    limit: number;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -154,12 +230,21 @@ function StorageSection() {
         if (response.success && response.data) {
           setStorageInfo(response.data);
         } else {
-          if (user?.storageUsed !== undefined && user?.storageLimit !== undefined) {
-            setStorageInfo({ used: user.storageUsed, limit: user.storageLimit });
+          if (
+            user?.storageUsed !== undefined &&
+            user?.storageLimit !== undefined
+          ) {
+            setStorageInfo({
+              used: user.storageUsed,
+              limit: user.storageLimit,
+            });
           }
         }
       } catch {
-        if (user?.storageUsed !== undefined && user?.storageLimit !== undefined) {
+        if (
+          user?.storageUsed !== undefined &&
+          user?.storageLimit !== undefined
+        ) {
           setStorageInfo({ used: user.storageUsed, limit: user.storageLimit });
         }
       } finally {
@@ -169,14 +254,16 @@ function StorageSection() {
     fetchStorage();
   }, [user]);
 
-  const usedGB = storageInfo ? (storageInfo.used / 1024 / 1024 / 1024) : 0;
-  const limitGB = storageInfo ? (storageInfo.limit / 1024 / 1024 / 1024) : 0;
+  const usedGB = storageInfo ? storageInfo.used / 1024 / 1024 / 1024 : 0;
+  const limitGB = storageInfo ? storageInfo.limit / 1024 / 1024 / 1024 : 0;
   const usedPercent = limitGB > 0 ? (usedGB / limitGB) * 100 : 0;
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle><HardDrive className="w-5 h-5 inline mr-1" /> 存储空间</CardTitle>
+        <CardTitle>
+          <HardDrive className="w-5 h-5 inline mr-1" /> 存储空间
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -189,27 +276,35 @@ function StorageSection() {
             <div className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
               <span className="text-gray-600 dark:text-gray-400">已使用</span>
               <span className="font-medium text-gray-900 dark:text-white">
-                {usedGB > 0 ? `${usedGB.toFixed(2)} GB` : '0 GB'}
+                {usedGB > 0 ? `${usedGB.toFixed(2)} GB` : "0 GB"}
               </span>
             </div>
             <div className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
               <span className="text-gray-600 dark:text-gray-400">存储上限</span>
               <span className="font-medium text-gray-900 dark:text-white">
-                {limitGB > 0 ? `${limitGB.toFixed(0)} GB` : '无限制'}
+                {limitGB > 0 ? `${limitGB.toFixed(0)} GB` : "无限制"}
               </span>
             </div>
             {limitGB > 0 && (
               <div className="mt-4">
                 <div className="flex items-center justify-between text-sm mb-2">
-                  <span className="text-gray-500 dark:text-gray-400">使用率</span>
-                  <span className={`font-medium ${usedPercent > 90 ? 'text-red-500' : usedPercent > 70 ? 'text-amber-500' : 'text-gray-900 dark:text-white'}`}>
+                  <span className="text-gray-500 dark:text-gray-400">
+                    使用率
+                  </span>
+                  <span
+                    className={`font-medium ${usedPercent > 90 ? "text-red-500" : usedPercent > 70 ? "text-amber-500" : "text-gray-900 dark:text-white"}`}
+                  >
                     {usedPercent.toFixed(1)}%
                   </span>
                 </div>
                 <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full transition-all ${
-                      usedPercent > 90 ? 'bg-red-500' : usedPercent > 70 ? 'bg-amber-500' : 'bg-blue-500'
+                      usedPercent > 90
+                        ? "bg-red-500"
+                        : usedPercent > 70
+                          ? "bg-amber-500"
+                          : "bg-blue-500"
                     }`}
                     style={{ width: `${Math.min(usedPercent, 100)}%` }}
                   />
@@ -235,25 +330,37 @@ export default function Settings() {
   }, [refreshVipStatus]);
 
   // TTS settings
-  const [ttsVoice, setTtsVoice] = useState<string>('');
+  const [ttsProvider, setTtsProvider] = useState<string>("edge");
+  const [ttsVoice, setTtsVoice] = useState<string>("");
   const [ttsRate, setTtsRate] = useState<number>(1);
   const [ttsVolume, setTtsVolume] = useState<number>(1);
+  const [availableProviders, setAvailableProviders] = useState<TTSProvider[]>(
+    [],
+  );
   const [availableVoices, setAvailableVoices] = useState<TTSVoice[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   // Page turn mode (persisted)
   const [pageTurnMode, setPageTurnMode] = useState<PageTurnMode>(() => {
-    return (localStorage.getItem('bookdock_page_turn_mode') as PageTurnMode) || 'swipe';
+    return (
+      (localStorage.getItem("bookdock_page_turn_mode") as PageTurnMode) ||
+      "swipe"
+    );
   });
 
   // Load saved settings
   useEffect(() => {
     // Load TTS config
+    let savedProvider = "edge";
     try {
-      const ttsConfig = localStorage.getItem('bookdock-tts-config');
+      const ttsConfig = localStorage.getItem("bookdock-tts-config");
       if (ttsConfig) {
         const config = JSON.parse(ttsConfig);
+        if (config.provider) {
+          savedProvider = config.provider;
+          setTtsProvider(config.provider);
+        }
         if (config.voiceId) setTtsVoice(config.voiceId);
         if (config.rate) setTtsRate(config.rate);
         if (config.volume !== undefined) setTtsVolume(config.volume);
@@ -262,30 +369,58 @@ export default function Settings() {
       // Ignore
     }
 
-    // Load available voices from server
-    const loadVoices = async () => {
+    const loadTts = async () => {
       try {
         const apiClient = getApiClient();
-        const response = await apiClient.getVoices();
-        if (response.success && response.data) {
-          setAvailableVoices(response.data);
+        const prov = await apiClient.getTtsProviders();
+        if (prov.success && prov.data) {
+          setAvailableProviders(prov.data.providers);
+          // Honor saved provider if it's available & enabled
+          const usable =
+            prov.data.providers.find(
+              (p) => p.enabled && p.name === savedProvider,
+            ) || prov.data.providers.find((p) => p.enabled);
+          const finalProvider = usable?.name || savedProvider;
+          setTtsProvider(finalProvider);
+          const voicesRes = await apiClient.getVoices(finalProvider);
+          if (voicesRes.success && voicesRes.data) {
+            setAvailableVoices(voicesRes.data);
+          }
         }
       } catch {
-        console.log('Failed to load server voices');
+        console.log("Failed to load TTS providers / voices");
       }
     };
-    loadVoices();
+    loadTts();
   }, []);
+
+  // Reload voices when the user picks a different provider in the dropdown.
+  const handleProviderChange = async (newProvider: string) => {
+    setTtsProvider(newProvider);
+    setTtsVoice(""); // reset voice; the new provider's voices will arrive
+    setAvailableVoices([]);
+    try {
+      const apiClient = getApiClient();
+      const res = await apiClient.getVoices(newProvider);
+      if (res.success && res.data) setAvailableVoices(res.data);
+    } catch {
+      // ignore
+    }
+  };
 
   const handleSaveTTS = () => {
     setIsSaving(true);
     try {
-      localStorage.setItem('bookdock-tts-config', JSON.stringify({
-        voiceId: ttsVoice,
-        rate: ttsRate,
-        volume: ttsVolume,
-      }));
-      setSaveMessage('设置已保存');
+      localStorage.setItem(
+        "bookdock-tts-config",
+        JSON.stringify({
+          provider: ttsProvider,
+          voiceId: ttsVoice,
+          rate: ttsRate,
+          volume: ttsVolume,
+        }),
+      );
+      setSaveMessage("设置已保存");
       setTimeout(() => setSaveMessage(null), 3000);
     } finally {
       setIsSaving(false);
@@ -294,10 +429,10 @@ export default function Settings() {
 
   const handlePageTurnModeChange = (mode: PageTurnMode) => {
     setPageTurnMode(mode);
-    localStorage.setItem('bookdock_page_turn_mode', mode);
+    localStorage.setItem("bookdock_page_turn_mode", mode);
   };
 
-  const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
+  const handleThemeChange = (newTheme: "light" | "dark" | "system") => {
     setTheme(newTheme);
   };
 
@@ -314,16 +449,16 @@ export default function Settings() {
   };
 
   const renderThemeOption = (
-    value: 'light' | 'dark' | 'system',
+    value: "light" | "dark" | "system",
     icon: React.ReactNode,
-    label: string
+    label: string,
   ) => (
     <button
       onClick={() => handleThemeChange(value)}
       className={`flex-1 py-3 px-4 rounded-xl flex flex-col items-center gap-2 transition-all ${
         theme === value
-          ? 'bg-blue-500 text-white shadow-lg'
-          : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+          ? "bg-blue-500 text-white shadow-lg"
+          : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
       }`}
     >
       <span className="text-2xl">{icon}</span>
@@ -332,7 +467,7 @@ export default function Settings() {
   );
 
   const handleUpgrade = () => {
-    alert('会员升级功能即将上线，敬请期待！');
+    alert("会员升级功能即将上线，敬请期待！");
   };
 
   return (
@@ -342,20 +477,30 @@ export default function Settings() {
       {/* Profile Section */}
       <Card>
         <CardHeader>
-          <CardTitle><span className="inline-flex items-center gap-1"><Info className="w-5 h-5" /> 账户信息</span></CardTitle>
+          <CardTitle>
+            <span className="inline-flex items-center gap-1">
+              <Info className="w-5 h-5" /> 账户信息
+            </span>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <div className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
               <span className="text-gray-600 dark:text-gray-400">用户名</span>
-              <span className="font-medium text-gray-900 dark:text-white">{user?.username || '未设置'}</span>
+              <span className="font-medium text-gray-900 dark:text-white">
+                {user?.username || "未设置"}
+              </span>
             </div>
             <div className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
               <span className="text-gray-600 dark:text-gray-400">会员类型</span>
               <span>
-                {membership === 'premium' || isVip ? (
+                {membership === "premium" || isVip ? (
                   <span className="px-3 py-1 bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-full text-sm font-medium">
-                    {isVip ? (vipTier === 'LIFETIME' ? '永久会员' : '年卡会员') : 'Premium'}
+                    {isVip
+                      ? vipTier === "LIFETIME"
+                        ? "永久会员"
+                        : "年卡会员"
+                      : "Premium"}
                   </span>
                 ) : (
                   <span className="px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-full text-sm">
@@ -364,25 +509,32 @@ export default function Settings() {
                 )}
               </span>
             </div>
-            {isVip && vipExpiresAt && vipTier !== 'LIFETIME' && (
+            {isVip && vipExpiresAt && vipTier !== "LIFETIME" && (
               <div className="flex items-center justify-between py-2 border-b border-gray-100 dark:border-gray-700">
-                <span className="text-gray-600 dark:text-gray-400">到期时间</span>
+                <span className="text-gray-600 dark:text-gray-400">
+                  到期时间
+                </span>
                 <span className="font-medium text-gray-900 dark:text-white">
-                  {new Date(vipExpiresAt).toLocaleDateString('zh-CN')}
+                  {new Date(vipExpiresAt).toLocaleDateString("zh-CN")}
                 </span>
               </div>
             )}
             <div className="flex items-center justify-between py-2">
               <span className="text-gray-600 dark:text-gray-400">注册时间</span>
               <span className="font-medium text-gray-900 dark:text-white">
-                {user?.createdAt ? new Date(user.createdAt).toLocaleDateString('zh-CN') : '-'}
+                {user?.createdAt
+                  ? new Date(user.createdAt).toLocaleDateString("zh-CN")
+                  : "-"}
               </span>
             </div>
           </div>
         </CardContent>
-        {membership !== 'premium' && !isVip && (
+        {membership !== "premium" && !isVip && (
           <CardFooter>
-            <Button onClick={() => window.location.href = '#/membership'} className="w-full bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 border-0">
+            <Button
+              onClick={() => (window.location.href = "#/membership")}
+              className="w-full bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 border-0"
+            >
               <Star className="w-4 h-4 mr-1" /> 升级到会员
             </Button>
           </CardFooter>
@@ -392,7 +544,11 @@ export default function Settings() {
       {/* Appearance Section */}
       <Card>
         <CardHeader>
-          <CardTitle><span className="inline-flex items-center gap-1"><Monitor className="w-5 h-5" /> 外观</span></CardTitle>
+          <CardTitle>
+            <span className="inline-flex items-center gap-1">
+              <Monitor className="w-5 h-5" /> 外观
+            </span>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -401,9 +557,21 @@ export default function Settings() {
                 主题模式
               </label>
               <div className="flex gap-3">
-                {renderThemeOption('light', <Sun className="w-5 h-5" />, '浅色')}
-                {renderThemeOption('dark', <Moon className="w-5 h-5" />, '深色')}
-                {renderThemeOption('system', <Monitor className="w-5 h-5" />, '跟随系统')}
+                {renderThemeOption(
+                  "light",
+                  <Sun className="w-5 h-5" />,
+                  "浅色",
+                )}
+                {renderThemeOption(
+                  "dark",
+                  <Moon className="w-5 h-5" />,
+                  "深色",
+                )}
+                {renderThemeOption(
+                  "system",
+                  <Monitor className="w-5 h-5" />,
+                  "跟随系统",
+                )}
               </div>
             </div>
           </div>
@@ -413,7 +581,11 @@ export default function Settings() {
       {/* Reader Settings Section */}
       <Card>
         <CardHeader>
-          <CardTitle><span className="inline-flex items-center gap-1"><BookOpen className="w-5 h-5" /> 阅读设置</span></CardTitle>
+          <CardTitle>
+            <span className="inline-flex items-center gap-1">
+              <BookOpen className="w-5 h-5" /> 阅读设置
+            </span>
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
@@ -423,22 +595,27 @@ export default function Settings() {
                 翻页模式
               </label>
               <div className="flex gap-3">
-                {(Object.entries(PAGE_TURN_PRESETS) as [PageTurnMode, typeof PAGE_TURN_PRESETS[PageTurnMode]][]).map(([mode, info]) => (
+                {(
+                  Object.entries(PAGE_TURN_PRESETS) as [
+                    PageTurnMode,
+                    (typeof PAGE_TURN_PRESETS)[PageTurnMode],
+                  ][]
+                ).map(([mode, info]) => (
                   <button
                     key={mode}
                     onClick={() => handlePageTurnModeChange(mode)}
                     className={`flex-1 py-3 px-4 rounded-xl flex flex-col items-center gap-1 transition-all ${
-                      pageTurnMode === mode
-                        ? 'ring-2 ring-blue-500'
-                        : ''
+                      pageTurnMode === mode ? "ring-2 ring-blue-500" : ""
                     } ${
                       pageTurnMode === mode
-                        ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700'
-                        : 'bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        ? "bg-blue-50 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-700"
+                        : "bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
                     }`}
                   >
                     <span>{info.icon}</span>
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{info.label}</span>
+                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                      {info.label}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -453,14 +630,17 @@ export default function Settings() {
                 阅读主题
               </label>
               <div className="flex gap-3">
-                {(Object.entries(READER_THEME_PRESETS) as [ReaderMode, typeof READER_THEME_PRESETS[ReaderMode]][]).map(([mode, info]) => (
+                {(
+                  Object.entries(READER_THEME_PRESETS) as [
+                    ReaderMode,
+                    (typeof READER_THEME_PRESETS)[ReaderMode],
+                  ][]
+                ).map(([mode, info]) => (
                   <button
                     key={mode}
                     onClick={() => handleReaderThemePreset(mode)}
                     className={`flex-1 py-3 px-4 rounded-xl flex flex-col items-center gap-2 transition-all ${
-                      readerConfig.mode === mode
-                        ? 'ring-2 ring-blue-500'
-                        : ''
+                      readerConfig.mode === mode ? "ring-2 ring-blue-500" : ""
                     }`}
                     style={{
                       backgroundColor: info.bg,
@@ -480,18 +660,25 @@ export default function Settings() {
                 字体大小
               </label>
               <div className="flex gap-3">
-                {(Object.entries(FONT_SIZE_PRESETS) as [FontSizePreset, typeof FONT_SIZE_PRESETS[FontSizePreset]][]).map(([preset, info]) => (
+                {(
+                  Object.entries(FONT_SIZE_PRESETS) as [
+                    FontSizePreset,
+                    (typeof FONT_SIZE_PRESETS)[FontSizePreset],
+                  ][]
+                ).map(([preset, info]) => (
                   <button
                     key={preset}
                     onClick={() => handleFontSizePreset(preset)}
                     className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
                       readerConfig.fontSize === info.size
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
                     }`}
                   >
                     {info.label}
-                    <span className="block text-xs opacity-70">{info.size}px</span>
+                    <span className="block text-xs opacity-70">
+                      {info.size}px
+                    </span>
                   </button>
                 ))}
               </div>
@@ -502,12 +689,16 @@ export default function Settings() {
                   min="12"
                   max="28"
                   value={readerConfig.fontSize}
-                  onChange={(e) => readerConfig.setFontSize(parseInt(e.target.value))}
+                  onChange={(e) =>
+                    readerConfig.setFontSize(parseInt(e.target.value))
+                  }
                   className="w-full accent-blue-500"
                 />
                 <div className="flex justify-between text-xs text-gray-400 mt-1">
                   <span>12px</span>
-                  <span className="text-blue-500 font-medium">{readerConfig.fontSize}px</span>
+                  <span className="text-blue-500 font-medium">
+                    {readerConfig.fontSize}px
+                  </span>
                   <span>28px</span>
                 </div>
               </div>
@@ -519,18 +710,25 @@ export default function Settings() {
                 行间距
               </label>
               <div className="flex gap-3">
-                {(Object.entries(LINE_HEIGHT_PRESETS) as [LineHeightPreset, typeof LINE_HEIGHT_PRESETS[LineHeightPreset]][]).map(([preset, info]) => (
+                {(
+                  Object.entries(LINE_HEIGHT_PRESETS) as [
+                    LineHeightPreset,
+                    (typeof LINE_HEIGHT_PRESETS)[LineHeightPreset],
+                  ][]
+                ).map(([preset, info]) => (
                   <button
                     key={preset}
                     onClick={() => handleLineHeightPreset(preset)}
                     className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
                       Math.abs(readerConfig.lineHeight - info.height) < 0.05
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
                     }`}
                   >
                     {info.label}
-                    <span className="block text-xs opacity-70">{info.height}</span>
+                    <span className="block text-xs opacity-70">
+                      {info.height}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -541,12 +739,16 @@ export default function Settings() {
                   max="2.5"
                   step="0.1"
                   value={readerConfig.lineHeight}
-                  onChange={(e) => readerConfig.setLineHeight(parseFloat(e.target.value))}
+                  onChange={(e) =>
+                    readerConfig.setLineHeight(parseFloat(e.target.value))
+                  }
                   className="w-full accent-blue-500"
                 />
                 <div className="flex justify-between text-xs text-gray-400 mt-1">
                   <span>紧凑</span>
-                  <span className="text-blue-500 font-medium">{readerConfig.lineHeight.toFixed(1)}</span>
+                  <span className="text-blue-500 font-medium">
+                    {readerConfig.lineHeight.toFixed(1)}
+                  </span>
                   <span>宽松</span>
                 </div>
               </div>
@@ -563,7 +765,9 @@ export default function Settings() {
                 className="w-full px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="Georgia, serif">衬线字体 (Georgia)</option>
-                <option value="Merriweather, serif">阅读字体 (Merriweather)</option>
+                <option value="Merriweather, serif">
+                  阅读字体 (Merriweather)
+                </option>
                 <option value="system-ui, sans-serif">系统字体</option>
                 <option value="Arial, sans-serif">Arial</option>
                 <option value="Tahoma, sans-serif">Tahoma</option>
@@ -582,7 +786,9 @@ export default function Settings() {
                 min="20"
                 max="100"
                 value={readerConfig.margin}
-                onChange={(e) => readerConfig.setMargin(parseInt(e.target.value))}
+                onChange={(e) =>
+                  readerConfig.setMargin(parseInt(e.target.value))
+                }
                 className="w-full accent-blue-500"
               />
             </div>
@@ -600,13 +806,48 @@ export default function Settings() {
       {/* TTS Settings Section */}
       <Card>
         <CardHeader>
-          <CardTitle><Volume2 className="w-5 h-5 inline mr-1" /> 语音朗读设置</CardTitle>
+          <CardTitle>
+            <Volume2 className="w-5 h-5 inline mr-1" /> 语音朗读设置
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <p className="text-sm text-gray-500 dark:text-gray-400">
               配置语音朗读（Text-to-Speech）的默认设置。您也可以在听书页面调整这些设置。
             </p>
+
+            {/* Provider selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                TTS 服务商
+              </label>
+              <select
+                value={ttsProvider}
+                onChange={(e) => handleProviderChange(e.target.value)}
+                className="w-full px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {availableProviders.length === 0 && (
+                  <option value={ttsProvider}>edge (默认)</option>
+                )}
+                {availableProviders.map((p) => (
+                  <option key={p.name} value={p.name} disabled={!p.enabled}>
+                    {p.name === "edge"
+                      ? "Microsoft Edge TTS"
+                      : p.name === "mi"
+                        ? "小米 TTS"
+                        : p.name}
+                    {!p.enabled ? " (未启用)" : ""}
+                    {p.status === "needs_config" ? " (需配置)" : ""}
+                  </option>
+                ))}
+              </select>
+              {availableProviders.find((p) => p.name === ttsProvider)
+                ?.status === "needs_config" && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                  该服务商未配置 API Key，试听可能失败。
+                </p>
+              )}
+            </div>
 
             {/* Voice selection */}
             <div>
@@ -619,17 +860,15 @@ export default function Settings() {
                 className="w-full px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="">默认语音</option>
-                {availableVoices
-                  .filter((v) => v.lang?.startsWith('zh') || v.lang?.startsWith('en'))
-                  .map((voice) => (
-                    <option key={voice.id} value={voice.id}>
-                      {voice.name} ({voice.lang})
-                    </option>
-                  ))}
+                {availableVoices.map((voice) => (
+                  <option key={voice.id} value={voice.id}>
+                    {voice.name} ({voice.language || voice.lang || ""})
+                  </option>
+                ))}
               </select>
               {availableVoices.length === 0 && (
                 <p className="text-xs text-gray-400 mt-1">
-                  加载中...如果列表为空，请确保浏览器支持语音合成
+                  加载中...如果列表为空，请检查后端 TTS 服务是否正常
                 </p>
               )}
             </div>
@@ -671,7 +910,9 @@ export default function Settings() {
                   onChange={(e) => setTtsVolume(parseFloat(e.target.value))}
                   className="flex-1 accent-blue-500"
                 />
-                <span className="w-12 text-center font-medium">{Math.round(ttsVolume * 100)}%</span>
+                <span className="w-12 text-center font-medium">
+                  {Math.round(ttsVolume * 100)}%
+                </span>
               </div>
             </div>
 
@@ -680,13 +921,16 @@ export default function Settings() {
               onClick={async () => {
                 try {
                   const apiClient = getApiClient();
-                  const blob = await apiClient.convertToSpeech('这是一个测试语音', ttsVoice || undefined);
+                  const blob = await apiClient.convertToSpeech(
+                    "这是一个测试语音",
+                    ttsVoice || undefined,
+                  );
                   const url = URL.createObjectURL(blob);
                   const audio = new Audio(url);
                   audio.play();
                   audio.onended = () => URL.revokeObjectURL(url);
                 } catch {
-                  alert('语音试听失败，请检查后端 TTS 服务');
+                  alert("语音试听失败，请检查后端 TTS 服务");
                 }
               }}
               className="text-sm text-blue-500 hover:text-blue-600 underline"
@@ -699,11 +943,13 @@ export default function Settings() {
               disabled={isSaving}
               className="w-full"
             >
-              {isSaving ? '保存中...' : '保存TTS设置'}
+              {isSaving ? "保存中..." : "保存TTS设置"}
             </Button>
 
             {saveMessage && (
-              <p className="text-center text-green-500 text-sm">{saveMessage}</p>
+              <p className="text-center text-green-500 text-sm">
+                {saveMessage}
+              </p>
             )}
           </div>
         </CardContent>
@@ -718,23 +964,23 @@ export default function Settings() {
       {/* About Section */}
       <Card>
         <CardHeader>
-          <CardTitle><Info className="w-5 h-5 inline mr-1" /> 关于</CardTitle>
+          <CardTitle>
+            <Info className="w-5 h-5 inline mr-1" /> 关于
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-2 text-sm text-gray-500 dark:text-gray-400">
-            <p className="inline-flex items-center gap-1"><BookOpen className="w-4 h-4" /> BookDock 书仓</p>
-            <p>版本 {import.meta.env.VITE_APP_VERSION || '0.0.0'}</p>
+            <p className="inline-flex items-center gap-1">
+              <BookOpen className="w-4 h-4" /> BookDock 书仓
+            </p>
+            <p>版本 {import.meta.env.VITE_APP_VERSION || "0.0.0"}</p>
             <p>专为 NAS 用户打造的电子书阅读器</p>
           </div>
         </CardContent>
       </Card>
 
       {/* Logout */}
-      <Button
-        variant="danger"
-        onClick={logout}
-        className="w-full"
-      >
+      <Button variant="danger" onClick={logout} className="w-full">
         退出登录
       </Button>
     </div>

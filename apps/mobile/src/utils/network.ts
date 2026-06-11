@@ -68,7 +68,7 @@ export async function checkServerConnectivity(address: string): Promise<boolean>
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
 
     const response = await fetch(`${toServerBaseUrl(address)}/hello`, {
       method: 'GET',
@@ -88,9 +88,11 @@ export async function checkServerConnectivity(address: string): Promise<boolean>
 export async function getNetworkType(): Promise<{ isWifi: boolean; isCellular: boolean; type: string }> {
   const state = await NetInfo.fetch();
   const type = state.type || 'unknown';
-  const isWifi = type === 'wifi';
+  // 华为/OPPO 等国产 ROM 可能返回 'unknown' 但确实是 WiFi，增加 isConnected 兜底
+  const isWifi = type === 'wifi' || (type === 'unknown' && state.isConnected === true && !state.isInternetReachable);
   const isCellular = ['cellular', '2g', '3g', '4g', '5g'].includes(type);
 
+  console.log('[NetInfo] type:', type, 'isConnected:', state.isConnected, 'details:', JSON.stringify(state.details));
   return { isWifi, isCellular, type };
 }
 
