@@ -48,6 +48,29 @@ import React, {
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { getCoverImageUrl } from "../utils/network";
 
+function BookCover({ book, className = "" }: { book: Book; className?: string }) {
+  const [coverError, setCoverError] = useState(false);
+  const coverSrc = getCoverImageUrl(book.coverUrl);
+  return (
+    <div className={`bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-lg ${className}`}>
+      {coverSrc && !coverError ? (
+        <img
+          src={coverSrc}
+          alt={book.title}
+          className="w-full h-full object-cover"
+          onError={() => setCoverError(true)}
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500">
+          <span className="text-4xl text-white font-bold">
+            {book.title.charAt(0)}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const TTS_CONFIG_KEY = "bookdock-tts-config";
 const TTS_LANG_KEY = "bookdock-tts-language";
 
@@ -709,21 +732,7 @@ export default function ReaderTTS() {
           <div className="p-5 flex flex-col gap-4 overflow-y-auto flex-1">
             {/* Book info */}
             <div className="flex flex-col items-center text-center">
-              <div className="w-32 h-44 bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-lg">
-                {getCoverImageUrl(book.coverUrl) ? (
-                  <img
-                    src={getCoverImageUrl(book.coverUrl)}
-                    alt={book.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500">
-                    <span className="text-4xl text-white font-bold">
-                      {book.title.charAt(0)}
-                    </span>
-                  </div>
-                )}
-              </div>
+              <BookCover book={book} className="w-32 h-44" />
               <h1 className="mt-4 text-xl font-bold text-gray-900 dark:text-white">
                 {book.title}
               </h1>

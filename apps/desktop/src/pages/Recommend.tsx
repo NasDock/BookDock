@@ -39,6 +39,30 @@ function formatDate(dateStr?: string): string {
   });
 }
 
+function BookCover({ book, className = "", children }: { book: Book; className?: string; children?: React.ReactNode }) {
+  const [coverError, setCoverError] = useState(false);
+  const coverSrc = getCoverImageUrl(book.coverUrl);
+  return (
+    <div className={`aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden relative shadow-sm hover:shadow-md transition-shadow ${className}`}>
+      {coverSrc && !coverError ? (
+        <img
+          src={coverSrc}
+          alt={book.title}
+          className="w-full h-full object-cover"
+          onError={() => setCoverError(true)}
+        />
+      ) : (
+        <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}>
+          <span className="text-5xl text-white font-bold">
+            {book.title.charAt(0)}
+          </span>
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
 export default function Recommend() {
   const navigate = useNavigate();
   const { books, fetchBooks, isLoading } = useLibraryStore();
@@ -119,29 +143,14 @@ export default function Recommend() {
                     className="flex-shrink-0 w-36 cursor-pointer"
                     onClick={() => handleBookSelect(book)}
                   >
-                    <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden relative shadow-sm hover:shadow-md transition-shadow">
-                      {book.coverUrl ? (
-                        <img
-                          src={getCoverImageUrl(book.coverUrl)}
-                          alt={book.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div
-                          className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}
-                        >
-                          <span className="text-5xl text-white font-bold">
-                            {book.title.charAt(0)}
-                          </span>
-                        </div>
-                      )}
+                    <BookCover book={book}>
                       <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-300 dark:bg-gray-600">
                         <div
                           className="h-full bg-blue-500"
                           style={{ width: `${book.readingProgress}%` }}
                         />
                       </div>
-                    </div>
+                    </BookCover>
                     <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white truncate">
                       {book.title}
                     </p>
@@ -189,23 +198,7 @@ export default function Recommend() {
                       className="cursor-pointer"
                       onClick={() => handleBookSelect(book)}
                     >
-                      <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                        {book.coverUrl ? (
-                          <img
-                            src={getCoverImageUrl(book.coverUrl)}
-                            alt={book.title}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div
-                            className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}
-                          >
-                            <span className="text-5xl text-white font-bold">
-                              {book.title.charAt(0)}
-                            </span>
-                          </div>
-                        )}
-                      </div>
+                      <BookCover book={book} />
                       <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white truncate">
                         {book.title}
                       </p>
@@ -233,23 +226,7 @@ export default function Recommend() {
                     className="cursor-pointer"
                     onClick={() => handleBookSelect(book)}
                   >
-                    <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                      {book.coverUrl ? (
-                        <img
-                          src={getCoverImageUrl(book.coverUrl)}
-                          alt={book.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div
-                          className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}
-                        >
-                          <span className="text-5xl text-white font-bold">
-                            {book.title.charAt(0)}
-                          </span>
-                        </div>
-                      )}
-                    </div>
+                    <BookCover book={book} />
                     <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white truncate">
                       {book.title}
                     </p>
