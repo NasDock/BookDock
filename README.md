@@ -50,6 +50,12 @@ volumes:
   bookdock:
 ```
 
+> macOS 用户首次安装提示"已损坏"的解决方法：
+>
+> 1. 将 BookDock.app 拖到 Applications
+> 2. 打开终端执行：xattr -cr /Applications/BookDock.app
+> 3. 再次打开应用即可
+
 ## ⭐ Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=mmdctjj/BookDock&type=Date)](https://star-history.com/#mmdctjj/BookDock&Date)
