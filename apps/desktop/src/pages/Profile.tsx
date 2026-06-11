@@ -176,27 +176,30 @@ export default function Profile() {
     { key: "downloads", label: "下载", icon: Download },
   ];
 
-  const renderBookCard = (book: Book) => (
-    <div
-      key={book.id}
-      className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-      onClick={() => navigate(`/book/${book.id}/detail`)}
-    >
-      <div className="w-12 h-18 rounded overflow-hidden flex-shrink-0">
-        {book.coverUrl ? (
-          <img src={getCoverImageUrl(book.coverUrl)} alt={book.title} className="w-full h-full object-cover" />
-        ) : (
-          <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}>
-            <span className="text-xl text-white font-bold">{book.title.charAt(0)}</span>
-          </div>
-        )}
+  function BookCard({ book }: { book: Book }) {
+    const [coverError, setCoverError] = useState(false);
+    const coverSrc = getCoverImageUrl(book.coverUrl);
+    return (
+      <div
+        className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        onClick={() => navigate(`/book/${book.id}/detail`)}
+      >
+        <div className="w-12 h-16 rounded overflow-hidden flex-shrink-0">
+          {coverSrc && !coverError ? (
+            <img src={coverSrc} alt={book.title} className="w-full h-full object-cover" onError={() => setCoverError(true)} />
+          ) : (
+            <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}>
+              <span className="text-xl text-white font-bold">{book.title.charAt(0)}</span>
+            </div>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{book.title}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{book.author || "未知作者"}</p>
+        </div>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{book.title}</p>
-        <p className="text-xs text-gray-500 dark:text-gray-400">{book.author || "未知作者"}</p>
-      </div>
-    </div>
-  );
+    );
+  }
 
   const renderNotesContent = () => {
     const totalPages = Math.ceil(noteTotal / noteLimit);
@@ -406,7 +409,7 @@ export default function Profile() {
             {inProgressBooks.length === 0 ? (
               <p className="text-center text-gray-500 dark:text-gray-400 py-8">暂无在读书籍</p>
             ) : (
-              inProgressBooks.map(renderBookCard)
+              inProgressBooks.map((book) => <BookCard key={book.id} book={book} />)
             )}
           </div>
         );
@@ -416,7 +419,7 @@ export default function Profile() {
             {favorites.length === 0 ? (
               <p className="text-center text-gray-500 dark:text-gray-400 py-8">暂无收藏</p>
             ) : (
-              favorites.map(renderBookCard)
+              favorites.map((book) => <BookCard key={book.id} book={book} />)
             )}
           </div>
         );
@@ -426,7 +429,7 @@ export default function Profile() {
             {downloadedBooks.length === 0 ? (
               <p className="text-center text-gray-500 dark:text-gray-400 py-8">暂无下载</p>
             ) : (
-              downloadedBooks.map((b) => renderBookCard(b as unknown as Book))
+              downloadedBooks.map((b) => <BookCard key={b.id} book={b as unknown as Book} />)
             )}
           </div>
         );

@@ -81,6 +81,8 @@ const BookCard: React.FC<{ book: Book; onSelect: () => void }> = ({
     : progress >= 100
       ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
       : "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400";
+  const [coverError, setCoverError] = useState(false);
+  const coverSrc = getCoverImageUrl(book.coverUrl);
 
   return (
     <div
@@ -89,11 +91,12 @@ const BookCard: React.FC<{ book: Book; onSelect: () => void }> = ({
     >
       {/* Cover */}
       <div className="aspect-[2/3] rounded-xl overflow-hidden relative shadow-sm group-hover:shadow-md transition-shadow">
-        {book.coverUrl ? (
+        {coverSrc && !coverError ? (
           <img
-            src={getCoverImageUrl(book.coverUrl)}
+            src={coverSrc}
             alt={book.title}
             className="w-full h-full object-cover"
+            onError={() => setCoverError(true)}
           />
         ) : (
           <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}>
@@ -146,6 +149,68 @@ const BookCard: React.FC<{ book: Book; onSelect: () => void }> = ({
           </span>
         </div>
       </div>
+    </div>
+  );
+};
+
+const BookListItem: React.FC<{ book: Book; onSelect: () => void }> = ({ book, onSelect }) => {
+  const progress = book.readingProgress ?? 0;
+  const statusText = progress === 0 ? "未读" : progress >= 100 ? "已读完" : "在读";
+  const statusColor = progress === 0
+    ? "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+    : progress >= 100
+      ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
+      : "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400";
+  const [coverError, setCoverError] = useState(false);
+  const coverSrc = getCoverImageUrl(book.coverUrl);
+
+  return (
+    <div
+      className="flex items-center gap-4 py-4 cursor-pointer group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors -mx-4 px-4 rounded-lg"
+      onClick={onSelect}
+    >
+      {/* Cover */}
+      <div className="w-12 h-16 rounded-lg overflow-hidden flex-shrink-0 shadow-sm">
+        {coverSrc && !coverError ? (
+          <img
+            src={coverSrc}
+            alt={book.title}
+            className="w-full h-full object-cover"
+            onError={() => setCoverError(true)}
+          />
+        ) : (
+          <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}>
+            <span className="text-sm text-white font-bold">
+              {book.title.charAt(0)}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Title + Author */}
+      <div className="flex-1 min-w-0">
+        <h3 className="font-medium text-gray-900 dark:text-white truncate">
+          {book.title}
+        </h3>
+        <p className="text-sm text-gray-400 dark:text-gray-500 truncate">
+          {book.author || "未知作者"}
+        </p>
+      </div>
+
+      {/* Format */}
+      <span className="text-sm text-orange-500 dark:text-orange-400 flex-shrink-0">
+        {(book.fileType || book.format || '').toUpperCase()}
+      </span>
+
+      {/* Status badge */}
+      <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${statusColor}`}>
+        {statusText}
+      </span>
+
+      {/* File size */}
+      <span className="text-sm text-gray-400 dark:text-gray-500 flex-shrink-0 w-20 text-right">
+        {formatFileSize(book.fileSize)}
+      </span>
     </div>
   );
 };
@@ -629,65 +694,9 @@ export default function Library() {
           </div>
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-gray-800">
-            {filteredBooks.map((book) => {
-              const progress = book.readingProgress ?? 0;
-              const statusText = progress === 0 ? "未读" : progress >= 100 ? "已读完" : "在读";
-              const statusColor = progress === 0
-                ? "bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
-                : progress >= 100
-                  ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
-                  : "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400";
-
-              return (
-                <div
-                  key={book.id}
-                  className="flex items-center gap-4 py-4 cursor-pointer group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors -mx-4 px-4 rounded-lg"
-                  onClick={() => handleBookSelect(book)}
-                >
-                  {/* Cover */}
-                  <div className="w-12 h-16 rounded-lg overflow-hidden flex-shrink-0 shadow-sm">
-                    {book.coverUrl ? (
-                      <img
-                        src={getCoverImageUrl(book.coverUrl)}
-                        alt={book.title}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}>
-                        <span className="text-sm text-white font-bold">
-                          {book.title.charAt(0)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Title + Author */}
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-medium text-gray-900 dark:text-white truncate">
-                      {book.title}
-                    </h3>
-                    <p className="text-sm text-gray-400 dark:text-gray-500 truncate">
-                      {book.author || "未知作者"}
-                    </p>
-                  </div>
-
-                  {/* Format */}
-                  <span className="text-sm text-orange-500 dark:text-orange-400 flex-shrink-0">
-                    {(book.fileType || book.format || '').toUpperCase()}
-                  </span>
-
-                  {/* Status badge */}
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${statusColor}`}>
-                    {statusText}
-                  </span>
-
-                  {/* File size */}
-                  <span className="text-sm text-gray-400 dark:text-gray-500 flex-shrink-0 w-20 text-right">
-                    {formatFileSize(book.fileSize)}
-                  </span>
-                </div>
-              );
-            })}
+            {filteredBooks.map((book) => (
+              <BookListItem key={book.id} book={book} onSelect={() => handleBookSelect(book)} />
+            ))}
           </div>
         )}
       </section>

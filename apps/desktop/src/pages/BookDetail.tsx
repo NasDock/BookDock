@@ -17,6 +17,29 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getCoverImageUrl } from "../utils/network";
 
+function BookCover({ book, className = "" }: { book: Book; className?: string }) {
+  const [coverError, setCoverError] = useState(false);
+  const coverSrc = getCoverImageUrl(book.coverUrl);
+  return (
+    <div className={`aspect-[2/3] rounded-xl overflow-hidden shadow-lg ${className}`}>
+      {coverSrc && !coverError ? (
+        <img
+          src={coverSrc}
+          alt={book.title}
+          className="w-full h-full object-cover"
+          onError={() => setCoverError(true)}
+        />
+      ) : (
+        <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}>
+          <span className="text-6xl text-white font-bold">
+            {book.title.charAt(0)}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function getBookGradient(title: string): string {
   const gradients = [
     "from-blue-400 to-purple-500",
@@ -314,23 +337,7 @@ export default function BookDetail() {
         <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6 md:gap-8 mb-8">
           {/* 封面 */}
           <div className="w-32 sm:w-44 md:w-52 flex-shrink-0 self-center sm:self-start">
-            <div className="aspect-[2/3] rounded-xl overflow-hidden shadow-lg">
-              {book.coverUrl ? (
-                <img
-                  src={getCoverImageUrl(book.coverUrl)}
-                  alt={book.title}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div
-                  className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}
-                >
-                  <span className="text-6xl text-white font-bold">
-                    {book.title.charAt(0)}
-                  </span>
-                </div>
-              )}
-            </div>
+            <BookCover book={book} />
           </div>
 
           {/* 信息 */}
