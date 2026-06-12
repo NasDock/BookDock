@@ -122,7 +122,7 @@ export function BookDetailScreen() {
   }, [navigation, book]);
 
   const handleTTS = useCallback(() => {
-    navigation.navigate('TTSReader', { book });
+    navigation.navigate('TTSScreen', { book });
   }, [navigation, book]);
 
   const handleToggleFavorite = useCallback(async () => {

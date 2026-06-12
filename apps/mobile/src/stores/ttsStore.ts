@@ -1,9 +1,10 @@
-import type { TTSVoice } from '@bookdock/api-client';
+import type { Paragraph, TTSVoice } from '@bookdock/api-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 type TTSState = 'idle' | 'playing' | 'paused' | 'loading';
+type ViewMode = 'controls' | 'content';
 
 interface TTSStoreState {
   state: TTSState;
@@ -17,6 +18,17 @@ interface TTSStoreState {
   volume: number;
   isAutoPlay: boolean;
 
+  // View mode
+  viewMode: ViewMode;
+  // Mini player
+  isMiniPlayerVisible: boolean;
+  // Paragraph tracking
+  currentParagraph: number;
+  totalParagraphs: number;
+  paragraphs: Paragraph[];
+  chapterTitle: string;
+  chapterIndex: number;
+
   // Actions
   setState: (state: TTSState) => void;
   setCurrentBook: (bookId: string | null, position?: number, totalLength?: number) => void;
@@ -27,6 +39,13 @@ interface TTSStoreState {
   setPlaybackRate: (rate: number) => void;
   setVolume: (volume: number) => void;
   setAutoPlay: (autoPlay: boolean) => void;
+  setViewMode: (mode: ViewMode) => void;
+  setMiniPlayerVisible: (visible: boolean) => void;
+  setCurrentParagraph: (index: number) => void;
+  setTotalParagraphs: (count: number) => void;
+  setParagraphs: (paragraphs: Paragraph[]) => void;
+  setChapterTitle: (title: string) => void;
+  setChapterIndex: (index: number) => void;
   reset: () => void;
 }
 
@@ -43,6 +62,13 @@ export const useTTSStore = create<TTSStoreState>()(
       playbackRate: 1.0,
       volume: 1.0,
       isAutoPlay: true,
+      viewMode: 'controls',
+      isMiniPlayerVisible: false,
+      currentParagraph: 0,
+      totalParagraphs: 0,
+      paragraphs: [],
+      chapterTitle: '',
+      chapterIndex: 0,
 
       setState: (state) => set({ state }),
 
@@ -67,11 +93,32 @@ export const useTTSStore = create<TTSStoreState>()(
 
       setAutoPlay: (autoPlay) => set({ isAutoPlay: autoPlay }),
 
+      setViewMode: (mode) => set({ viewMode: mode }),
+
+      setMiniPlayerVisible: (visible) => set({ isMiniPlayerVisible: visible }),
+
+      setCurrentParagraph: (index) => set({ currentParagraph: index }),
+
+      setTotalParagraphs: (count) => set({ totalParagraphs: count }),
+
+      setParagraphs: (paragraphs) => set({ paragraphs }),
+
+      setChapterTitle: (title) => set({ chapterTitle: title }),
+
+      setChapterIndex: (index) => set({ chapterIndex: index }),
+
       reset: () => set({
         state: 'idle',
         currentBookId: null,
         currentPosition: 0,
         totalLength: 0,
+        currentParagraph: 0,
+        totalParagraphs: 0,
+        paragraphs: [],
+        chapterTitle: '',
+        chapterIndex: 0,
+        isMiniPlayerVisible: false,
+        viewMode: 'controls',
       }),
     }),
     {
