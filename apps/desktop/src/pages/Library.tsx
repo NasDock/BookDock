@@ -489,7 +489,7 @@ export default function Library() {
     <div className="space-y-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
+        <div className="hidden md:block">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             我的书库
           </h1>

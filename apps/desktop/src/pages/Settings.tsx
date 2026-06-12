@@ -472,7 +472,7 @@ export default function Settings() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <h1 className="text-3xl font-bold text-gray-900 dark:text-white">设置</h1>
+      <h1 className="hidden md:block text-3xl font-bold text-gray-900 dark:text-white">设置</h1>
 
       {/* Profile Section */}
       <Card>

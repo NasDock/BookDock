@@ -44,7 +44,7 @@ export default function MemberDetail() {
           <div className={`inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br ${levelColor} rounded-2xl shadow-xl mb-4`}>
             <Crown className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">我的会员</h1>
+          <h1 className="hidden md:block text-3xl font-bold text-gray-900 dark:text-white">我的会员</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">感谢您对 BookDock 的支持</p>
         </div>
 
