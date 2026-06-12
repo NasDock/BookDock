@@ -127,9 +127,10 @@ export function TTSScreen() {
   const playbackState = usePlaybackState();
   const progress = useProgress();
 
-  const isPlaying = playbackState.state === State.Playing;
-  const isPaused = playbackState.state === State.Paused;
-  const isLoadingAudio = playbackState.state === State.Loading || playbackState.state === State.Buffering;
+  const currentState = playbackState?.state;
+  const isPlaying = currentState === State.Playing;
+  const isPaused = currentState === State.Paused;
+  const isLoadingAudio = currentState === State.Loading || currentState === State.Buffering;
 
   const [currentParagraph, setCurrentParagraph] = useState(0);
   const [paragraphProgress, setParagraphProgress] = useState(0);
@@ -167,8 +168,11 @@ export function TTSScreen() {
           ],
           progressUpdateEventInterval: 1,
         });
+        // Reset player to clear any stuck loading/buffering state
+        await TrackPlayer.reset();
       } catch (e) {
-        // Player may already be set up
+        // Player may already be set up, try reset anyway
+        try { await TrackPlayer.reset(); } catch {}
       }
     })();
     return () => {
@@ -184,9 +188,11 @@ export function TTSScreen() {
       setLoadError(null);
       try {
         const apiClient = getApiClient();
+        console.log('[TTSScreen] Starting load, book.id:', book.id);
 
         // Providers
         const provRes = await apiClient.getTtsProviders();
+        console.log('[TTSScreen] Providers response:', JSON.stringify(provRes));
         if (cancelled) return;
         const ps = (provRes.success && provRes.data?.providers) || [];
         setProviders(ps);
@@ -194,27 +200,34 @@ export function TTSScreen() {
         const finalProvider = enabledNames.includes(provider)
           ? provider
           : enabledNames[0] || "edge";
+        console.log('[TTSScreen] Final provider:', finalProvider);
         if (finalProvider !== provider) setProvider(finalProvider);
 
         // Voices
         const vRes = await apiClient.getVoices(finalProvider);
+        console.log('[TTSScreen] Voices response:', JSON.stringify(vRes));
         if (cancelled) return;
         const vs = (vRes.success && vRes.data) || [];
         setVoices(vs);
         if (!voiceId && vs[0]) setVoiceId(vs[0].id);
 
         // Chapters
+        console.log('[TTSScreen] Loading chapters for book:', book.id);
         const chRes = await apiClient.getChapters(book.id);
+        console.log('[TTSScreen] Chapters response:', JSON.stringify(chRes));
         if (cancelled) return;
         if (!chRes.success || !chRes.data || chRes.data.length === 0) {
+          console.log('[TTSScreen] No chapters found');
           setLoadError("本书暂无章节内容，请先解析章节。");
           return;
         }
         setChapters(chRes.data);
 
-        // Load first chapter paragraphs
+        // Load first chapter (loadChapter will skip empty ones)
+        console.log('[TTSScreen] Loading chapter 0, voice:', vs[0]?.id || voiceId, 'provider:', finalProvider);
         await loadChapter(0, vs[0]?.id || voiceId, finalProvider);
       } catch (e) {
+        console.error('[TTSScreen] Load error:', e);
         setLoadError((e as Error).message || "加载失败");
       } finally {
         if (!cancelled) setLoading(false);
@@ -303,14 +316,32 @@ export function TTSScreen() {
   }, [ttsStore]);
 
   const loadChapter = async (ci: number, vid: string, prov: string) => {
+    console.log('[TTSScreen] loadChapter called, ci:', ci, 'vid:', vid, 'prov:', prov);
     setChapterIndex(ci);
     try {
       const apiClient = getApiClient();
+      console.log('[TTSScreen] Fetching paragraphs for book:', book.id, 'chapter:', ci);
       const pRes = await apiClient.getChapterParagraphs(book.id, ci);
+      console.log('[TTSScreen] Paragraphs response:', JSON.stringify(pRes).substring(0, 500));
       if (!pRes.success || !pRes.data) {
+        console.log('[TTSScreen] Failed to load paragraphs:', pRes);
         setLoadError("加载章节失败");
         return;
       }
+      console.log('[TTSScreen] Paragraphs loaded, count:', pRes.data.paragraphs?.length);
+
+      // If chapter has no paragraphs, try next chapter
+      if (!pRes.data.paragraphs || pRes.data.paragraphs.length === 0) {
+        const nextChapter = ci + 1;
+        if (nextChapter < chapters.length) {
+          console.log('[TTSScreen] Chapter empty, trying next:', nextChapter);
+          return loadChapter(nextChapter, vid, prov);
+        } else {
+          setLoadError("没有可朗读的内容");
+          return;
+        }
+      }
+
       setChapterTitle(pRes.data.title);
       setParagraphs(pRes.data.paragraphs);
       setCurrentParagraph(0);
@@ -763,7 +794,7 @@ export function TTSScreen() {
               style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
               onPress={handleSkipBack}
             >
-              <Ionicons name="play-skip-back" size={22} color={theme.colors.text} />
+              <Ionicons name="play-skip-back-outline" size={22} color={theme.colors.text} />
             </TouchableOpacity>
 
             {/* Play/Pause */}
@@ -788,7 +819,7 @@ export function TTSScreen() {
               style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
               onPress={handleSkipForward}
             >
-              <Ionicons name="play-skip-forward" size={22} color={theme.colors.text} />
+              <Ionicons name="play-skip-forward-outline" size={22} color={theme.colors.text} />
             </TouchableOpacity>
 
             {/* Chapter picker */}
