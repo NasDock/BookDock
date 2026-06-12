@@ -113,6 +113,8 @@ export function TTSScreen() {
   );
   const [showSettings, setShowSettings] = useState(false);
   const [showChapterPicker, setShowChapterPicker] = useState(false);
+  const [showSpeedPicker, setShowSpeedPicker] = useState(false);
+  const [showTimerPicker, setShowTimerPicker] = useState(false);
   const [sleepMinutes, setSleepMinutes] = useState(0);
   const [sleepRemaining, setSleepRemaining] = useState(0);
 
@@ -672,7 +674,6 @@ export function TTSScreen() {
             <Ionicons name="chevron-down" size={28} color={theme.colors.text} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle} numberOfLines={1}>正在朗读</Text>
             <Text style={styles.headerSubtitle} numberOfLines={1}>{book.title}</Text>
           </View>
           <TouchableOpacity style={styles.headerButton} onPress={() => setShowSettings(true)}>
@@ -698,7 +699,6 @@ export function TTSScreen() {
                 </Text>
               </View>
             )}
-            <Text style={styles.tapHint}>点击封面查看朗读内容</Text>
           </TouchableOpacity>
 
           {/* Chapter Info */}
@@ -727,6 +727,27 @@ export function TTSScreen() {
 
           {/* Playback Controls - compact row */}
           <View style={styles.controlsRow}>
+            {/* Settings */}
+            <TouchableOpacity
+              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
+              onPress={() => setShowSettings(true)}
+            >
+              <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
+            </TouchableOpacity>
+
+            {/* Speed */}
+            <TouchableOpacity
+              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
+              onPress={() => setShowSpeedPicker(!showSpeedPicker)}
+            >
+              <Ionicons name="speedometer-outline" size={20} color={theme.colors.text} />
+              {ttsStore.playbackRate !== 1.0 && (
+                <View style={[styles.badge, { backgroundColor: theme.colors.primary }]}>
+                  <Text style={styles.badgeText}>{ttsStore.playbackRate.toFixed(1)}x</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
             {/* Skip back */}
             <TouchableOpacity
               style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
@@ -768,6 +789,18 @@ export function TTSScreen() {
               <Ionicons name="book-outline" size={20} color={theme.colors.text} />
             </TouchableOpacity>
 
+            {/* Sleep timer */}
+            <TouchableOpacity
+              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
+              onPress={() => setShowTimerPicker(!showTimerPicker)}
+            >
+              <Ionicons name="time-outline" size={20} color={theme.colors.text} />
+              {sleepMinutes > 0 && (
+                <View style={[styles.badge, { backgroundColor: theme.colors.warning }]}>
+                  <Text style={styles.badgeText}>{Math.floor(sleepRemaining / 60)}m</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
 
           {/* Book description */}
@@ -821,6 +854,74 @@ export function TTSScreen() {
           </View>
         )}
 
+        {/* Speed Picker Modal */}
+        {showSpeedPicker && (
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowSpeedPicker(false)} />
+            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>倍速</Text>
+                <TouchableOpacity onPress={() => setShowSpeedPicker(false)}>
+                  <Ionicons name="close" size={24} color={theme.colors.text} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.sleepOptions}>
+                {[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((r) => (
+                  <TouchableOpacity
+                    key={r}
+                    onPress={() => {
+                      handleRateChange(r);
+                      setShowSpeedPicker(false);
+                    }}
+                    style={[
+                      styles.sleepOption,
+                      ttsStore.playbackRate === r && { backgroundColor: theme.colors.primary },
+                    ]}
+                  >
+                    <Text style={[styles.sleepOptionText, ttsStore.playbackRate === r && { color: '#fff' }]}>
+                      {r}x
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Timer Picker Modal */}
+        {showTimerPicker && (
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowTimerPicker(false)} />
+            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>定时关闭</Text>
+                <TouchableOpacity onPress={() => setShowTimerPicker(false)}>
+                  <Ionicons name="close" size={24} color={theme.colors.text} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.sleepOptions}>
+                {[0, 5, 10, 15, 30, 45, 60].map((minutes) => (
+                  <TouchableOpacity
+                    key={minutes}
+                    onPress={() => {
+                      handleSleepTimerSet(minutes);
+                      setShowTimerPicker(false);
+                    }}
+                    style={[
+                      styles.sleepOption,
+                      sleepMinutes === minutes && { backgroundColor: theme.colors.primary },
+                    ]}
+                  >
+                    <Text style={[styles.sleepOptionText, sleepMinutes === minutes && { color: '#fff' }]}>
+                      {minutes === 0 ? '关闭' : `${minutes} 分钟`}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* Settings Bottom Sheet */}
         {showSettings && (
           <View style={styles.modalOverlay}>
@@ -833,8 +934,8 @@ export function TTSScreen() {
                 </TouchableOpacity>
               </View>
               <ScrollView>
-                {/* Voice section */}
-                <Text style={styles.settingsLabel}>音色</Text>
+                {/* Provider section */}
+                <Text style={styles.settingsLabel}>TTS 服务商</Text>
                 <View style={styles.chipRow}>
                   {providers.map((p) => {
                     const active = provider === p.name;
@@ -858,6 +959,9 @@ export function TTSScreen() {
                     );
                   })}
                 </View>
+
+                {/* Voice section */}
+                <Text style={styles.settingsLabel}>音色</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
                   {voices.map((v) => {
                     const active = voiceId === v.id;
@@ -880,48 +984,6 @@ export function TTSScreen() {
                     );
                   })}
                 </ScrollView>
-
-                {/* Speed section */}
-                <Text style={styles.settingsLabel}>倍速</Text>
-                <View style={styles.chipRow}>
-                  {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((r) => (
-                    <TouchableOpacity
-                      key={r}
-                      onPress={() => handleRateChange(r)}
-                      style={[
-                        styles.chip,
-                        {
-                          backgroundColor: ttsStore.playbackRate === r ? theme.colors.primary : theme.colors.background,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.chipText, { color: ttsStore.playbackRate === r ? '#fff' : theme.colors.text }]}>
-                        {r}x
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                {/* Sleep timer section */}
-                <Text style={styles.settingsLabel}>定时关闭</Text>
-                <View style={styles.chipRow}>
-                  {[0, 5, 10, 15, 30, 45, 60].map((minutes) => (
-                    <TouchableOpacity
-                      key={minutes}
-                      onPress={() => handleSleepTimerSet(minutes)}
-                      style={[
-                        styles.chip,
-                        {
-                          backgroundColor: sleepMinutes === minutes ? theme.colors.primary : theme.colors.background,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.chipText, { color: sleepMinutes === minutes ? '#fff' : theme.colors.text }]}>
-                        {minutes === 0 ? '关闭' : `${minutes}分`}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
               </ScrollView>
             </View>
           </View>
@@ -1055,8 +1117,8 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       position: 'relative',
     },
     bookCoverLarge: {
-      width: 200,
-      height: 280,
+      width: 160,
+      height: 224,
       borderRadius: borderRadius.xl,
       justifyContent: 'center',
       alignItems: 'center',
@@ -1067,7 +1129,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       elevation: 8,
     },
     coverInitialLarge: {
-      fontSize: 64,
+      fontSize: 52,
       fontWeight: 'bold',
       color: theme.colors.primary,
     },
@@ -1159,6 +1221,14 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontSize: 10,
       color: '#fff',
       fontWeight: '600',
+    },
+    // Picker dropdown
+    pickerDropdown: {
+      width: '100%',
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: borderRadius.lg,
+      marginBottom: spacing.sm,
     },
     // Settings
     settingsPanel: {
@@ -1265,6 +1335,19 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     chapterListNumber: {
       color: theme.colors.textSecondary,
       fontSize: fontSizes.sm,
+    },
+    sleepOptions: {
+      gap: spacing.sm,
+    },
+    sleepOption: {
+      paddingVertical: spacing.md,
+      borderRadius: borderRadius.md,
+      backgroundColor: theme.colors.background,
+      alignItems: 'center',
+    },
+    sleepOptionText: {
+      fontSize: fontSizes.md,
+      color: theme.colors.text,
     },
   });
 }
