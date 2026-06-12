@@ -94,23 +94,13 @@ export function TTSScreen() {
   const theme = getTheme(actualTheme === "dark");
   const ttsStore = useTTSStore();
 
-  // ── Sync state from store when expanding from mini player ──────────
-  useEffect(() => {
-    if (ttsStore.currentBookId === book.id && ttsStore.paragraphs.length > 0) {
-      setParagraphs(ttsStore.paragraphs);
-      setChapterTitle(ttsStore.chapterTitle);
-      setChapterIndex(ttsStore.chapterIndex);
-      setCurrentParagraph(ttsStore.currentParagraph);
-      if (ttsStore.selectedProvider) setProvider(ttsStore.selectedProvider);
-      if (ttsStore.selectedVoice?.id) setVoiceId(ttsStore.selectedVoice.id);
-      setLoading(false);
-    }
-  }, []);
+  // Derived state from store (single source of truth)
+  const paragraphs = ttsStore.paragraphs;
+  const chapterTitle = ttsStore.chapterTitle;
+  const chapterIndex = ttsStore.chapterIndex;
+  const currentParagraph = ttsStore.currentParagraph;
 
-  // ── Book + chapter state ─────────────────────────────────────────────
-  const [paragraphs, setParagraphs] = useState<Paragraph[]>([]);
-  const [chapterTitle, setChapterTitle] = useState("");
-  const [chapterIndex, setChapterIndex] = useState(0);
+  // ── Local UI state ──────────────────────────────────────────────────
   const [chapters, setChapters] = useState<{ title: string; index: number }[]>(
     [],
   );
@@ -146,7 +136,6 @@ export function TTSScreen() {
   const isPaused = ttsStore.state === 'paused';
   const isLoadingAudio = ttsStore.state === 'loading' || playbackState === State.Connecting || playbackState === State.Buffering;
 
-  const [currentParagraph, setCurrentParagraph] = useState(0);
   const [paragraphProgress, setParagraphProgress] = useState(0);
   const [resumeOffsetMs, setResumeOffsetMs] = useState(0);
 
@@ -185,8 +174,7 @@ export function TTSScreen() {
           progressUpdateEventInterval: 1,
         });
         // Only reset if nothing is playing (avoid interrupting playback from mini player)
-        const state = await TrackPlayer.getPlaybackState();
-        if (state.state !== State.Playing && state.state !== State.Buffering) {
+        if (ttsStore.state !== 'playing') {
           await TrackPlayer.reset();
         }
       } catch (e) {
@@ -345,47 +333,6 @@ export function TTSScreen() {
     return () => sub.remove();
   }, [currentParagraph, paragraphs.length, chapterIndex, voiceId, provider, ttsStore]);
 
-  // ── TrackPlayer event: active track changed → update current paragraph ─
-  useEffect(() => {
-    const sub = TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, async (event) => {
-      if (event.index === undefined) return;
-      
-      // Get current track to determine which paragraph we're on
-      const track = await TrackPlayer.getTrack(event.index);
-      if (!track?.id) return;
-      
-      // Extract paragraph index from track ID (format: "paraId-chunkIdx")
-      const paraId = track.id.split('-')[0];
-      const paraIdx = paragraphs.findIndex(p => p.id === paraId);
-      
-      if (paraIdx >= 0 && paraIdx !== currentParagraph) {
-        setCurrentParagraph(paraIdx);
-        ttsStore.setCurrentParagraph(paraIdx);
-        
-        // Add next paragraph to queue for seamless playback
-        try {
-          const nextIdx = paraIdx + 1;
-          if (nextIdx < paragraphs.length) {
-            const nextUris = await synthesizeParagraph(nextIdx);
-            if (nextUris.length > 0) {
-              const nextTracks = nextUris.map((uri, i) => ({
-                id: `${paragraphs[nextIdx].id}-${i}`,
-                url: uri,
-                title: `${book.title || '未知书籍'} - ${chapterTitle}`,
-                artist: book.author || "未知作者",
-                artwork: undefined,
-                duration: 0,
-              }));
-              await TrackPlayer.add(nextTracks);
-            }
-          }
-        } catch {
-          // Ignore prefetch errors
-        }
-      }
-    });
-    return () => sub.remove();
-  }, [ttsStore, paragraphs, currentParagraph, book, chapterTitle, synthesizeParagraph]);
 
   // Auto-scroll to current paragraph in content view
   useEffect(() => {
@@ -405,7 +352,7 @@ export function TTSScreen() {
 
   const loadChapter = async (ci: number, vid: string, prov: string) => {
     console.log('[TTSScreen] loadChapter called, ci:', ci, 'vid:', vid, 'prov:', prov);
-    setChapterIndex(ci);
+    ttsStore.setChapterIndex(ci);
     try {
       const apiClient = getApiClient();
       console.log('[TTSScreen] Fetching paragraphs for book:', book.id, 'chapter:', ci);
@@ -430,9 +377,6 @@ export function TTSScreen() {
         }
       }
 
-      setChapterTitle(pRes.data.title);
-      setParagraphs(pRes.data.paragraphs);
-      setCurrentParagraph(0);
       setParagraphProgress(0);
       setResumeOffsetMs(0);
       prefetchedRef.current.clear();
@@ -440,6 +384,7 @@ export function TTSScreen() {
       ttsStore.setTotalParagraphs(pRes.data.paragraphs.length);
       ttsStore.setChapterTitle(pRes.data.title);
       ttsStore.setChapterIndex(ci);
+      ttsStore.setCurrentParagraph(0);
 
       // Resume from saved cloud progress
       try {
@@ -452,7 +397,7 @@ export function TTSScreen() {
           }
           if (rec.voice) setVoiceId(rec.voice);
           setResumeOffsetMs(Math.max(0, rec.audioOffsetMs || 0));
-          setCurrentParagraph(
+          ttsStore.setCurrentParagraph(
             Math.min(rec.paragraphIndex, pRes.data.paragraphs.length - 1),
           );
         }
@@ -506,27 +451,21 @@ export function TTSScreen() {
   // ── Persist latest position when user leaves the screen ─────────────
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove", async () => {
-      await persistProgress(currentParagraph, Math.round(progress.position * 1000));
-      // Sync state to store
-      ttsStore.setParagraphs(paragraphs);
-      ttsStore.setTotalParagraphs(paragraphs.length);
-      ttsStore.setChapterTitle(chapterTitle);
-      ttsStore.setChapterIndex(chapterIndex);
-      ttsStore.setCurrentParagraph(currentParagraph);
+      await persistProgress(ttsStore.currentParagraph, Math.round(progress.position * 1000));
       ttsStore.setMiniPlayerVisible(true);
     });
     return unsubscribe;
-  }, [currentParagraph, navigation, persistProgress, progress.position, ttsStore, paragraphs, chapterTitle, chapterIndex]);
+  }, [navigation, persistProgress, progress.position, ttsStore]);
 
   // ── Persist progress when app goes to background ────────────────────
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       if (nextAppState === "background" || nextAppState === "inactive") {
-        void persistProgress(currentParagraph, Math.round(progress.position * 1000));
+        void persistProgress(ttsStore.currentParagraph, Math.round(progress.position * 1000));
       }
     });
     return () => subscription.remove();
-  }, [currentParagraph, persistProgress, progress.position]);
+  }, [persistProgress, progress.position, ttsStore]);
 
   const synthesizeParagraph = useCallback(
     async (idx: number): Promise<string[]> => {
@@ -559,17 +498,57 @@ export function TTSScreen() {
     [book.id, paragraphs, provider, voiceId],
   );
 
+  // ── TrackPlayer event: active track changed → update current paragraph ─
+  useEffect(() => {
+    const sub = TrackPlayer.addEventListener(Event.PlaybackTrackChanged, async (event: any) => {
+      if (event.nextTrack === undefined) return;
+      
+      // Get current track to determine which paragraph we're on
+      const track = await TrackPlayer.getTrack(event.nextTrack);
+      if (!track?.id) return;
+      
+      // Extract paragraph index from track ID (format: "paraId-chunkIdx")
+      const paraId = track.id.split('-')[0];
+      const paraIdx = paragraphs.findIndex(p => p.id === paraId);
+      
+      if (paraIdx >= 0 && paraIdx !== ttsStore.currentParagraph) {
+        ttsStore.setCurrentParagraph(paraIdx);
+        
+        // Add next paragraph to queue for seamless playback
+        try {
+          const nextIdx = paraIdx + 1;
+          if (nextIdx < paragraphs.length) {
+            const nextUris = await synthesizeParagraph(nextIdx);
+            if (nextUris.length > 0) {
+              const nextTracks = nextUris.map((uri, i) => ({
+                id: `${paragraphs[nextIdx].id}-${i}`,
+                url: uri,
+                title: `${book.title || '未知书籍'} - ${chapterTitle}`,
+                artist: book.author || "未知作者",
+                artwork: undefined,
+                duration: 0,
+              }));
+              await TrackPlayer.add(nextTracks);
+            }
+          }
+        } catch {
+          // Ignore prefetch errors
+        }
+      }
+    });
+    return () => sub.remove();
+  }, [ttsStore, paragraphs, book, chapterTitle, synthesizeParagraph]);
+
   const playParagraph = useCallback(
     async (idx: number) => {
       if (idx >= paragraphs.length) {
-        setCurrentParagraph(0);
+        ttsStore.setCurrentParagraph(0);
         setParagraphProgress(0);
         ttsStore.setState("idle");
         return;
       }
-      setCurrentParagraph(idx);
-      setParagraphProgress(0);
       ttsStore.setCurrentParagraph(idx);
+      setParagraphProgress(0);
       const startOffsetMs = resumeOffsetMs;
       setResumeOffsetMs(0);
 
@@ -658,7 +637,7 @@ export function TTSScreen() {
   const handleStop = useCallback(async () => {
     await TrackPlayer.reset();
     ttsStore.setState("idle");
-    setCurrentParagraph(0);
+    ttsStore.setCurrentParagraph(0);
     setParagraphProgress(0);
   }, [ttsStore]);
 
@@ -668,7 +647,6 @@ export function TTSScreen() {
       if (isPlaying || isPaused) {
         await playParagraph(idx);
       } else {
-        setCurrentParagraph(idx);
         ttsStore.setCurrentParagraph(idx);
         void persistProgress(idx);
       }
@@ -740,15 +718,9 @@ export function TTSScreen() {
   }, []);
 
   const handleMinimize = useCallback(() => {
-    // Sync current state to store before minimizing
-    ttsStore.setParagraphs(paragraphs);
-    ttsStore.setTotalParagraphs(paragraphs.length);
-    ttsStore.setChapterTitle(chapterTitle);
-    ttsStore.setChapterIndex(chapterIndex);
-    ttsStore.setCurrentParagraph(currentParagraph);
     ttsStore.setMiniPlayerVisible(true);
     navigation.goBack();
-  }, [ttsStore, navigation, paragraphs, chapterTitle, chapterIndex, currentParagraph]);
+  }, [ttsStore, navigation]);
 
   // ── Progress calculation ─────────────────────────────────────────────
   const overallProgress = paragraphs.length
