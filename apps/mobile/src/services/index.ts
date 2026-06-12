@@ -252,6 +252,8 @@ export {
   setPlusToken,
   getPlusToken,
   removePlusToken,
+  participateInternalTest,
+  deletePlusMe,
 } from './plus';
 export type {
   ISuccessResponse,
@@ -259,4 +261,8 @@ export type {
   ScanLoginSessionStatus,
   ScanLoginClaimPayload,
   ScanLoginConfirmResult,
+  VipStatusResponse,
+  ParticipateInternalTestDto,
+  ParticipateInternalTestResponse,
+  DeletePlusMeResponse,
 } from './plus';

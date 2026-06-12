@@ -1,330 +1,265 @@
+import axios from 'axios';
+
+export const PLUS_API_BASE_URL = 'https://www.bookdock.cn/api';
+
+export const plusRequest = axios.create({
+  baseURL: PLUS_API_BASE_URL,
+});
+
+let plusUnauthorizedHandler: (() => void | Promise<void>) | null = null;
+let isHandlingPlusUnauthorized = false;
+
 /**
- * Plus API Service for BookDock Mobile
- * Connects to AudioDock Plus API (https://www.audiodock.cn/api)
+ * 设置 Plus 服务的验证 Token
+ * @param token JWT Token
  */
+export const setPlusToken = (token: string) => {
+  plusRequest.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+};
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { io, type Socket } from "socket.io-client";
+/**
+ * 获取 Plus 服务的验证 Token
+ */
+export const getPlusToken = () => {
+  return plusRequest.defaults.headers.common['Authorization'] as string | undefined;
+};
 
-const PLUS_API_BASE_URL = "https://www.audiodock.cn/api";
-const PLUS_WS_BASE_URL = "https://www.audiodock.cn/ws";
+/**
+ * 移除 Plus 服务的验证 Token
+ */
+export const removePlusToken = () => {
+  delete plusRequest.defaults.headers.common['Authorization'];
+};
 
-// --- Types ---
-export interface ISuccessResponse<T = unknown> {
-  code: number;
-  data?: T;
-  message?: string;
-}
+export const setPlusUnauthorizedHandler = (
+  handler: (() => void | Promise<void>) | null,
+) => {
+  plusUnauthorizedHandler = handler;
+};
+
+const hasPlusAuthHeader = (headers: any) => {
+  if (!headers) return false;
+  const authHeader =
+    headers.Authorization ||
+    headers.authorization ||
+    headers.common?.Authorization ||
+    headers.common?.authorization;
+  return Boolean(authHeader);
+};
+
+const isPlusUnauthorizedPayload = (payload: any) => {
+  if (!payload || typeof payload !== 'object') return false;
+  if (payload.code !== 401) return false;
+  const message = String(payload.message || '').toLowerCase();
+  return message === 'invalid token' || message === 'missing token';
+};
+
+const handlePlusUnauthorized = async () => {
+  if (isHandlingPlusUnauthorized) return;
+  isHandlingPlusUnauthorized = true;
+
+  try {
+    removePlusToken();
+    await plusUnauthorizedHandler?.();
+  } finally {
+    setTimeout(() => {
+      isHandlingPlusUnauthorized = false;
+    }, 0);
+  }
+};
+
+plusRequest.interceptors.response.use(
+  async (response) => {
+    if (
+      hasPlusAuthHeader(response.config?.headers) &&
+      isPlusUnauthorizedPayload(response.data)
+    ) {
+      await handlePlusUnauthorized();
+    }
+    return response;
+  },
+  async (error) => {
+    const status = error?.response?.status;
+    if (
+      status === 401 &&
+      hasPlusAuthHeader(error?.config?.headers)
+    ) {
+      await handlePlusUnauthorized();
+    }
+    return Promise.reject(error);
+  },
+);
+
+// --- DTO Types ---
 
 export interface SendCodeDto {
+  /** Phone number in E.164 format, e.g. +8613812345678 */
   phone: string;
 }
 
 export interface LoginDto {
+  /** Phone number in E.164 format */
   phone: string;
+  /** Verification code */
   code: string;
-}
-
-
-export interface CreatePaymentDto {
-  userId: string;
-  amount: number;
-  method: "WECHAT" | "ALIPAY" | "STRIPE" | "PAYPAL" | "OTHER";
-  forVip: boolean;
-  forPoints: boolean;
-  vipTier?: "BASIC" | "PREMIUM" | "LIFETIME";
-  clientType?: "app" | "web" | "desktop";
-  couponCode?: string;
-}
-
-export interface CreatePaymentResult {
-  orderId: string;
-  transactionId?: string | null;
-  paymentUrl: string;
-  qrCode: string;
-  wechatPay?: any | null;
-  alipayPay?: any | null;
-  originalAmount: number;
-  finalAmount: number;
-  couponDiscount?: any | null;
-  raw?: any;
-}
-
-export interface PaymentStatusResult {
-  orderId: string;
-  status: 'pending' | 'paid' | 'failed' | 'cancelled';
-  paidAt?: string | null;
-  amount?: number;
-}
-export interface ScanLoginSourceConfig {
-  id: string;
-  internal: string;
-  external: string;
-  name?: string;
-}
-
-export interface ScanLoginSourceBundle {
-  type: string;
-  configs: ScanLoginSourceConfig[];
-}
-
-export interface ScanLoginAuthBundle {
-  baseUrl: string;
-  sourceType: string;
-  token: string;
-  user: any;
-  device?: any;
-}
-
-export interface ScanLoginPlusBundle {
-  token: string;
-  userId: string | number;
 }
 
 export interface ScanLoginSession {
-  sessionId: string;
-  secret: string;
-  role: "scanner" | "target";
-  deviceKind: "mobile" | "desktop";
-  expiresAt: number;
+  id: string;
+  status: ScanLoginSessionStatus;
+  clientId: string;
+  createdAt: string;
+  expiresAt: string;
+  claimedAt?: string;
+  confirmedAt?: string;
+  consumedAt?: string;
+  userId?: string;
+  token?: string;
 }
 
-export interface ScanLoginSessionStatus extends Omit<ScanLoginSession, "secret"> {
-  status: "waiting_scan" | "waiting_confirm" | "confirmed" | "consumed" | "success" | "failed" | "expired";
-  deviceName?: string;
-  sourceBundles: ScanLoginSourceBundle[];
-  hasNativeAuth: boolean;
-  hasPlusAuth: boolean;
-}
+export type ScanLoginSessionStatus = 'PENDING' | 'CLAIMED' | 'CONFIRMED' | 'CONSUMED' | 'EXPIRED';
 
 export interface ScanLoginClaimPayload {
-  nativeAuth?: ScanLoginAuthBundle | null;
-  plusAuth?: ScanLoginPlusBundle | null;
-  sourceBundles: ScanLoginSourceBundle[];
-  deviceName?: string;
+  deviceName: string;
+  deviceType: string;
 }
 
 export interface ScanLoginConfirmResult {
-  nativeAuth: ScanLoginAuthBundle | null;
-  plusAuth: ScanLoginPlusBundle | null;
-  sourceBundles: ScanLoginSourceBundle[];
+  success: boolean;
+  token?: string;
+  userId?: string;
 }
 
-// --- Token Management ---
+export interface VipStatusResponse {
+  isVip: boolean;
+  tier: string;
+  expiresAt: string | null;
+}
 
-let plusSocket: Socket | null = null;
+export interface ParticipateInternalTestDto {
+  vipStartsAt: string;
+  vipEndsAt: string;
+}
 
-export const getPlusSocket = (): Socket => {
-  if (!plusSocket) {
-    plusSocket = io(PLUS_WS_BASE_URL, {
-      transports: ["websocket"],
-    });
-  }
-  return plusSocket;
-};
+export interface ParticipateInternalTestResponse {
+  ok: true;
+  id: string;
+  batchId: string;
+  code: string;
+  vipTier: string;
+  vipStartsAt: string;
+  vipEndsAt: string;
+  usedAt: string | null;
+  usedByUserId: string | null;
+  createdAt: string;
+}
 
-export const setPlusToken = async (token: string) => {
-  await AsyncStorage.setItem("bookdock_plus_token", token);
-};
+export interface DeletePlusMeResponse {
+  ok: boolean;
+  userId: string;
+  deletedAt: string;
+}
 
-export const getPlusToken = async (): Promise<string | null> => {
-  return AsyncStorage.getItem("bookdock_plus_token");
-};
-
-export const removePlusToken = async () => {
-  await AsyncStorage.removeItem("bookdock_plus_token");
-};
+export interface ISuccessResponse<T> {
+  code: number;
+  message: string;
+  data: T;
+}
 
 // --- API Functions ---
 
-async function plusFetch<T>(endpoint: string, options: RequestInit = {}): Promise<ISuccessResponse<T>> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(options.headers as Record<string, string> || {}),
-  };
-
-  const token = await getPlusToken();
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  const response = await fetch(`${PLUS_API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
-
-  const data = await response.json();
-  return data;
-}
-
-export const plusSendCode = async (data: { phone: string }) => {
-  return plusFetch("/auth/send-code", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
+/**
+ * AuthController_sendCode: Send login code to phone
+ */
+export const plusSendCode = async (data: SendCodeDto) => {
+  return plusRequest.post<ISuccessResponse<any>>('/auth/send-code', data);
 };
 
-export const plusLogin = async (data: { phone: string; code: string }) => {
-  return plusFetch<{ token: string; userId: string }>("/auth/login", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
+/**
+ * AuthController_login: Login with phone and code
+ */
+export const plusLogin = async (data: LoginDto) => {
+  return plusRequest.post<ISuccessResponse<{ token: string; userId: string }>>('/auth/login', data);
 };
 
+/**
+ * UserController_getMe: Get current user profile
+ */
 export const plusGetMe = async (userId: string) => {
-  return plusFetch(`/users/me?userId=${encodeURIComponent(userId)}`);
+  return plusRequest.get<ISuccessResponse<any>>('/users/me', { params: { userId } });
 };
 
+/**
+ * VipController_status: Get VIP status
+ */
 export const plusGetVipStatus = async (userId: string) => {
-  return plusFetch<{ isVip: boolean; tier: string; expiresAt: string | null }>(
-    `/vip/status?userId=${encodeURIComponent(userId)}`
+  return plusRequest.get<ISuccessResponse<VipStatusResponse>>('/vip/status', { params: { userId } });
+};
+
+// --- Scan Login API ---
+
+export const createScanLoginSession = async () => {
+  return plusRequest.post<ISuccessResponse<ScanLoginSession>>('/auth/scan-login');
+};
+
+export const getScanLoginSession = async (sessionId: string) => {
+  return plusRequest.get<ISuccessResponse<ScanLoginSession>>(`/auth/scan-login/${sessionId}`);
+};
+
+export const claimScanLoginSession = async (sessionId: string, payload: ScanLoginClaimPayload) => {
+  return plusRequest.post<ISuccessResponse<ScanLoginSession>>(`/auth/scan-login/${sessionId}/claim`, payload);
+};
+
+export const confirmScanLoginSession = async (sessionId: string) => {
+  return plusRequest.post<ISuccessResponse<ScanLoginConfirmResult>>(`/auth/scan-login/${sessionId}/confirm`);
+};
+
+export const consumeScanLoginSession = async (sessionId: string) => {
+  return plusRequest.post<ISuccessResponse<ScanLoginSession>>(`/auth/scan-login/${sessionId}/consume`);
+};
+
+export const reportScanLoginResult = async (sessionId: string, result: { success: boolean; token?: string; userId?: string }) => {
+  return plusRequest.post<ISuccessResponse<any>>(`/auth/scan-login/${sessionId}/result`, result);
+};
+
+export const subscribeScanLoginSession = (sessionId: string, onUpdate: (session: ScanLoginSession) => void) => {
+  // 轮询实现
+  const interval = setInterval(async () => {
+    try {
+      const res = await getScanLoginSession(sessionId);
+      if (res.data?.data) {
+        onUpdate(res.data.data);
+        if (['CONSUMED', 'EXPIRED'].includes(res.data.data.status)) {
+          clearInterval(interval);
+        }
+      }
+    } catch {
+      clearInterval(interval);
+    }
+  }, 2000);
+
+  return () => clearInterval(interval);
+};
+
+export const reportScanLoginResultViaSocket = async (sessionId: string, result: { success: boolean; token?: string; userId?: string }) => {
+  return plusRequest.post<ISuccessResponse<any>>(`/auth/scan-login/${sessionId}/result`, result);
+};
+
+/**
+ * 参与内测 - 直接获取内测资格
+ */
+export const participateInternalTest = async (
+  data: ParticipateInternalTestDto,
+) => {
+  return plusRequest.post<ISuccessResponse<ParticipateInternalTestResponse>>(
+    '/users/internal-test-codes/participate',
+    data,
   );
 };
 
-export const plusCreateVipPayment = async (data: CreatePaymentDto) => {
-  return plusFetch<CreatePaymentResult>("/payment/create", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-export const plusQueryPaymentStatus = async (orderId: string) => {
-  return plusFetch<PaymentStatusResult>(`/payment/status?orderId=${encodeURIComponent(orderId)}`);
-};
-
-export const plusCancelOrder = async (orderId: string) => {
-  return plusFetch(`/payment/cancel`, {
-    method: "POST",
-    body: JSON.stringify({ orderId }),
-  });
-};
-
-export const plusGetCurrentLowestPrice = async () => {
-  return plusFetch<{ annual?: number; lifetime?: number; annualPrice?: number; lifetimePrice?: number }>("/vip/current-lowest-price");
-};
-
-export interface PlusCoupon {
-  id: string;
-  code: string;
-  discountPercent: number;
-  expiresAt?: string;
-}
-
-export const plusGetMyCoupons = async () => {
-  return plusFetch<PlusCoupon[]>("/coupons/mine");
-};
-
-export const plusVerifyCoupon = async (code: string, userId: string) => {
-  return plusFetch<{ valid: boolean; discountPercent?: number; message?: string }>("/coupons/verify", {
-    method: "POST",
-    body: JSON.stringify({ code, userId }),
-  });
-};
-
-// --- Scan Login APIs ---
-
-export const createScanLoginSession = async (data: {
-  role: "scanner" | "target";
-  deviceKind: "mobile" | "desktop";
-}) => {
-  return plusFetch<ScanLoginSession>("/scan-login/session", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-export const getScanLoginSession = async (sessionId: string, secret: string) => {
-  return plusFetch<ScanLoginSessionStatus>(
-    `/scan-login/session/${sessionId}?secret=${encodeURIComponent(secret)}`
-  );
-};
-
-export const claimScanLoginSession = async (
-  sessionId: string,
-  data: { secret: string; payload: ScanLoginClaimPayload },
-) => {
-  return plusFetch<ScanLoginSessionStatus>(`/scan-login/session/${sessionId}/claim`, {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-export const confirmScanLoginSession = async (
-  sessionId: string,
-  data: { secret: string; selections?: { type: string; configIds: string[] }[] },
-) => {
-  return plusFetch<ScanLoginSessionStatus>(`/scan-login/session/${sessionId}/confirm`, {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-export const consumeScanLoginSession = async (
-  sessionId: string,
-  data: { secret: string; selections?: { type: string; configIds: string[] }[] },
-) => {
-  return plusFetch<ScanLoginConfirmResult>(`/scan-login/session/${sessionId}/consume`, {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-export const reportScanLoginResult = async (
-  sessionId: string,
-  data: { secret: string; success: boolean; error?: string },
-) => {
-  return plusFetch(`/scan-login/session/${sessionId}/report`, {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-};
-
-export const subscribeScanLoginSession = (
-  sessionId: string,
-  secret: string,
-  listener: (status: ScanLoginSessionStatus) => void,
-) => {
-  const socket = getPlusSocket();
-  const eventName = `scan_login_session_update:${sessionId}`;
-  const reportEventName = "scan_login_report_result";
-
-  const handleUpdate = (payload: {
-    sessionId: string;
-    secret?: string;
-    status: ScanLoginSessionStatus;
-  }) => {
-    if (payload?.sessionId !== sessionId) return;
-    if (payload?.secret && payload.secret !== secret) return;
-    listener(payload.status);
-  };
-
-  const handleReport = (payload: {
-    sessionId: string;
-    secret?: string;
-    success: boolean;
-    error?: string;
-  }) => {
-    if (payload?.sessionId !== sessionId) return;
-    if (payload?.secret && payload.secret !== secret) return;
-    listener({ status: payload.success ? "success" : "failed", sessionId } as any);
-  };
-
-  socket.on(eventName, handleUpdate);
-  socket.on(reportEventName, handleReport);
-  socket.emit("scan_login_watch", { sessionId, secret });
-
-  return () => {
-    socket.off(eventName, handleUpdate);
-    socket.off(reportEventName, handleReport);
-  };
-};
-
-export const reportScanLoginResultViaSocket = (
-  sessionId: string,
-  secret: string,
-  success: boolean,
-  error?: string,
-) => {
-  const socket = getPlusSocket();
-  socket.emit("scan_login_report_result", { sessionId, secret, success, error });
+/**
+ * 删除当前会员账户
+ */
+export const deletePlusMe = async () => {
+  return plusRequest.delete<ISuccessResponse<DeletePlusMeResponse>>('/users/me');
 };
