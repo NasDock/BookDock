@@ -113,7 +113,7 @@ export default function Recommend() {
   return (
     <div className="space-y-10">
       {/* Header */}
-      <div className="flex items-center gap-3">
+      <div className="hidden md:flex items-center gap-3">
         <Sparkles className="w-6 h-6 text-amber-500" />
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
           推荐

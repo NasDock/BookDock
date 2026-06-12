@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { getApiClient, Book, Collection } from "@bookdock/api-client";
 import { useAuthStore } from "../stores/authStore";
 import { getCoverImageUrl } from "../utils/network";
@@ -17,6 +17,11 @@ import {
   Search,
   Clock,
   User,
+  Settings,
+  Crown,
+  RefreshCw,
+  Shield,
+  LogOut,
 } from "lucide-react";
 
 function formatDate(dateStr: string): string {
@@ -53,7 +58,7 @@ type TabKey = "collections" | "reading" | "favorites" | "downloads" | "notes";
 
 export default function Profile() {
   const navigate = useNavigate();
-  const { user } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const [activeTab, setActiveTab] = useState<TabKey>("collections");
   const [collections, setCollections] = useState<Collection[]>([]);
   const [favorites, setFavorites] = useState<Book[]>([]);
@@ -67,6 +72,21 @@ export default function Profile() {
   const noteLimit = 20;
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    if (showDropdown) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showDropdown]);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -442,14 +462,69 @@ export default function Profile() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">我的</h1>
+        <div className="flex items-center gap-2">
+          <div className="relative md:hidden" ref={dropdownRef}>
+            <button
+              onClick={() => setShowDropdown(!showDropdown)}
+              className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+            {showDropdown && (
+              <div className="absolute left-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 z-50 py-1">
+                <button
+                  onClick={() => { setShowCreateModal(true); setShowDropdown(false); }}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>新建书单</span>
+                </button>
+                <Link
+                  to="/membership"
+                  onClick={() => setShowDropdown(false)}
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <Crown className="w-4 h-4" />
+                  <span>会员中心</span>
+                </Link>
+                <Link
+                  to="/notes"
+                  onClick={() => setShowDropdown(false)}
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <StickyNote className="w-4 h-4" />
+                  <span>笔记</span>
+                </Link>
+                {user?.role === "admin" && (
+                  <Link
+                    to="/admin"
+                    onClick={() => setShowDropdown(false)}
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <Shield className="w-4 h-4" />
+                    <span>后台管理</span>
+                  </Link>
+                )}
+                <div className="mx-3 my-1 border-t border-gray-100 dark:border-gray-700" />
+                <button
+                  onClick={() => { logout(); setShowDropdown(false); }}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>退出登录</span>
+                </button>
+              </div>
+            )}
+          </div>
+          <h1 className="hidden md:block text-3xl font-bold text-gray-900 dark:text-white">我的</h1>
+        </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1 px-3 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors"
+            onClick={() => navigate("/settings")}
+            className="md:hidden p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            title="设置"
           >
-            <Plus className="w-4 h-4" />
-            新建书单
+            <Settings className="w-5 h-5" />
           </button>
         </div>
       </div>
