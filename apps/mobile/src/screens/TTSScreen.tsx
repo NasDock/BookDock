@@ -113,7 +113,6 @@ export function TTSScreen() {
   );
   const [showSettings, setShowSettings] = useState(false);
   const [showChapterPicker, setShowChapterPicker] = useState(false);
-  const [showSleepTimer, setShowSleepTimer] = useState(false);
   const [sleepMinutes, setSleepMinutes] = useState(0);
   const [sleepRemaining, setSleepRemaining] = useState(0);
 
@@ -602,7 +601,7 @@ export function TTSScreen() {
 
   const handleSleepTimerSet = useCallback((minutes: number) => {
     setSleepMinutes(minutes);
-    setShowSleepTimer(false);
+    setShowSettings(false);
     if (minutes === 0) {
       Alert.alert("睡眠定时", "已取消睡眠定时");
     } else {
@@ -669,15 +668,15 @@ export function TTSScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerButton}>
+          <TouchableOpacity onPress={handleMinimize} style={styles.headerButton}>
             <Ionicons name="chevron-down" size={28} color={theme.colors.text} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle} numberOfLines={1}>正在朗读</Text>
             <Text style={styles.headerSubtitle} numberOfLines={1}>{book.title}</Text>
           </View>
-          <TouchableOpacity style={styles.headerButton} onPress={handleMinimize}>
-            <Ionicons name="chevron-down-outline" size={24} color={theme.colors.text} />
+          <TouchableOpacity style={styles.headerButton} onPress={() => setShowSettings(true)}>
+            <Ionicons name="ellipsis-vertical" size={22} color={theme.colors.text} />
           </TouchableOpacity>
         </View>
 
@@ -726,29 +725,8 @@ export function TTSScreen() {
             </View>
           </View>
 
-          {/* Playback Controls - compact row like desktop */}
+          {/* Playback Controls - compact row */}
           <View style={styles.controlsRow}>
-            {/* Settings */}
-            <TouchableOpacity
-              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
-              onPress={() => setShowSettings(!showSettings)}
-            >
-              <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
-            </TouchableOpacity>
-
-            {/* Speed */}
-            <TouchableOpacity
-              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
-              onPress={() => setShowSettings(!showSettings)}
-            >
-              <Ionicons name="speedometer-outline" size={20} color={theme.colors.text} />
-              {ttsStore.playbackRate !== 1.0 && (
-                <View style={[styles.badge, { backgroundColor: theme.colors.primary }]}>
-                  <Text style={styles.badgeText}>{ttsStore.playbackRate.toFixed(1)}x</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-
             {/* Skip back */}
             <TouchableOpacity
               style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
@@ -790,155 +768,7 @@ export function TTSScreen() {
               <Ionicons name="book-outline" size={20} color={theme.colors.text} />
             </TouchableOpacity>
 
-            {/* Sleep timer */}
-            <TouchableOpacity
-              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
-              onPress={() => setShowSleepTimer(true)}
-            >
-              <Ionicons name="moon-outline" size={20} color={theme.colors.text} />
-              {sleepMinutes > 0 && (
-                <View style={[styles.badge, { backgroundColor: theme.colors.warning }]}>
-                  <Text style={styles.badgeText}>{Math.floor(sleepRemaining / 60)}m</Text>
-                </View>
-              )}
-            </TouchableOpacity>
           </View>
-
-          {/* Settings Panel */}
-          {showSettings && (
-            <View style={[styles.settingsPanel, { backgroundColor: theme.colors.surface }]}>
-              <Text style={styles.settingsTitle}>朗读设置</Text>
-
-              <Text style={styles.settingsLabel}>服务商</Text>
-              <View style={styles.chipRow}>
-                {providers.map((p) => {
-                  const active = provider === p.name;
-                  return (
-                    <TouchableOpacity
-                      key={p.name}
-                      disabled={!p.enabled}
-                      onPress={() => setProvider(p.name)}
-                      style={[
-                        styles.chip,
-                        {
-                          backgroundColor: active
-                            ? theme.colors.primary
-                            : theme.colors.background,
-                          opacity: p.enabled ? 1 : 0.4,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.chipText,
-                          { color: active ? '#fff' : theme.colors.text },
-                        ]}
-                      >
-                        {providerLabel(p.name)}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <Text style={styles.settingsLabel}>语音</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                {voices.map((v) => {
-                  const active = voiceId === v.id;
-                  return (
-                    <TouchableOpacity
-                      key={v.id}
-                      onPress={() => {
-                        setVoiceId(v.id);
-                        ttsStore.setSelectedVoice(v);
-                      }}
-                      style={[
-                        styles.chip,
-                        {
-                          backgroundColor: active
-                            ? theme.colors.primary
-                            : theme.colors.background,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.chipText,
-                          { color: active ? '#fff' : theme.colors.text },
-                        ]}
-                      >
-                        {v.name}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-
-              <Text style={styles.settingsLabel}>语速 {ttsStore.playbackRate.toFixed(1)}x</Text>
-              <View style={styles.chipRow}>
-                {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((r) => (
-                  <TouchableOpacity
-                    key={r}
-                    onPress={() => handleRateChange(r)}
-                    style={[
-                      styles.chip,
-                      {
-                        backgroundColor:
-                          ttsStore.playbackRate === r
-                            ? theme.colors.primary
-                            : theme.colors.background,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        {
-                          color:
-                            ttsStore.playbackRate === r ? '#fff' : theme.colors.text,
-                        },
-                      ]}
-                    >
-                      {r}x
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <Text style={styles.settingsLabel}>音量 {Math.round(ttsStore.volume * 100)}%</Text>
-              <View style={styles.chipRow}>
-                {[0, 0.25, 0.5, 0.75, 1.0].map((v) => (
-                  <TouchableOpacity
-                    key={v}
-                    onPress={() => handleVolumeChange(v)}
-                    style={[
-                      styles.chip,
-                      {
-                        backgroundColor:
-                          Math.abs(ttsStore.volume - v) < 0.01
-                            ? theme.colors.primary
-                            : theme.colors.background,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        {
-                          color:
-                            Math.abs(ttsStore.volume - v) < 0.01
-                              ? '#fff'
-                              : theme.colors.text,
-                        },
-                      ]}
-                    >
-                      {Math.round(v * 100)}%
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          )}
 
           {/* Book description */}
           {book.description && (
@@ -991,36 +821,112 @@ export function TTSScreen() {
           </View>
         )}
 
-        {/* Sleep Timer Modal */}
-        {showSleepTimer && (
+        {/* Settings Bottom Sheet */}
+        {showSettings && (
           <View style={styles.modalOverlay}>
-            <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowSleepTimer(false)} />
+            <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowSettings(false)} />
             <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
-              <Text style={styles.modalTitle}>睡眠定时</Text>
-              <View style={styles.sleepOptions}>
-                {[0, 5, 10, 15, 30, 45, 60].map((minutes) => (
-                  <TouchableOpacity
-                    key={minutes}
-                    style={[
-                      styles.sleepOption,
-                      sleepMinutes === minutes && { backgroundColor: theme.colors.primary },
-                    ]}
-                    onPress={() => handleSleepTimerSet(minutes)}
-                  >
-                    <Text
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>播放设置</Text>
+                <TouchableOpacity onPress={() => setShowSettings(false)}>
+                  <Ionicons name="close" size={24} color={theme.colors.text} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView>
+                {/* Voice section */}
+                <Text style={styles.settingsLabel}>音色</Text>
+                <View style={styles.chipRow}>
+                  {providers.map((p) => {
+                    const active = provider === p.name;
+                    return (
+                      <TouchableOpacity
+                        key={p.name}
+                        disabled={!p.enabled}
+                        onPress={() => setProvider(p.name)}
+                        style={[
+                          styles.chip,
+                          {
+                            backgroundColor: active ? theme.colors.primary : theme.colors.background,
+                            opacity: p.enabled ? 1 : 0.4,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.chipText, { color: active ? '#fff' : theme.colors.text }]}>
+                          {providerLabel(p.name)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                  {voices.map((v) => {
+                    const active = voiceId === v.id;
+                    return (
+                      <TouchableOpacity
+                        key={v.id}
+                        onPress={() => {
+                          setVoiceId(v.id);
+                          ttsStore.setSelectedVoice(v);
+                        }}
+                        style={[
+                          styles.chip,
+                          { backgroundColor: active ? theme.colors.primary : theme.colors.background },
+                        ]}
+                      >
+                        <Text style={[styles.chipText, { color: active ? '#fff' : theme.colors.text }]}>
+                          {v.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                {/* Speed section */}
+                <Text style={styles.settingsLabel}>倍速</Text>
+                <View style={styles.chipRow}>
+                  {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((r) => (
+                    <TouchableOpacity
+                      key={r}
+                      onPress={() => handleRateChange(r)}
                       style={[
-                        styles.sleepOptionText,
-                        sleepMinutes === minutes && { color: '#fff' },
+                        styles.chip,
+                        {
+                          backgroundColor: ttsStore.playbackRate === r ? theme.colors.primary : theme.colors.background,
+                        },
                       ]}
                     >
-                      {minutes === 0 ? '关闭' : `${minutes} 分钟`}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+                      <Text style={[styles.chipText, { color: ttsStore.playbackRate === r ? '#fff' : theme.colors.text }]}>
+                        {r}x
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Sleep timer section */}
+                <Text style={styles.settingsLabel}>定时关闭</Text>
+                <View style={styles.chipRow}>
+                  {[0, 5, 10, 15, 30, 45, 60].map((minutes) => (
+                    <TouchableOpacity
+                      key={minutes}
+                      onPress={() => handleSleepTimerSet(minutes)}
+                      style={[
+                        styles.chip,
+                        {
+                          backgroundColor: sleepMinutes === minutes ? theme.colors.primary : theme.colors.background,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.chipText, { color: sleepMinutes === minutes ? '#fff' : theme.colors.text }]}>
+                        {minutes === 0 ? '关闭' : `${minutes}分`}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
             </View>
           </View>
         )}
+
       </SafeAreaView>
     );
   }
@@ -1359,19 +1265,6 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     chapterListNumber: {
       color: theme.colors.textSecondary,
       fontSize: fontSizes.sm,
-    },
-    sleepOptions: {
-      gap: spacing.sm,
-    },
-    sleepOption: {
-      paddingVertical: spacing.md,
-      borderRadius: borderRadius.md,
-      backgroundColor: theme.colors.background,
-      alignItems: 'center',
-    },
-    sleepOptionText: {
-      fontSize: fontSizes.md,
-      color: theme.colors.text,
     },
   });
 }

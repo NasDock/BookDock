@@ -98,7 +98,7 @@ export function RootNavigator() {
             <Stack.Screen
               name="TTSScreen"
               component={TTSScreen}
-              options={{ headerShown: false }}
+              options={{ headerShown: false, animation: 'slide_from_bottom' }}
             />
             <Stack.Screen
               name="Settings"
