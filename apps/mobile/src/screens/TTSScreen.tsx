@@ -101,6 +101,7 @@ export function TTSScreen() {
   const [chapters, setChapters] = useState<{ title: string; index: number }[]>(
     [],
   );
+  const chaptersRef = useRef<{ title: string; index: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -127,10 +128,9 @@ export function TTSScreen() {
   const playbackState = usePlaybackState();
   const progress = useProgress();
 
-  const currentState = playbackState?.state;
-  const isPlaying = currentState === State.Playing;
-  const isPaused = currentState === State.Paused;
-  const isLoadingAudio = currentState === State.Loading || currentState === State.Buffering;
+  const isPlaying = playbackState === State.Playing;
+  const isPaused = playbackState === State.Paused;
+  const isLoadingAudio = playbackState === State.Loading || playbackState === State.Buffering;
 
   const [currentParagraph, setCurrentParagraph] = useState(0);
   const [paragraphProgress, setParagraphProgress] = useState(0);
@@ -222,6 +222,7 @@ export function TTSScreen() {
           return;
         }
         setChapters(chRes.data);
+        chaptersRef.current = chRes.data;
 
         // Load first chapter (loadChapter will skip empty ones)
         console.log('[TTSScreen] Loading chapter 0, voice:', vs[0]?.id || voiceId, 'provider:', finalProvider);
@@ -295,14 +296,14 @@ export function TTSScreen() {
       } else {
         // Chapter ended, try next chapter
         const nextChapter = chapterIndex + 1;
-        if (nextChapter < chapters.length) {
+        if (nextChapter < chaptersRef.current.length) {
           await loadChapter(nextChapter, voiceId, provider);
           await playParagraph(0);
         }
       }
     });
     return () => sub.remove();
-  }, [currentParagraph, paragraphs.length, chapterIndex, chapters.length, voiceId, provider]);
+  }, [currentParagraph, paragraphs.length, chapterIndex, voiceId, provider]);
 
   // ── TrackPlayer event: active track changed → update current paragraph ─
   useEffect(() => {
@@ -333,7 +334,7 @@ export function TTSScreen() {
       // If chapter has no paragraphs, try next chapter
       if (!pRes.data.paragraphs || pRes.data.paragraphs.length === 0) {
         const nextChapter = ci + 1;
-        if (nextChapter < chapters.length) {
+        if (nextChapter < chaptersRef.current.length) {
           console.log('[TTSScreen] Chapter empty, trying next:', nextChapter);
           return loadChapter(nextChapter, vid, prov);
         } else {
@@ -573,7 +574,6 @@ export function TTSScreen() {
   }, [isPaused, isPlaying, paragraphs.length, playParagraph, currentParagraph, ttsStore, persistProgress, progress.position]);
 
   const handleStop = useCallback(async () => {
-    await TrackPlayer.stop();
     await TrackPlayer.reset();
     ttsStore.setState("idle");
     setCurrentParagraph(0);
@@ -606,12 +606,21 @@ export function TTSScreen() {
 
   const handleChapterChange = useCallback(
     async (ci: number) => {
-      if (ci === chapterIndex) return;
-      await TrackPlayer.stop();
-      await TrackPlayer.reset();
-      ttsStore.setState("idle");
-      await loadChapter(ci, voiceId, provider);
-      setShowChapterPicker(false);
+      console.log('[TTSScreen] handleChapterChange called, ci:', ci, 'chapterIndex:', chapterIndex);
+      if (ci === chapterIndex) {
+        console.log('[TTSScreen] Same chapter, skipping');
+        return;
+      }
+      try {
+        await TrackPlayer.reset();
+        ttsStore.setState("idle");
+        console.log('[TTSScreen] Loading chapter:', ci);
+        await loadChapter(ci, voiceId, provider);
+        console.log('[TTSScreen] Chapter loaded, closing picker');
+        setShowChapterPicker(false);
+      } catch (e) {
+        console.error('[TTSScreen] handleChapterChange error:', e);
+      }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [chapterIndex, voiceId, provider],

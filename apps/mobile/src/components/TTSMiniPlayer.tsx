@@ -27,8 +27,8 @@ export function TTSMiniPlayer() {
   const playbackState = usePlaybackState();
   const progress = useProgress();
 
-  const isPlaying = playbackState.state === State.Playing;
-  const isPaused = playbackState.state === State.Paused;
+  const isPlaying = playbackState === State.Playing;
+  const isPaused = playbackState === State.Paused;
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
@@ -54,7 +54,6 @@ export function TTSMiniPlayer() {
   }, [navigation, ttsStore]);
 
   const handleClose = useCallback(async () => {
-    await TrackPlayer.stop();
     await TrackPlayer.reset();
     ttsStore.setState('idle');
     ttsStore.setMiniPlayerVisible(false);
