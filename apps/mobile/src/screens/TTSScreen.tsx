@@ -21,6 +21,7 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  Image,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -36,6 +37,7 @@ import TrackPlayer, {
   useProgress,
 } from "react-native-track-player";
 import type { RootStackParamList } from "../navigation/types";
+import { getCoverImageUrl } from "../services/api";
 import { useThemeStore, useTTSStore } from "../stores";
 import { borderRadius, fontSizes, getTheme, spacing } from "../utils/theme";
 
@@ -689,7 +691,15 @@ export function TTSScreen() {
             activeOpacity={0.9}
           >
             <View style={[styles.bookCoverLarge, { backgroundColor: theme.colors.surface }]}>
-              <Text style={styles.coverInitialLarge}>{book.title.charAt(0)}</Text>
+              {book.coverUrl ? (
+                <Image
+                  source={{ uri: getCoverImageUrl(book.coverUrl) }}
+                  style={styles.bookCoverImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={styles.coverInitialLarge}>{book.title.charAt(0)}</Text>
+              )}
             </View>
             {sleepMinutes > 0 && (
               <View style={[styles.sleepBadge, { backgroundColor: theme.colors.primary }]}>
@@ -805,7 +815,7 @@ export function TTSScreen() {
 
           {/* Book description */}
           {book.description && (
-            <View style={[styles.descriptionPanel, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.descriptionPanel}>
               <Text style={styles.settingsLabel}>简介</Text>
               <Text style={styles.descriptionText} numberOfLines={6}>
                 {book.description}
@@ -1127,6 +1137,11 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       shadowOpacity: 0.2,
       shadowRadius: 8,
       elevation: 8,
+      overflow: 'hidden',
+    },
+    bookCoverImage: {
+      width: '100%',
+      height: '100%',
     },
     coverInitialLarge: {
       fontSize: 52,
@@ -1266,8 +1281,6 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     // Description
     descriptionPanel: {
       width: '100%',
-      padding: spacing.md,
-      borderRadius: borderRadius.lg,
     },
     descriptionText: {
       fontSize: fontSizes.sm,
