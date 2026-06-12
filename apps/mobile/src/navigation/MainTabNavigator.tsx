@@ -1,9 +1,11 @@
 import type { JSX } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { View } from 'react-native';
 import { LibraryScreen } from '../screens/LibraryScreen';
 import { RecommendScreen } from '../screens/RecommendScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
+import { TTSMiniPlayer } from '../components/TTSMiniPlayer';
 import { useThemeStore } from '../stores';
 import { getTheme } from '../utils/theme';
 import type { MainTabParamList } from './types';
@@ -15,23 +17,24 @@ export function MainTabNavigator() {
   const theme = getTheme(actualTheme === 'dark');
 
   return (
-    <Tab.Navigator
-      screenOptions={{
-        tabBarActiveTintColor: theme.colors.primary,
-        tabBarInactiveTintColor: theme.colors.textSecondary,
-        tabBarStyle: {
-          backgroundColor: theme.colors.background,
-          borderTopColor: theme.colors.border,
-        },
-        headerStyle: {
-          backgroundColor: theme.colors.background,
-        },
-        headerTintColor: theme.colors.text,
-        headerTitleStyle: {
-          fontWeight: '600',
-        },
-      }}
-    >
+    <View style={{ flex: 1 }}>
+      <Tab.Navigator
+        screenOptions={{
+          tabBarActiveTintColor: theme.colors.primary,
+          tabBarInactiveTintColor: theme.colors.textSecondary,
+          tabBarStyle: {
+            backgroundColor: theme.colors.background,
+            borderTopColor: theme.colors.border,
+          },
+          headerStyle: {
+            backgroundColor: theme.colors.background,
+          },
+          headerTintColor: theme.colors.text,
+          headerTitleStyle: {
+            fontWeight: '600',
+          },
+        }}
+      >
       <Tab.Screen
         name="Recommend"
         component={RecommendScreen}
@@ -65,6 +68,8 @@ export function MainTabNavigator() {
           headerTitle: '',
         }}
       />
-    </Tab.Navigator>
+      </Tab.Navigator>
+      <TTSMiniPlayer />
+    </View>
   );
 }

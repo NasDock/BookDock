@@ -3,6 +3,8 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useColorScheme } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Font from 'expo-font';
+import { Ionicons } from '@expo/vector-icons';
 import { RootNavigator } from './navigation';
 import { useAuthStore, useThemeStore } from './stores';
 import { notificationService } from './services';
@@ -31,6 +33,9 @@ export default function App() {
     const initApp = async () => {
       try {
         setLoading(true);
+
+        // Preload icon fonts to prevent glyph map null errors
+        await Font.loadAsync(Ionicons.font);
 
         // Auto-select best server address
         const bestAddress = await autoSelectServer();

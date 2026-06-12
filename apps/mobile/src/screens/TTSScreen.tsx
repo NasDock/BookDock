@@ -1,16 +1,13 @@
 /**
- * Mobile TTS Screen — paragraph-by-paragraph audio reading.
+ * TTSScreen — Mobile TTS audiobook reader with background playback.
  *
- *  - Loads paragraphs via /books/:id/paragraphs?chapter=N
- *  - Synthesises one paragraph at a time, plays it through expo-av,
- *    auto-advances to the next paragraph on completion
- *  - Real-time paragraph highlight (active paragraph gets a tinted
- *    background and font-weight bump)
- *  - Click any paragraph to jump there
- *  - Provider / voice / rate / volume can be tweaked locally for this
- *    page; defaults are loaded from ttsStore (set in Settings)
- *  - Reading position is saved to /tts/progress on each paragraph change
+ *  - Paragraph-by-paragraph audio reading via react-native-track-player
+ *  - Two view modes: "controls" (cover + playback controls) and "content" (paragraph list)
+ *  - Tap cover to toggle between modes (like music player cover/lyrics switch)
+ *  - Background playback with notification controls
+ *  - Mini player mode triggered by down-arrow in header
  */
+
 import {
   getApiClient,
   Paragraph,
@@ -19,12 +16,12 @@ import {
 } from "@bookdock/api-client";
 import { Ionicons } from "@expo/vector-icons";
 import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
-import { Audio } from "expo-av";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   AppState,
+  Image,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -32,23 +29,28 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import TrackPlayer, {
+  Capability,
+  Event,
+  State,
+  usePlaybackState,
+  useProgress,
+} from "react-native-track-player";
 import type { RootStackParamList } from "../navigation/types";
+import { getCoverImageUrl } from "../services/api";
 import { useThemeStore, useTTSStore } from "../stores";
 import { borderRadius, fontSizes, getTheme, spacing } from "../utils/theme";
 
 type TTSScreenRouteProp = RouteProp<RootStackParamList, "TTSScreen">;
 
 const providerLabel = (name: string) => {
-  if (name === "edge") return "Microsoft Edge TTS";
-  if (name === "mi") return "小米 TTS";
+  if (name === "edge") return "Edge";
+  if (name === "mi") return "小米";
   return name;
 };
 
-/**
- * Split a paragraph into ≤ maxLen-character chunks. Breaks on sentence
- * boundaries (CJK + Western), then hard-cuts at whitespace as a
- * last resort. Mirrors the helper in @bookdock/tts.
- */
+const TTS_CHUNK_MAX = 2500;
+
 function splitForTts(text: string, maxLen: number): string[] {
   if (!text) return [];
   if (text.length <= maxLen) return [text];
@@ -83,8 +85,6 @@ function splitForTts(text: string, maxLen: number): string[] {
   return out;
 }
 
-const TTS_CHUNK_MAX = 2500;
-
 export function TTSScreen() {
   const navigation = useNavigation();
   const route = useRoute<TTSScreenRouteProp>();
@@ -114,21 +114,71 @@ export function TTSScreen() {
     ttsStore.selectedVoice?.id || "",
   );
   const [showSettings, setShowSettings] = useState(false);
+  const [showChapterPicker, setShowChapterPicker] = useState(false);
+  const [showSpeedPicker, setShowSpeedPicker] = useState(false);
+  const [showTimerPicker, setShowTimerPicker] = useState(false);
+  const [sleepMinutes, setSleepMinutes] = useState(0);
+  const [sleepRemaining, setSleepRemaining] = useState(0);
 
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-  const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+  // View mode: 'controls' = cover + controls, 'content' = paragraph list
+  const [viewMode, setViewMode] = useState<'controls' | 'content'>('controls');
+
+  // RNTP progress
+  const playbackState = usePlaybackState();
+  const progress = useProgress();
+
+  const currentState = playbackState?.state;
+  const isPlaying = currentState === State.Playing;
+  const isPaused = currentState === State.Paused;
+  const isLoadingAudio = currentState === State.Loading || currentState === State.Buffering;
+
   const [currentParagraph, setCurrentParagraph] = useState(0);
-  const [paragraphProgress, setParagraphProgress] = useState(0); // 0..1 within the current paragraph
-  /** ms offset within the saved paragraph to resume at, populated
-   *  by loadChapter() and consumed on the next play. */
+  const [paragraphProgress, setParagraphProgress] = useState(0);
   const [resumeOffsetMs, setResumeOffsetMs] = useState(0);
 
-  const soundRef = useRef<Audio.Sound | null>(null);
-  const prefetchedRef = useRef<Map<string, string>>(new Map()); // paragraphId → audio URI
+  const prefetchedRef = useRef<Map<string, string>>(new Map());
   const cancelledRef = useRef(false);
+  const sleepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const styles = useMemo(() => createStyles(theme), [theme]);
+
+  // ── Setup TrackPlayer on mount ───────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await TrackPlayer.setupPlayer({
+          autoHandleInterruptions: true,
+        });
+        await TrackPlayer.updateOptions({
+          capabilities: [
+            Capability.Play,
+            Capability.Pause,
+            Capability.SkipToNext,
+            Capability.SkipToPrevious,
+            Capability.SeekTo,
+            Capability.JumpForward,
+            Capability.JumpBackward,
+          ],
+          compactCapabilities: [
+            Capability.Play,
+            Capability.Pause,
+            Capability.SkipToNext,
+            Capability.SkipToPrevious,
+          ],
+          progressUpdateEventInterval: 1,
+        });
+        // Reset player to clear any stuck loading/buffering state
+        await TrackPlayer.reset();
+      } catch (e) {
+        // Player may already be set up, try reset anyway
+        try { await TrackPlayer.reset(); } catch {}
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ── Load providers + voices + chapter content ──────────────────────
   useEffect(() => {
@@ -138,38 +188,46 @@ export function TTSScreen() {
       setLoadError(null);
       try {
         const apiClient = getApiClient();
+        console.log('[TTSScreen] Starting load, book.id:', book.id);
 
         // Providers
         const provRes = await apiClient.getTtsProviders();
+        console.log('[TTSScreen] Providers response:', JSON.stringify(provRes));
         if (cancelled) return;
         const ps = (provRes.success && provRes.data?.providers) || [];
         setProviders(ps);
-        // Default to a known-enabled provider if the stored one isn't in the list
         const enabledNames = ps.filter((p) => p.enabled).map((p) => p.name);
         const finalProvider = enabledNames.includes(provider)
           ? provider
           : enabledNames[0] || "edge";
+        console.log('[TTSScreen] Final provider:', finalProvider);
         if (finalProvider !== provider) setProvider(finalProvider);
 
         // Voices
         const vRes = await apiClient.getVoices(finalProvider);
+        console.log('[TTSScreen] Voices response:', JSON.stringify(vRes));
         if (cancelled) return;
         const vs = (vRes.success && vRes.data) || [];
         setVoices(vs);
         if (!voiceId && vs[0]) setVoiceId(vs[0].id);
 
         // Chapters
+        console.log('[TTSScreen] Loading chapters for book:', book.id);
         const chRes = await apiClient.getChapters(book.id);
+        console.log('[TTSScreen] Chapters response:', JSON.stringify(chRes));
         if (cancelled) return;
         if (!chRes.success || !chRes.data || chRes.data.length === 0) {
+          console.log('[TTSScreen] No chapters found');
           setLoadError("本书暂无章节内容，请先解析章节。");
           return;
         }
         setChapters(chRes.data);
 
-        // Load first chapter paragraphs
+        // Load first chapter (loadChapter will skip empty ones)
+        console.log('[TTSScreen] Loading chapter 0, voice:', vs[0]?.id || voiceId, 'provider:', finalProvider);
         await loadChapter(0, vs[0]?.id || voiceId, finalProvider);
       } catch (e) {
+        console.error('[TTSScreen] Load error:', e);
         setLoadError((e as Error).message || "加载失败");
       } finally {
         if (!cancelled) setLoading(false);
@@ -177,7 +235,6 @@ export function TTSScreen() {
     })();
     return () => {
       cancelled = true;
-      cleanupAudio();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book.id]);
@@ -206,35 +263,106 @@ export function TTSScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [provider]);
 
+  // ── Sleep timer ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (sleepMinutes <= 0) {
+      setSleepRemaining(0);
+      return;
+    }
+    setSleepRemaining(sleepMinutes * 60);
+    sleepTimerRef.current = setInterval(() => {
+      setSleepRemaining((s) => {
+        if (s <= 1) {
+          TrackPlayer.pause();
+          setSleepMinutes(0);
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => {
+      if (sleepTimerRef.current) clearInterval(sleepTimerRef.current);
+    };
+  }, [sleepMinutes]);
+
+  // ── TrackPlayer event: track ended → auto advance ───────────────────
+  useEffect(() => {
+    const sub = TrackPlayer.addEventListener(Event.PlaybackQueueEnded, async () => {
+      console.log('[TTSScreen] Queue ended, auto-advancing paragraph');
+      const nextIdx = currentParagraph + 1;
+      if (nextIdx < paragraphs.length) {
+        await playParagraph(nextIdx);
+      } else {
+        // Chapter ended, try next chapter
+        const nextChapter = chapterIndex + 1;
+        if (nextChapter < chapters.length) {
+          await loadChapter(nextChapter, voiceId, provider);
+          await playParagraph(0);
+        }
+      }
+    });
+    return () => sub.remove();
+  }, [currentParagraph, paragraphs.length, chapterIndex, chapters.length, voiceId, provider]);
+
+  // ── TrackPlayer event: active track changed → update current paragraph ─
+  useEffect(() => {
+    const sub = TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, async (event) => {
+      if (event.index !== undefined) {
+        setCurrentParagraph(event.index);
+        ttsStore.setCurrentParagraph(event.index);
+      }
+    });
+    return () => sub.remove();
+  }, [ttsStore]);
+
   const loadChapter = async (ci: number, vid: string, prov: string) => {
+    console.log('[TTSScreen] loadChapter called, ci:', ci, 'vid:', vid, 'prov:', prov);
     setChapterIndex(ci);
     try {
       const apiClient = getApiClient();
+      console.log('[TTSScreen] Fetching paragraphs for book:', book.id, 'chapter:', ci);
       const pRes = await apiClient.getChapterParagraphs(book.id, ci);
+      console.log('[TTSScreen] Paragraphs response:', JSON.stringify(pRes).substring(0, 500));
       if (!pRes.success || !pRes.data) {
+        console.log('[TTSScreen] Failed to load paragraphs:', pRes);
         setLoadError("加载章节失败");
         return;
       }
+      console.log('[TTSScreen] Paragraphs loaded, count:', pRes.data.paragraphs?.length);
+
+      // If chapter has no paragraphs, try next chapter
+      if (!pRes.data.paragraphs || pRes.data.paragraphs.length === 0) {
+        const nextChapter = ci + 1;
+        if (nextChapter < chapters.length) {
+          console.log('[TTSScreen] Chapter empty, trying next:', nextChapter);
+          return loadChapter(nextChapter, vid, prov);
+        } else {
+          setLoadError("没有可朗读的内容");
+          return;
+        }
+      }
+
       setChapterTitle(pRes.data.title);
       setParagraphs(pRes.data.paragraphs);
       setCurrentParagraph(0);
       setParagraphProgress(0);
       setResumeOffsetMs(0);
       prefetchedRef.current.clear();
-      // Resume from saved cloud progress (cross-device sync)
+      ttsStore.setParagraphs(pRes.data.paragraphs);
+      ttsStore.setTotalParagraphs(pRes.data.paragraphs.length);
+      ttsStore.setChapterTitle(pRes.data.title);
+      ttsStore.setChapterIndex(ci);
+
+      // Resume from saved cloud progress
       try {
         const prog = await apiClient.getTtsProgress(book.id, ci);
         if (prog.success && prog.data && !Array.isArray(prog.data)) {
           const rec = prog.data;
-          // Apply saved voice/provider so the first synthesis uses them
           if (rec.provider) {
             setProvider(rec.provider);
             ttsStore.setSelectedProvider(rec.provider);
           }
-          if (rec.voice) {
-            setVoiceId(rec.voice);
-          }
-          // Stash the byte offset for the next play() call
+          if (rec.voice) setVoiceId(rec.voice);
           setResumeOffsetMs(Math.max(0, rec.audioOffsetMs || 0));
           setCurrentParagraph(
             Math.min(rec.paragraphIndex, pRes.data.paragraphs.length - 1),
@@ -243,24 +371,19 @@ export function TTSScreen() {
       } catch {
         /* ignore */
       }
-      // Save provider/voice in the store so the user only configures once
       ttsStore.setSelectedProvider(prov);
     } catch (e) {
       setLoadError((e as Error).message);
     }
   };
 
-  const cleanupAudio = useCallback(async () => {
-    if (soundRef.current) {
-      try {
-        await soundRef.current.stopAsync();
-        await soundRef.current.unloadAsync();
-      } catch {
-        /* ignore */
-      }
-      soundRef.current = null;
-    }
-  }, []);
+  const resolveAudioUrl = (
+    url: string,
+    apiClient: ReturnType<typeof getApiClient>,
+  ) => {
+    if (url.startsWith("http")) return url;
+    return `${apiClient.serverBaseURL}${url}`;
+  };
 
   const persistProgress = useCallback(
     async (idx: number, audioOffsetMs = 0) => {
@@ -292,51 +415,24 @@ export function TTSScreen() {
     [book.id, chapterIndex, paragraphs.length, voiceId, provider],
   );
 
-  const resolveAudioUrl = (
-    url: string,
-    apiClient: ReturnType<typeof getApiClient>,
-  ) => {
-    if (url.startsWith("http")) return url;
-    return `${apiClient.serverBaseURL}${url}`;
-  };
-
   // ── Persist latest position when user leaves the screen ─────────────
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove", async () => {
-      try {
-        const status = await soundRef.current?.getStatusAsync();
-        const offsetMs =
-          status?.isLoaded && typeof status.positionMillis === "number"
-            ? status.positionMillis
-            : 0;
-        await persistProgress(currentParagraph, offsetMs);
-      } catch {
-        await persistProgress(currentParagraph, 0);
-      }
+      await persistProgress(currentParagraph, Math.round(progress.position * 1000));
+      ttsStore.setMiniPlayerVisible(true);
     });
     return unsubscribe;
-  }, [currentParagraph, navigation, persistProgress]);
+  }, [currentParagraph, navigation, persistProgress, progress.position, ttsStore]);
 
   // ── Persist progress when app goes to background ────────────────────
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       if (nextAppState === "background" || nextAppState === "inactive") {
-        void (async () => {
-          try {
-            const status = await soundRef.current?.getStatusAsync();
-            const offsetMs =
-              status?.isLoaded && typeof status.positionMillis === "number"
-                ? status.positionMillis
-                : 0;
-            await persistProgress(currentParagraph, offsetMs);
-          } catch {
-            await persistProgress(currentParagraph, 0);
-          }
-        })();
+        void persistProgress(currentParagraph, Math.round(progress.position * 1000));
       }
     });
     return () => subscription.remove();
-  }, [currentParagraph, persistProgress]);
+  }, [currentParagraph, persistProgress, progress.position]);
 
   const prefetchParagraph = useCallback(
     async (idx: number) => {
@@ -370,160 +466,103 @@ export function TTSScreen() {
     [book.id, paragraphs, provider, voiceId],
   );
 
+  const synthesizeParagraph = useCallback(
+    async (idx: number): Promise<string[]> => {
+      if (idx >= paragraphs.length) return [];
+      const para = paragraphs[idx];
+      const chunks = splitForTts(para.text, TTS_CHUNK_MAX);
+      const apiClient = getApiClient();
+      const uris: string[] = [];
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const chunkParaId = chunks.length > 1 ? `${para.id}#${i}` : para.id;
+        let uri = prefetchedRef.current.get(chunkParaId);
+        if (!uri) {
+          const r = await apiClient.synthesizeParagraph({
+            bookId: book.id,
+            paragraphId: chunkParaId,
+            text: chunk,
+            provider,
+            voice: voiceId,
+          });
+          if (!r.success || !r.data)
+            throw new Error(r.error || "synthesize failed");
+          uri = resolveAudioUrl(r.data.url, apiClient);
+          prefetchedRef.current.set(chunkParaId, uri);
+        }
+        uris.push(uri);
+      }
+      return uris;
+    },
+    [book.id, paragraphs, provider, voiceId],
+  );
+
   const playParagraph = useCallback(
     async (idx: number) => {
       if (idx >= paragraphs.length) {
-        setIsPlaying(false);
-        setIsPaused(false);
         setCurrentParagraph(0);
         setParagraphProgress(0);
         ttsStore.setState("idle");
         return;
       }
-      const para = paragraphs[idx];
       setCurrentParagraph(idx);
       setParagraphProgress(0);
-      // The first call after a saved cloud resume carries the offset
-      // we want to skip into; persist progress only once we've actually
-      // landed at that position.
+      ttsStore.setCurrentParagraph(idx);
       const startOffsetMs = resumeOffsetMs;
       setResumeOffsetMs(0);
-      // Prefetch the next paragraph in the background
       prefetchParagraph(idx + 1);
 
-      setIsLoadingAudio(true);
       try {
-        await cleanupAudio();
-        const apiClient = getApiClient();
-        const chunks = splitForTts(para.text, TTS_CHUNK_MAX);
-        // Synthesize all chunks (use prefetched URI where available).
-        const uris: string[] = [];
-        for (let i = 0; i < chunks.length; i++) {
-          const chunk = chunks[i];
-          const chunkParaId = chunks.length > 1 ? `${para.id}#${i}` : para.id;
-          let uri = prefetchedRef.current.get(chunkParaId);
-          if (!uri) {
-            const r = await apiClient.synthesizeParagraph({
-              bookId: book.id,
-              paragraphId: chunkParaId,
-              text: chunk,
-              provider,
-              voice: voiceId,
-            });
-            if (!r.success || !r.data)
-              throw new Error(r.error || "synthesize failed");
-            uri = resolveAudioUrl(r.data.url, apiClient);
-            prefetchedRef.current.set(chunkParaId, uri);
-          }
-          uris.push(uri);
+        const uris = await synthesizeParagraph(idx);
+        if (uris.length === 0) return;
+
+        // Build tracks for RNTP
+        const tracks = uris.map((uri, i) => ({
+          id: `${paragraphs[idx].id}-${i}`,
+          url: uri,
+          title: `${book.title} - ${chapterTitle}`,
+          artist: book.author || "未知作者",
+          artwork: undefined,
+          duration: 0,
+        }));
+
+        await TrackPlayer.reset();
+        await TrackPlayer.add(tracks);
+        if (startOffsetMs > 0) {
+          await TrackPlayer.seekTo(startOffsetMs / 1000);
         }
-        // Play chunks sequentially. Chained via status callback.
-        await playChunksSequentially(uris, idx, startOffsetMs);
+        await TrackPlayer.play();
+        ttsStore.setState("playing");
+        ttsStore.setCurrentBook(book.id, idx, paragraphs.length);
       } catch (e) {
         console.error("TTS paragraph error", e);
-        setIsLoadingAudio(false);
-        setIsPlaying(false);
         ttsStore.setState("idle");
         Alert.alert("TTS 错误", (e as Error).message || "语音合成失败");
-        return;
       }
     },
     [
       book.id,
-      cleanupAudio,
+      book.title,
+      book.author,
+      chapterTitle,
       paragraphs,
       prefetchParagraph,
-      provider,
+      synthesizeParagraph,
       resumeOffsetMs,
       ttsStore,
-      voiceId,
-      voices,
     ],
   );
 
-  /** Play a list of audio URIs sequentially. After the last one finishes,
-   *  auto-advance to the next paragraph. */
-  const playChunksSequentially = useCallback(
-    async (uris: string[], paraIdx: number, startOffsetMs = 0) => {
-      if (uris.length === 0) return;
-      const apiClient = getApiClient();
-      // Mark progress at chunk 0
-      setIsLoadingAudio(false);
-      setIsPlaying(true);
-      setIsPaused(false);
-      ttsStore.setState("playing");
-      for (let i = 0; i < uris.length; i++) {
-        const isLast = i === uris.length - 1;
-        await new Promise<void>((resolve, reject) => {
-          Audio.Sound.createAsync(
-            { uri: uris[i] },
-            {
-              shouldPlay: true,
-              rate: ttsStore.playbackRate,
-              volume: ttsStore.volume,
-            },
-            (status) => {
-              if (!status.isLoaded) return;
-              const total = status.durationMillis || 1;
-              // Approximate per-chunk progress within the paragraph
-              const chunkFrac = status.positionMillis / total;
-              setParagraphProgress((i + chunkFrac) / uris.length);
-              if (status.didJustFinish) {
-                if (isLast) {
-                  // Hand off to next paragraph
-                  playParagraph(paraIdx + 1).catch((e) =>
-                    console.error("auto-advance failed", e),
-                  );
-                }
-                resolve();
-              }
-            },
-          )
-            .then(({ sound }) => {
-              soundRef.current = sound;
-              // Seek into the audio when the caller asked to resume at
-              // a specific offset (set by cloud-progress restore).
-              // Only the first chunk honors the offset; subsequent
-              // chunks start from 0.
-              if (i === 0 && startOffsetMs > 0) {
-                sound
-                  .setStatusAsync({ positionMillis: startOffsetMs })
-                  .catch(() => {
-                    /* seek failures are non-fatal */
-                  });
-              }
-            })
-            .catch(reject);
-        });
-      }
-      // After all chunks are done, the last callback already advanced
-      // to the next paragraph. Store the chosen voice for persistence
-      // and overwrite the just-restored paragraph record with the
-      // current audioOffsetMs so subsequent saves don't collapse to 0.
-      const v = voices.find((x) => x.id === voiceId);
-      if (v) ttsStore.setSelectedVoice(v);
-      try {
-        const status = await soundRef.current?.getStatusAsync();
-        if (status?.isLoaded && typeof status.positionMillis === "number") {
-          await persistProgress(paraIdx, status.positionMillis);
-        }
-      } catch {
-        /* ignore */
-      }
-    },
-    [persistProgress, playParagraph, ttsStore, voiceId, voices],
-  );
-
   const handlePlayPause = useCallback(async () => {
-    if (isPaused && soundRef.current) {
-      try {
-        await soundRef.current.playAsync();
-        setIsPaused(false);
-        setIsPlaying(true);
-        ttsStore.setState("playing");
-      } catch {
-        Alert.alert("错误", "恢复播放失败");
-      }
+    if (isPaused) {
+      await TrackPlayer.play();
+      ttsStore.setState("playing");
+      return;
+    }
+    if (isPlaying) {
+      await TrackPlayer.pause();
+      ttsStore.setState("paused");
+      await persistProgress(currentParagraph, Math.round(progress.position * 1000));
       return;
     }
     if (!paragraphs.length) {
@@ -531,46 +570,28 @@ export function TTSScreen() {
       return;
     }
     await playParagraph(currentParagraph);
-  }, [isPaused, paragraphs.length, playParagraph, currentParagraph, ttsStore]);
-
-  const handlePause = useCallback(async () => {
-    if (soundRef.current) {
-      try {
-        const status = await soundRef.current.getStatusAsync();
-        await soundRef.current.pauseAsync();
-        setIsPlaying(false);
-        setIsPaused(true);
-        ttsStore.setState("paused");
-        if (status?.isLoaded && typeof status.positionMillis === "number") {
-          await persistProgress(currentParagraph, status.positionMillis);
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-  }, [currentParagraph, persistProgress, ttsStore]);
+  }, [isPaused, isPlaying, paragraphs.length, playParagraph, currentParagraph, ttsStore, persistProgress, progress.position]);
 
   const handleStop = useCallback(async () => {
-    await persistProgress(currentParagraph, 0);
-    await cleanupAudio();
-    setIsPlaying(false);
-    setIsPaused(false);
+    await TrackPlayer.stop();
+    await TrackPlayer.reset();
+    ttsStore.setState("idle");
     setCurrentParagraph(0);
     setParagraphProgress(0);
-    ttsStore.setState("idle");
-  }, [cleanupAudio, currentParagraph, persistProgress, ttsStore]);
+  }, [ttsStore]);
 
   const handleJumpToParagraph = useCallback(
-    (idx: number) => {
+    async (idx: number) => {
       if (idx < 0 || idx >= paragraphs.length) return;
       if (isPlaying || isPaused) {
-        playParagraph(idx);
+        await playParagraph(idx);
       } else {
         setCurrentParagraph(idx);
+        ttsStore.setCurrentParagraph(idx);
         void persistProgress(idx);
       }
     },
-    [paragraphs.length, isPlaying, isPaused, playParagraph, persistProgress],
+    [paragraphs.length, isPlaying, isPaused, playParagraph, persistProgress, ttsStore],
   );
 
   const handleSkipBack = useCallback(() => {
@@ -586,26 +607,21 @@ export function TTSScreen() {
   const handleChapterChange = useCallback(
     async (ci: number) => {
       if (ci === chapterIndex) return;
-      await cleanupAudio();
-      setIsPlaying(false);
-      setIsPaused(false);
+      await TrackPlayer.stop();
+      await TrackPlayer.reset();
+      ttsStore.setState("idle");
       await loadChapter(ci, voiceId, provider);
+      setShowChapterPicker(false);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [chapterIndex, voiceId, provider, cleanupAudio],
+    [chapterIndex, voiceId, provider],
   );
 
   const handleRateChange = useCallback(
     async (r: number) => {
       const newRate = Math.max(0.5, Math.min(2.0, r));
       ttsStore.setPlaybackRate(newRate);
-      if (soundRef.current) {
-        try {
-          await soundRef.current.setRateAsync(newRate, true);
-        } catch {
-          /* ignore */
-        }
-      }
+      await TrackPlayer.setRate(newRate);
     },
     [ttsStore],
   );
@@ -613,17 +629,36 @@ export function TTSScreen() {
   const handleVolumeChange = useCallback(
     async (v: number) => {
       ttsStore.setVolume(v);
-      if (soundRef.current) {
-        try {
-          await soundRef.current.setVolumeAsync(v);
-        } catch {
-          /* ignore */
-        }
-      }
+      await TrackPlayer.setVolume(v);
     },
     [ttsStore],
   );
 
+  const handleSleepTimerSet = useCallback((minutes: number) => {
+    setSleepMinutes(minutes);
+    setShowSettings(false);
+    if (minutes === 0) {
+      Alert.alert("睡眠定时", "已取消睡眠定时");
+    } else {
+      Alert.alert("睡眠定时", `${minutes} 分钟后将暂停播放`);
+    }
+  }, []);
+
+  const handleToggleViewMode = useCallback(() => {
+    setViewMode((prev) => (prev === 'controls' ? 'content' : 'controls'));
+  }, []);
+
+  const handleMinimize = useCallback(() => {
+    ttsStore.setMiniPlayerVisible(true);
+    navigation.goBack();
+  }, [ttsStore, navigation]);
+
+  // ── Progress calculation ─────────────────────────────────────────────
+  const overallProgress = paragraphs.length
+    ? (currentParagraph + paragraphProgress) / paragraphs.length
+    : 0;
+
+  // ── Render ───────────────────────────────────────────────────────────
   if (loading) {
     return (
       <SafeAreaView
@@ -660,375 +695,396 @@ export function TTSScreen() {
     );
   }
 
-  // Chapter progress
-  const overallProgress = paragraphs.length
-    ? (currentParagraph + paragraphProgress) / paragraphs.length
-    : 0;
-
-  return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
-    >
-      <View style={styles.content}>
-        {/* Book info */}
-        <View
-          style={[styles.bookInfo, { backgroundColor: theme.colors.surface }]}
-        >
-          <View
-            style={[
-              styles.bookCover,
-              { backgroundColor: theme.colors.primary + "20" },
-            ]}
-          >
-            <Text style={styles.bookCoverText}>
-              {book.title.charAt(0).toUpperCase()}
-            </Text>
+  // ── Controls View ────────────────────────────────────────────────────
+  if (viewMode === 'controls') {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: theme.colors.background }]}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={handleMinimize} style={styles.headerButton}>
+            <Ionicons name="chevron-down" size={28} color={theme.colors.text} />
+          </TouchableOpacity>
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerSubtitle} numberOfLines={1}>{book.title}</Text>
           </View>
-          <View style={styles.bookMeta}>
-            <Text style={styles.bookTitle} numberOfLines={2}>
-              {book.title}
-            </Text>
-            <Text style={styles.bookAuthor}>{book.author}</Text>
-            <Text style={styles.bookType}>
-              {chapterTitle} · {currentParagraph + 1}/{paragraphs.length}
-            </Text>
-          </View>
+          <TouchableOpacity style={styles.headerButton} onPress={() => setShowSettings(true)}>
+            <Ionicons name="ellipsis-vertical" size={22} color={theme.colors.text} />
+          </TouchableOpacity>
         </View>
 
-        {/* Controls */}
-        <View
-          style={[styles.controls, { backgroundColor: theme.colors.surface }]}
-        >
-          <View style={styles.mainControls}>
-            <TouchableOpacity onPress={handleStop} style={styles.controlButton}>
-              <Ionicons name="stop" size={28} color={theme.colors.error} />
-            </TouchableOpacity>
+        <ScrollView contentContainerStyle={styles.controlsContent}>
+          {/* Book Cover - tap to switch to content view */}
+          <TouchableOpacity
+            style={styles.coverSection}
+            onPress={handleToggleViewMode}
+            activeOpacity={0.9}
+          >
+            <View style={[styles.bookCoverLarge, { backgroundColor: theme.colors.surface }]}>
+              {book.coverUrl ? (
+                <Image
+                  source={{ uri: getCoverImageUrl(book.coverUrl) }}
+                  style={styles.bookCoverImage}
+                  resizeMode="cover"
+                />
+              ) : (
+                <Text style={styles.coverInitialLarge}>{book.title.charAt(0)}</Text>
+              )}
+            </View>
+            {sleepMinutes > 0 && (
+              <View style={[styles.sleepBadge, { backgroundColor: theme.colors.primary }]}>
+                <Ionicons name="moon" size={12} color="#fff" />
+                <Text style={styles.sleepBadgeText}>
+                  {Math.floor(sleepRemaining / 60)}m
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={handleSkipBack}
-              style={styles.controlButton}
-            >
-              <Ionicons
-                name="play-skip-back"
-                size={24}
-                color={theme.colors.textSecondary}
+          {/* Chapter Info */}
+          <Text style={styles.chapterTitleLarge} numberOfLines={2}>
+            {chapterTitle}
+          </Text>
+          <Text style={styles.bookAuthorLarge}>{book.author}</Text>
+
+          {/* Progress */}
+          <View style={styles.progressSection}>
+            <View style={styles.progressLabelsRow}>
+              <Text style={styles.muted}>
+                第 {currentParagraph + 1} 段 / 共 {paragraphs.length} 段
+              </Text>
+              <Text style={styles.muted}>{Math.round(overallProgress * 100)}%</Text>
+            </View>
+            <View style={[styles.progressBar, { backgroundColor: theme.colors.border + '40' }]}>
+              <View
+                style={[
+                  styles.progressFill,
+                  { backgroundColor: theme.colors.primary, width: `${overallProgress * 100}%` },
+                ]}
               />
+            </View>
+          </View>
+
+          {/* Playback Controls - compact row */}
+          <View style={styles.controlsRow}>
+            {/* Settings */}
+            <TouchableOpacity
+              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
+              onPress={() => setShowSettings(true)}
+            >
+              <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
             </TouchableOpacity>
 
+            {/* Speed */}
             <TouchableOpacity
-              onPress={isPlaying ? handlePause : handlePlayPause}
-              style={[
-                styles.playButton,
-                { backgroundColor: theme.colors.primary },
-              ]}
+              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
+              onPress={() => setShowSpeedPicker(!showSpeedPicker)}
+            >
+              <Ionicons name="speedometer-outline" size={20} color={theme.colors.text} />
+              {ttsStore.playbackRate !== 1.0 && (
+                <View style={[styles.badge, { backgroundColor: theme.colors.primary }]}>
+                  <Text style={styles.badgeText}>{ttsStore.playbackRate.toFixed(1)}x</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {/* Skip back */}
+            <TouchableOpacity
+              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
+              onPress={handleSkipBack}
+            >
+              <Ionicons name="play-skip-back-outline" size={22} color={theme.colors.text} />
+            </TouchableOpacity>
+
+            {/* Play/Pause */}
+            <TouchableOpacity
+              style={[styles.playButtonLarge, { backgroundColor: isPlaying ? theme.colors.error : theme.colors.primary }]}
+              onPress={handlePlayPause}
               disabled={isLoadingAudio}
             >
               {isLoadingAudio ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Ionicons
-                  name={isPlaying ? "pause" : "play"}
+                  name={isPlaying ? 'pause' : 'play'}
                   size={32}
                   color="#fff"
                 />
               )}
             </TouchableOpacity>
 
+            {/* Skip forward */}
             <TouchableOpacity
+              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
               onPress={handleSkipForward}
-              style={styles.controlButton}
             >
-              <Ionicons
-                name="play-skip-forward"
-                size={24}
-                color={theme.colors.textSecondary}
-              />
+              <Ionicons name="play-skip-forward-outline" size={22} color={theme.colors.text} />
             </TouchableOpacity>
 
+            {/* Chapter picker */}
             <TouchableOpacity
-              onPress={() => setShowSettings(!showSettings)}
-              style={styles.controlButton}
+              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
+              onPress={() => setShowChapterPicker(true)}
             >
-              <Ionicons
-                name="options-outline"
-                size={24}
-                color={theme.colors.textSecondary}
-              />
+              <Ionicons name="book-outline" size={20} color={theme.colors.text} />
+            </TouchableOpacity>
+
+            {/* Sleep timer */}
+            <TouchableOpacity
+              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
+              onPress={() => setShowTimerPicker(!showTimerPicker)}
+            >
+              <Ionicons name="time-outline" size={20} color={theme.colors.text} />
+              {sleepMinutes > 0 && (
+                <View style={[styles.badge, { backgroundColor: theme.colors.warning }]}>
+                  <Text style={styles.badgeText}>{Math.floor(sleepRemaining / 60)}m</Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
 
-          {/* Overall progress */}
-          <View style={styles.progressContainer}>
-            <View
-              style={[
-                styles.progressBar,
-                { backgroundColor: theme.colors.border + "40" },
-              ]}
-            >
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    backgroundColor: theme.colors.primary,
-                    width: `${overallProgress * 100}%`,
-                  },
-                ]}
-              />
-            </View>
-            <View style={styles.progressLabels}>
-              <Text style={styles.muted}>
-                第 {currentParagraph + 1} 段 / 共 {paragraphs.length} 段
-              </Text>
-              <Text style={styles.muted}>
-                {Math.round(overallProgress * 100)}%
+          {/* Book description */}
+          {book.description && (
+            <View style={styles.descriptionPanel}>
+              <Text style={styles.settingsLabel}>简介</Text>
+              <Text style={styles.descriptionText} numberOfLines={6}>
+                {book.description}
               </Text>
             </View>
-          </View>
-        </View>
+          )}
+        </ScrollView>
 
-        {/* Settings panel */}
-        {showSettings && (
-          <View
-            style={[
-              styles.settingsPanel,
-              { backgroundColor: theme.colors.surface },
-            ]}
-          >
-            <Text style={styles.settingsTitle}>本页语音设置</Text>
-
-            <Text style={styles.settingsLabel}>服务商</Text>
-            <View style={styles.chipRow}>
-              {providers.length === 0 ? (
-                <Text style={styles.muted}>{providerLabel(provider)}</Text>
-              ) : (
-                providers.map((p) => {
-                  const active = provider === p.name;
+        {/* Chapter Picker Modal */}
+        {showChapterPicker && (
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowChapterPicker(false)} />
+            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>章节列表</Text>
+                <TouchableOpacity onPress={() => setShowChapterPicker(false)}>
+                  <Ionicons name="close" size={24} color={theme.colors.text} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView>
+                {chapters.map((c) => {
+                  const active = chapterIndex === c.index;
                   return (
                     <TouchableOpacity
-                      key={p.name}
-                      disabled={!p.enabled}
-                      onPress={() => setProvider(p.name)}
+                      key={c.index}
+                      onPress={() => handleChapterChange(c.index)}
                       style={[
-                        styles.chip,
-                        {
-                          backgroundColor: active
-                            ? theme.colors.primary
-                            : theme.colors.background,
-                          opacity: p.enabled ? 1 : 0.4,
-                        },
+                        styles.chapterListItem,
+                        active && { backgroundColor: theme.colors.primary + '20' },
                       ]}
                     >
                       <Text
                         style={[
-                          styles.chipText,
-                          { color: active ? "#fff" : theme.colors.text },
+                          styles.chapterListText,
+                          { color: active ? theme.colors.primary : theme.colors.text },
                         ]}
                       >
-                        {providerLabel(p.name)}
-                        {p.status === "needs_config" ? " *" : ""}
+                        <Text style={styles.chapterListNumber}>{c.index + 1}. </Text>
+                        {c.title}
                       </Text>
                     </TouchableOpacity>
                   );
-                })
-              )}
+                })}
+              </ScrollView>
             </View>
+          </View>
+        )}
 
-            <Text style={styles.settingsLabel}>语音</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.chipRow}
-            >
-              {voices.length === 0 && (
-                <Text style={styles.muted}>加载语音中…</Text>
-              )}
-              {voices.map((v) => {
-                const active = voiceId === v.id;
-                return (
+        {/* Speed Picker Modal */}
+        {showSpeedPicker && (
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowSpeedPicker(false)} />
+            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>倍速</Text>
+                <TouchableOpacity onPress={() => setShowSpeedPicker(false)}>
+                  <Ionicons name="close" size={24} color={theme.colors.text} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.sleepOptions}>
+                {[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((r) => (
                   <TouchableOpacity
-                    key={v.id}
+                    key={r}
                     onPress={() => {
-                      setVoiceId(v.id);
-                      ttsStore.setSelectedVoice(v);
+                      handleRateChange(r);
+                      setShowSpeedPicker(false);
                     }}
                     style={[
-                      styles.chip,
-                      {
-                        backgroundColor: active
-                          ? theme.colors.primary
-                          : theme.colors.background,
-                      },
+                      styles.sleepOption,
+                      ttsStore.playbackRate === r && { backgroundColor: theme.colors.primary },
                     ]}
                   >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        { color: active ? "#fff" : theme.colors.text },
-                      ]}
-                    >
-                      {v.name} · {v.language || v.lang}
+                    <Text style={[styles.sleepOptionText, ttsStore.playbackRate === r && { color: '#fff' }]}>
+                      {r}x
                     </Text>
                   </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                ))}
+              </View>
+            </View>
+          </View>
+        )}
 
-            <Text style={styles.settingsLabel}>
-              语速 {ttsStore.playbackRate.toFixed(1)}x
-            </Text>
-            <View style={styles.chipRow}>
-              {[0.75, 1.0, 1.25, 1.5, 2.0].map((r) => (
-                <TouchableOpacity
-                  key={r}
-                  onPress={() => handleRateChange(r)}
-                  style={[
-                    styles.chip,
-                    {
-                      backgroundColor:
-                        ttsStore.playbackRate === r
-                          ? theme.colors.primary
-                          : theme.colors.background,
-                    },
-                  ]}
-                >
-                  <Text
+        {/* Timer Picker Modal */}
+        {showTimerPicker && (
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowTimerPicker(false)} />
+            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>定时关闭</Text>
+                <TouchableOpacity onPress={() => setShowTimerPicker(false)}>
+                  <Ionicons name="close" size={24} color={theme.colors.text} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.sleepOptions}>
+                {[0, 5, 10, 15, 30, 45, 60].map((minutes) => (
+                  <TouchableOpacity
+                    key={minutes}
+                    onPress={() => {
+                      handleSleepTimerSet(minutes);
+                      setShowTimerPicker(false);
+                    }}
                     style={[
-                      styles.chipText,
-                      {
-                        color:
-                          ttsStore.playbackRate === r
-                            ? "#fff"
-                            : theme.colors.text,
-                      },
+                      styles.sleepOption,
+                      sleepMinutes === minutes && { backgroundColor: theme.colors.primary },
                     ]}
                   >
-                    {r}x
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text style={[styles.sleepOptionText, sleepMinutes === minutes && { color: '#fff' }]}>
+                      {minutes === 0 ? '关闭' : `${minutes} 分钟`}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
+          </View>
+        )}
 
-            <Text style={styles.settingsLabel}>
-              音量 {Math.round(ttsStore.volume * 100)}%
-            </Text>
-            <View style={styles.chipRow}>
-              {[0, 0.25, 0.5, 0.75, 1.0].map((v) => (
-                <TouchableOpacity
-                  key={v}
-                  onPress={() => handleVolumeChange(v)}
-                  style={[
-                    styles.chip,
-                    {
-                      backgroundColor:
-                        Math.abs(ttsStore.volume - v) < 0.01
-                          ? theme.colors.primary
-                          : theme.colors.background,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.chipText,
-                      {
-                        color:
-                          Math.abs(ttsStore.volume - v) < 0.01
-                            ? "#fff"
-                            : theme.colors.text,
-                      },
-                    ]}
-                  >
-                    {Math.round(v * 100)}%
-                  </Text>
+        {/* Settings Bottom Sheet */}
+        {showSettings && (
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowSettings(false)} />
+            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>播放设置</Text>
+                <TouchableOpacity onPress={() => setShowSettings(false)}>
+                  <Ionicons name="close" size={24} color={theme.colors.text} />
                 </TouchableOpacity>
-              ))}
-            </View>
-
-            {chapters.length > 1 && (
-              <>
-                <Text style={styles.settingsLabel}>章节</Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.chipRow}
-                >
-                  {chapters.map((c) => {
-                    const active = chapterIndex === c.index;
+              </View>
+              <ScrollView>
+                {/* Provider section */}
+                <Text style={styles.settingsLabel}>TTS 服务商</Text>
+                <View style={styles.chipRow}>
+                  {providers.map((p) => {
+                    const active = provider === p.name;
                     return (
                       <TouchableOpacity
-                        key={c.index}
-                        onPress={() => handleChapterChange(c.index)}
+                        key={p.name}
+                        disabled={!p.enabled}
+                        onPress={() => setProvider(p.name)}
                         style={[
                           styles.chip,
                           {
-                            backgroundColor: active
-                              ? theme.colors.primary
-                              : theme.colors.background,
+                            backgroundColor: active ? theme.colors.primary : theme.colors.background,
+                            opacity: p.enabled ? 1 : 0.4,
                           },
                         ]}
                       >
-                        <Text
-                          style={[
-                            styles.chipText,
-                            { color: active ? "#fff" : theme.colors.text },
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {c.title}
+                        <Text style={[styles.chipText, { color: active ? '#fff' : theme.colors.text }]}>
+                          {providerLabel(p.name)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                {/* Voice section */}
+                <Text style={styles.settingsLabel}>音色</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+                  {voices.map((v) => {
+                    const active = voiceId === v.id;
+                    return (
+                      <TouchableOpacity
+                        key={v.id}
+                        onPress={() => {
+                          setVoiceId(v.id);
+                          ttsStore.setSelectedVoice(v);
+                        }}
+                        style={[
+                          styles.chip,
+                          { backgroundColor: active ? theme.colors.primary : theme.colors.background },
+                        ]}
+                      >
+                        <Text style={[styles.chipText, { color: active ? '#fff' : theme.colors.text }]}>
+                          {v.name}
                         </Text>
                       </TouchableOpacity>
                     );
                   })}
                 </ScrollView>
-              </>
-            )}
+              </ScrollView>
+            </View>
           </View>
         )}
 
-        {/* Paragraph list with highlight */}
-        <View
-          style={[
-            styles.paragraphsPanel,
-            { backgroundColor: theme.colors.surface },
-          ]}
-        >
-          <Text style={styles.previewTitle}>朗读内容</Text>
-          <ScrollView style={styles.paragraphsScroll}>
-            {paragraphs.map((p, idx) => {
-              const isCurrent = idx === currentParagraph;
-              const isPast = idx < currentParagraph;
-              return (
-                <TouchableOpacity
-                  key={p.id}
-                  onPress={() => handleJumpToParagraph(idx)}
-                  style={[
-                    styles.paragraphItem,
-                    isCurrent && {
-                      backgroundColor: theme.colors.primary + "25",
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.paragraphText,
-                      {
-                        color: isCurrent
-                          ? theme.colors.text
-                          : isPast
-                            ? theme.colors.textSecondary
-                            : theme.colors.text,
-                        fontWeight: isCurrent ? "600" : "400",
-                        opacity: isPast ? 0.55 : 1,
-                      },
-                    ]}
-                  >
-                    {p.text}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Content View (Paragraph List) ────────────────────────────────────
+  return (
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    >
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={handleToggleViewMode} style={styles.headerButton}>
+          <Ionicons name="chevron-back" size={28} color={theme.colors.text} />
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle} numberOfLines={1}>朗读内容</Text>
+          <Text style={styles.headerSubtitle} numberOfLines={1}>{chapterTitle}</Text>
         </View>
+        <View style={styles.headerButton} />
       </View>
+
+      {/* Paragraph list */}
+      <ScrollView style={styles.paragraphsScroll}>
+        {paragraphs.map((p, idx) => {
+          const isCurrent = idx === currentParagraph;
+          const isPast = idx < currentParagraph;
+          return (
+            <TouchableOpacity
+              key={p.id}
+              onPress={() => handleJumpToParagraph(idx)}
+              style={[
+                styles.paragraphItem,
+                isCurrent && { backgroundColor: theme.colors.primary + '25' },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.paragraphText,
+                  {
+                    color: isCurrent
+                      ? theme.colors.text
+                      : isPast
+                        ? theme.colors.textSecondary
+                        : theme.colors.text,
+                    fontWeight: isCurrent ? '600' : '400',
+                    opacity: isPast ? 0.55 : 1,
+                  },
+                ]}
+              >
+                {p.text}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -1038,15 +1094,10 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     container: {
       flex: 1,
     },
-    content: {
-      flex: 1,
-      padding: spacing.md,
-      gap: spacing.md,
-    },
     center: {
       flex: 1,
-      alignItems: "center",
-      justifyContent: "center",
+      alignItems: 'center',
+      justifyContent: 'center',
       gap: spacing.md,
     },
     muted: {
@@ -1056,7 +1107,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     errorText: {
       color: theme.colors.error,
       fontSize: fontSizes.md,
-      textAlign: "center",
+      textAlign: 'center',
     },
     button: {
       paddingHorizontal: spacing.lg,
@@ -1064,92 +1115,178 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       borderRadius: borderRadius.md,
     },
     buttonText: {
-      color: "#fff",
+      color: '#fff',
       fontSize: fontSizes.md,
-      fontWeight: "600",
+      fontWeight: '600',
     },
-    bookInfo: {
-      flexDirection: "row",
-      padding: spacing.md,
-      borderRadius: borderRadius.lg,
-      alignItems: "center",
+    // Header
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.xl,
+      paddingBottom: spacing.sm,
     },
-    bookCover: {
-      width: 60,
-      height: 80,
-      borderRadius: borderRadius.sm,
-      justifyContent: "center",
-      alignItems: "center",
+    headerButton: {
+      padding: spacing.sm,
+      width: 48,
+      alignItems: 'center',
     },
-    bookCoverText: {
-      fontSize: fontSizes.xxxl,
-      fontWeight: "bold",
-      color: theme.colors.primary,
-    },
-    bookMeta: {
+    headerCenter: {
       flex: 1,
-      marginLeft: spacing.md,
+      alignItems: 'center',
     },
-    bookTitle: {
-      fontSize: fontSizes.lg,
-      fontWeight: "600",
-      color: theme.colors.text,
-    },
-    bookAuthor: {
-      fontSize: fontSizes.md,
-      color: theme.colors.textSecondary,
-      marginTop: spacing.xs,
-    },
-    bookType: {
+    headerTitle: {
       fontSize: fontSizes.sm,
       color: theme.colors.textSecondary,
-      marginTop: spacing.xs,
     },
-    controls: {
-      padding: spacing.md,
-      borderRadius: borderRadius.lg,
-      gap: spacing.md,
+    headerSubtitle: {
+      fontSize: fontSizes.md,
+      fontWeight: '600',
+      color: theme.colors.text,
     },
-    mainControls: {
-      flexDirection: "row",
-      justifyContent: "center",
-      alignItems: "center",
-      gap: spacing.md,
+    // Controls view
+    controlsContent: {
+      padding: spacing.lg,
+      paddingTop: spacing.xl,
+      paddingBottom: spacing.xxl,
+      alignItems: 'center',
     },
-    controlButton: {
-      padding: spacing.sm,
+    coverSection: {
+      alignItems: 'center',
+      marginBottom: spacing.lg,
+      position: 'relative',
     },
-    playButton: {
-      width: 64,
-      height: 64,
-      borderRadius: 32,
-      justifyContent: "center",
-      alignItems: "center",
+    bookCoverLarge: {
+      width: 160,
+      height: 224,
+      borderRadius: borderRadius.xl,
+      justifyContent: 'center',
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      elevation: 8,
+      overflow: 'hidden',
     },
-    progressContainer: {
+    bookCoverImage: {
+      width: '100%',
+      height: '100%',
+    },
+    coverInitialLarge: {
+      fontSize: 52,
+      fontWeight: 'bold',
+      color: theme.colors.primary,
+    },
+    tapHint: {
+      fontSize: fontSizes.sm,
+      color: theme.colors.textSecondary,
+      marginTop: spacing.sm,
+    },
+    sleepBadge: {
+      position: 'absolute',
+      top: spacing.sm,
+      right: '20%',
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+      borderRadius: borderRadius.full,
       gap: spacing.xs,
+    },
+    sleepBadgeText: {
+      fontSize: fontSizes.xs,
+      color: '#fff',
+      fontWeight: '600',
+    },
+    chapterTitleLarge: {
+      fontSize: fontSizes.xl,
+      fontWeight: '600',
+      color: theme.colors.text,
+      textAlign: 'center',
+      marginBottom: spacing.xs,
+    },
+    bookAuthorLarge: {
+      fontSize: fontSizes.md,
+      color: theme.colors.textSecondary,
+      textAlign: 'center',
+      marginBottom: spacing.lg,
+    },
+    progressSection: {
+      width: '100%',
+      marginBottom: spacing.lg,
+      gap: spacing.xs,
+    },
+    progressLabelsRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.xs,
     },
     progressBar: {
       height: 6,
       borderRadius: 3,
-      overflow: "hidden",
+      overflow: 'hidden',
     },
     progressFill: {
-      height: "100%",
+      height: '100%',
       borderRadius: 3,
     },
-    progressLabels: {
-      flexDirection: "row",
-      justifyContent: "space-between",
+    // Controls row
+    controlsRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+      marginBottom: spacing.lg,
     },
+    iconButton: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      justifyContent: 'center',
+      alignItems: 'center',
+      position: 'relative',
+    },
+    playButtonLarge: {
+      width: 72,
+      height: 72,
+      borderRadius: 36,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    badge: {
+      position: 'absolute',
+      top: -4,
+      right: -4,
+      borderRadius: borderRadius.sm,
+      paddingHorizontal: 4,
+      paddingVertical: 1,
+    },
+    badgeText: {
+      fontSize: 10,
+      color: '#fff',
+      fontWeight: '600',
+    },
+    // Picker dropdown
+    pickerDropdown: {
+      width: '100%',
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      borderRadius: borderRadius.lg,
+      marginBottom: spacing.sm,
+    },
+    // Settings
     settingsPanel: {
+      width: '100%',
       padding: spacing.md,
       borderRadius: borderRadius.lg,
       gap: spacing.xs,
+      marginBottom: spacing.md,
     },
     settingsTitle: {
       fontSize: fontSizes.md,
-      fontWeight: "600",
+      fontWeight: '600',
       color: theme.colors.text,
       marginBottom: spacing.xs,
     },
@@ -1159,8 +1296,8 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       marginTop: spacing.sm,
     },
     chipRow: {
-      flexDirection: "row",
-      flexWrap: "wrap",
+      flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: spacing.xs,
       paddingVertical: spacing.xs,
     },
@@ -1172,19 +1309,19 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     chipText: {
       fontSize: fontSizes.sm,
     },
-    paragraphsPanel: {
-      flex: 1,
-      padding: spacing.md,
-      borderRadius: borderRadius.lg,
+    // Description
+    descriptionPanel: {
+      width: '100%',
     },
-    previewTitle: {
-      fontSize: fontSizes.md,
-      fontWeight: "600",
+    descriptionText: {
+      fontSize: fontSizes.sm,
       color: theme.colors.text,
-      marginBottom: spacing.sm,
+      lineHeight: fontSizes.sm * 1.6,
     },
+    // Content view
     paragraphsScroll: {
       flex: 1,
+      padding: spacing.md,
     },
     paragraphItem: {
       paddingVertical: spacing.sm,
@@ -1195,6 +1332,66 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     paragraphText: {
       fontSize: fontSizes.md,
       lineHeight: fontSizes.md * 1.5,
+    },
+    // Modal
+    modalOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      zIndex: 100,
+    },
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.4)',
+    },
+    modalContent: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      maxHeight: '70%',
+      borderTopLeftRadius: borderRadius.xl,
+      borderTopRightRadius: borderRadius.xl,
+      padding: spacing.lg,
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: spacing.md,
+    },
+    modalTitle: {
+      fontSize: fontSizes.lg,
+      fontWeight: '600',
+      color: theme.colors.text,
+    },
+    chapterListItem: {
+      paddingVertical: spacing.md,
+      paddingHorizontal: spacing.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border + '30',
+    },
+    chapterListText: {
+      fontSize: fontSizes.md,
+    },
+    chapterListNumber: {
+      color: theme.colors.textSecondary,
+      fontSize: fontSizes.sm,
+    },
+    sleepOptions: {
+      gap: spacing.sm,
+    },
+    sleepOption: {
+      paddingVertical: spacing.md,
+      borderRadius: borderRadius.md,
+      backgroundColor: theme.colors.background,
+      alignItems: 'center',
+    },
+    sleepOptionText: {
+      fontSize: fontSizes.md,
+      color: theme.colors.text,
     },
   });
 }
