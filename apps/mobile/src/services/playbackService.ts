@@ -29,7 +29,7 @@ export const PlaybackService = async function () {
 
   TrackPlayer.addEventListener(Event.RemoteStop, async () => {
     console.log('[PlaybackService] RemoteStop');
-    await TrackPlayer.stop();
+    await TrackPlayer.reset();
   });
 
   TrackPlayer.addEventListener(Event.RemoteSeek, async (event) => {

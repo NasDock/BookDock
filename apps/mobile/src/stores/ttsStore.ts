@@ -1,4 +1,4 @@
-import type { Paragraph, TTSVoice } from '@bookdock/api-client';
+import type { Book, Paragraph, TTSVoice } from '@bookdock/api-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
@@ -9,6 +9,7 @@ type ViewMode = 'controls' | 'content';
 interface TTSStoreState {
   state: TTSState;
   currentBookId: string | null;
+  currentBook: Book | null;
   currentPosition: number;
   totalLength: number;
   selectedProvider: string | null;
@@ -32,6 +33,7 @@ interface TTSStoreState {
   // Actions
   setState: (state: TTSState) => void;
   setCurrentBook: (bookId: string | null, position?: number, totalLength?: number) => void;
+  setCurrentBookData: (book: Book) => void;
   setPosition: (position: number) => void;
   setSelectedProvider: (provider: string) => void;
   setSelectedVoice: (voice: TTSVoice | null) => void;
@@ -54,6 +56,7 @@ export const useTTSStore = create<TTSStoreState>()(
     (set) => ({
       state: 'idle',
       currentBookId: null,
+      currentBook: null,
       currentPosition: 0,
       totalLength: 0,
       selectedProvider: null,
@@ -76,8 +79,9 @@ export const useTTSStore = create<TTSStoreState>()(
         currentBookId: bookId,
         currentPosition: position,
         totalLength,
-        state: bookId ? 'paused' : 'idle',
       }),
+
+      setCurrentBookData: (book) => set({ currentBook: book }),
 
       setPosition: (position) => set({ currentPosition: position }),
 
@@ -110,6 +114,7 @@ export const useTTSStore = create<TTSStoreState>()(
       reset: () => set({
         state: 'idle',
         currentBookId: null,
+        currentBook: null,
         currentPosition: 0,
         totalLength: 0,
         currentParagraph: 0,

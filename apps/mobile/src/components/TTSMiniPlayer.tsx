@@ -12,10 +12,12 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
+  Image,
 } from 'react-native';
 import TrackPlayer, { State, usePlaybackState, useProgress } from 'react-native-track-player';
 import { useTTSStore, useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
+import { getCoverImageUrl } from '../services/api';
 import type { RootStackParamList } from '../navigation/types';
 
 export function TTSMiniPlayer() {
@@ -27,8 +29,13 @@ export function TTSMiniPlayer() {
   const playbackState = usePlaybackState();
   const progress = useProgress();
 
-  const isPlaying = playbackState.state === State.Playing;
-  const isPaused = playbackState.state === State.Paused;
+  const isPlaying = ttsStore.state === 'playing';
+  const isPaused = ttsStore.state === 'paused';
+
+  const paragraphProgress = progress.duration > 0 ? progress.position / progress.duration : 0;
+  const overallProgress = ttsStore.totalParagraphs > 0
+    ? (ttsStore.currentParagraph + paragraphProgress) / ttsStore.totalParagraphs
+    : 0;
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
@@ -43,18 +50,16 @@ export function TTSMiniPlayer() {
   }, [isPaused, isPlaying, ttsStore]);
 
   const handleExpand = useCallback(() => {
-    // Navigate back to TTSScreen
-    if (ttsStore.currentBookId) {
-      // We need the book object to navigate - this is a limitation
-      // In practice, the mini player should be shown only when
-      // the TTSScreen is in the navigation stack
+    // Navigate back to TTSScreen with full book data
+    if (ttsStore.currentBook) {
+      navigation.navigate('TTSScreen', { book: ttsStore.currentBook });
+    } else if (ttsStore.currentBookId) {
       navigation.navigate('TTSScreen', { book: { id: ttsStore.currentBookId } as any });
     }
     ttsStore.setMiniPlayerVisible(false);
   }, [navigation, ttsStore]);
 
   const handleClose = useCallback(async () => {
-    await TrackPlayer.stop();
     await TrackPlayer.reset();
     ttsStore.setState('idle');
     ttsStore.setMiniPlayerVisible(false);
@@ -84,20 +89,28 @@ export function TTSMiniPlayer() {
       <View style={styles.content}>
         {/* Cover thumbnail */}
         <TouchableOpacity onPress={handleExpand} style={styles.cover}>
-          <View style={[styles.coverInner, { backgroundColor: theme.colors.primary + '20' }]}>
-            <Text style={styles.coverText}>
-              {ttsStore.chapterTitle?.charAt(0) || 'T'}
-            </Text>
-          </View>
+          {ttsStore.currentBook?.coverUrl ? (
+            <Image
+              source={{ uri: getCoverImageUrl(ttsStore.currentBook.coverUrl) }}
+              style={styles.coverImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.coverInner, { backgroundColor: theme.colors.primary + '20' }]}>
+              <Text style={styles.coverText}>
+                {(ttsStore.currentBook?.title || 'T').charAt(0)}
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
 
         {/* Info */}
         <TouchableOpacity onPress={handleExpand} style={styles.info}>
           <Text style={styles.title} numberOfLines={1}>
-            {ttsStore.chapterTitle || '正在朗读'}
+            {ttsStore.currentBook?.title || ttsStore.chapterTitle || '正在朗读'}
           </Text>
           <Text style={styles.subtitle} numberOfLines={1}>
-            第 {ttsStore.currentParagraph + 1} 段 / 共 {ttsStore.totalParagraphs} 段
+            {ttsStore.chapterTitle} · 第 {ttsStore.currentParagraph + 1}/{ttsStore.totalParagraphs} 段
           </Text>
         </TouchableOpacity>
 
@@ -124,16 +137,11 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
   return StyleSheet.create({
     container: {
       position: 'absolute',
-      bottom: 0,
+      bottom: 48,
       left: 0,
       right: 0,
       borderTopLeftRadius: borderRadius.lg,
       borderTopRightRadius: borderRadius.lg,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: -2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 8,
       zIndex: 100,
     },
     progressBar: {
@@ -160,6 +168,10 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
+    },
+    coverImage: {
+      width: '100%',
+      height: '100%',
     },
     coverText: {
       fontSize: fontSizes.lg,
