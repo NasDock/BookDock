@@ -428,6 +428,43 @@ export function TTSScreen() {
     return () => sub.remove();
   }, [currentParagraph, paragraphs.length, chapterIndex, voiceId, provider, ttsStore]);
 
+  // ── TrackPlayer event: track changed (user clicked next/prev in system UI) ──
+  useEffect(() => {
+    const sub = TrackPlayer.addEventListener(Event.PlaybackTrackChanged, async (event) => {
+      // event.nextTrack is the new track index
+      // When user clicks "next" in system UI, we need to update currentParagraph
+      if (event.nextTrack !== undefined && event.nextTrack !== null) {
+        // The track index corresponds to the paragraph index within the queue
+        // Our queue has: [currentParagraph chunks..., nextParagraph chunks...]
+        // So we need to map track index back to paragraph index
+        const trackIndex = event.nextTrack;
+        // Count how many tracks belong to current paragraph
+        const currentParaTrackCount = await TrackPlayer.getQueue().then(q => {
+          let count = 0;
+          for (let i = 0; i < q.length; i++) {
+            if (q[i].id.startsWith(`${paragraphs[currentParagraph]?.id}`)) {
+              count++;
+            } else {
+              break;
+            }
+          }
+          return count;
+        }).catch(() => 1);
+        
+        if (trackIndex >= currentParaTrackCount) {
+          // User moved to next paragraph
+          const nextParagraphIdx = currentParagraph + 1;
+          if (nextParagraphIdx < paragraphs.length) {
+            ttsStore.setCurrentParagraph(nextParagraphIdx);
+            // Pre-load next next paragraph for continuous playback
+            prefetchParagraph(nextParagraphIdx + 1);
+          }
+        }
+      }
+    });
+    return () => sub.remove();
+  }, [currentParagraph, paragraphs, ttsStore]);
+
 
   // Auto-scroll to current paragraph when it changes
   useEffect(() => {
@@ -648,7 +685,7 @@ export function TTSScreen() {
         const uris = await synthesizeParagraph(idx);
         if (uris.length === 0) return;
 
-        // Build tracks for RNTP
+        // Build tracks for RNTP - current paragraph + next paragraph (if available)
         const coverUri = getCoverImageUrl(book.coverUrl);
         const tracks = uris.map((uri, i) => ({
           id: `${paragraphs[idx].id}-${i}`,
@@ -659,8 +696,29 @@ export function TTSScreen() {
           duration: 0,
         }));
 
+        // Pre-synthesize next paragraph and add to queue if available
+        const nextIdx = idx + 1;
+        let nextTracks: any[] = [];
+        if (nextIdx < paragraphs.length) {
+          try {
+            const nextUris = await synthesizeParagraph(nextIdx);
+            if (nextUris.length > 0) {
+              nextTracks = nextUris.map((uri, i) => ({
+                id: `${paragraphs[nextIdx].id}-${i}`,
+                url: uri,
+                title: `${book.title} - ${chapterTitle}`,
+                artist: book.author || "未知作者",
+                artwork: coverUri,
+                duration: 0,
+              }));
+            }
+          } catch (e) {
+            console.warn('[TTSScreen] Pre-synthesize next paragraph failed:', e);
+          }
+        }
+
         await TrackPlayer.reset();
-        await TrackPlayer.add(tracks);
+        await TrackPlayer.add([...tracks, ...nextTracks]);
         if (startOffsetMs > 0) {
           await TrackPlayer.seekTo(startOffsetMs / 1000);
         }

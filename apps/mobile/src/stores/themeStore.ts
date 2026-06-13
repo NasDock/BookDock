@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Appearance } from 'react-native';
 
 export type AppTheme = 'light' | 'dark' | 'system';
 
@@ -13,8 +14,7 @@ interface ThemeState {
 }
 
 function getSystemTheme(): 'light' | 'dark' {
-  // In React Native, we use a listener for system theme changes
-  return 'light'; // Default, will be updated by listener
+  return Appearance.getColorScheme() === 'dark' ? 'dark' : 'light';
 }
 
 function getEffectiveTheme(theme: AppTheme, systemTheme: 'light' | 'dark'): 'light' | 'dark' {

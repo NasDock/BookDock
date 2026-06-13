@@ -15,7 +15,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, AntDesign } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore, useLibraryStore, useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
@@ -175,24 +175,11 @@ export function ProfileScreen() {
       ),
       headerRight: () => (
         <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: 16 }}>
-          {progress > 0 && (
-            <TouchableOpacity
-              onPress={() => {
-                setIsUpdateModalVisible(true);
-              }}
-              style={{ marginRight: 10, flexDirection: 'row', alignItems: 'center' }}
-            >
-              <Ionicons name="download-outline" size={22} color={theme.colors.text} />
-              <Text style={{ color: theme.colors.text }}>
-                更新
-              </Text>
-            </TouchableOpacity>
-          )}
           <TouchableOpacity
             style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
             onPress={() => navigation.navigate('ScanLogin')}
           >
-            <Ionicons name="qr-code-outline" size={24} color={theme.colors.text} />
+            <AntDesign name="scan" size={22} color={theme.colors.text} />
           </TouchableOpacity>
           <TouchableOpacity
             style={{ width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }}
