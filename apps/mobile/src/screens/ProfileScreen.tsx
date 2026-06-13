@@ -71,7 +71,6 @@ export function ProfileScreen() {
     startUpdate,
     ignoreUpdate,
     cancelUpdate,
-    installLocalUpdate,
   } = useCheckUpdate();
 
   const [isUpdateModalVisible, setIsUpdateModalVisible] = useState(false);
@@ -179,17 +178,13 @@ export function ProfileScreen() {
           {progress > 0 && (
             <TouchableOpacity
               onPress={() => {
-                if (progress === 1) {
-                  installLocalUpdate();
-                } else {
-                  setIsUpdateModalVisible(true);
-                }
+                setIsUpdateModalVisible(true);
               }}
               style={{ marginRight: 10, flexDirection: 'row', alignItems: 'center' }}
             >
               <Ionicons name="download-outline" size={22} color={theme.colors.text} />
               <Text style={{ color: theme.colors.text }}>
-                {(progress * 100).toFixed(0)}%
+                更新
               </Text>
             </TouchableOpacity>
           )}

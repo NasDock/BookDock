@@ -649,12 +649,13 @@ export function TTSScreen() {
         if (uris.length === 0) return;
 
         // Build tracks for RNTP
+        const coverUri = getCoverImageUrl(book.coverUrl);
         const tracks = uris.map((uri, i) => ({
           id: `${paragraphs[idx].id}-${i}`,
           url: uri,
           title: `${book.title} - ${chapterTitle}`,
           artist: book.author || "未知作者",
-          artwork: undefined,
+          artwork: coverUri,
           duration: 0,
         }));
 

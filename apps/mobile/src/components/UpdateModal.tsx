@@ -1,6 +1,6 @@
 import React from 'react';
-import { ActivityIndicator, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { UpdateInfo } from '../../hooks/useCheckUpdate';
+import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { UpdateInfo } from '../hooks/useCheckUpdate';
 import { useThemeColors } from '../utils/theme';
 
 interface UpdateModalProps {
@@ -25,6 +25,7 @@ export const UpdateModal = ({
   onBackground 
 }: UpdateModalProps) => {
   const isDownloading = isUpdating || progress > 0;
+  const hasStartedDownload = progress > 0 && progress < 1;
 
   const colors = useThemeColors('light');
 
@@ -38,29 +39,21 @@ export const UpdateModal = ({
     >
       <View style={styles.backdropCenter}>
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
-          {isDownloading ? (
+          {hasStartedDownload ? (
             <>
               <Text style={[styles.title, { color: colors.text }]}>
-                {progress > 0 ? '正在更新...' : '准备下载...'}
+                下载已启动
               </Text>
               
-              {/* 进度条区域 */}
-              <View style={styles.progressContainer}>
-                <View style={[styles.progressBarBackground, { backgroundColor: colors.background }]}>
-                  <View style={[styles.progressBarFill, { width: `${progress * 100}%`, backgroundColor: colors.primary }]} />
-                </View>
-              </View>
-              <Text style={styles.percentText}>
-                {progress > 0 ? `${(progress * 100).toFixed(0)}%` : '请求下载链接...'}
+              <Text style={[styles.descText, { color: colors.textSecondary }]}>
+                更新正在系统下载管理器中下载，完成后请在通知栏中点击安装。
               </Text>
               
-              {(isUpdating || progress < 1) && (
-                <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 10 }} />
-              )}
-
-              {/* 底部按钮区域 */}
-              <TouchableOpacity style={[styles.backgroundBtn, { backgroundColor: colors.background }]} onPress={onBackground}>
-                <Text style={[styles.backgroundBtnText, { color: colors.text }]}>后台下载</Text>
+              <TouchableOpacity 
+                style={[styles.okBtn, { backgroundColor: colors.primary }]} 
+                onPress={onBackground}
+              >
+                <Text style={[styles.okBtnText, { color: '#fff' }]}>知道了</Text>
               </TouchableOpacity>
             </>
           ) : updateInfo ? (
@@ -122,6 +115,12 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
+  descText: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
   scrollView: {
     width: '100%',
     marginBottom: 20,
@@ -129,37 +128,6 @@ const styles = StyleSheet.create({
   content: {
     fontSize: 14,
     lineHeight: 20,
-  },
-  progressContainer: {
-    width: '100%',
-    height: 6,
-    marginBottom: 8,
-  },
-  progressBarBackground: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-  },
-  percentText: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 10,
-  },
-  backgroundBtn: {
-    marginTop: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#ccc',
-  },
-  backgroundBtnText: {
-    color: '#666',
-    fontSize: 14,
   },
   buttonContainer: {
     flexDirection: 'row',
@@ -186,6 +154,16 @@ const styles = StyleSheet.create({
   },
   updateBtnText: {
     color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  okBtn: {
+    width: '100%',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  okBtnText: {
     fontSize: 14,
     fontWeight: '600',
   },

@@ -2,7 +2,7 @@
   "expo": {
     "name": "BookDock",
     "slug": "bookdock",
-    "version": "0.0.65",
+    "version": "0.0.64",
     "orientation": "default",
     "icon": "./assets/logo.png",
     "userInterfaceStyle": "automatic",

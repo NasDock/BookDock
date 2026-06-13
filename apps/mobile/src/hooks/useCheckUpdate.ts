@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useState } from 'react';
 import { Alert, Platform } from 'react-native';
-import { checkLocalApkExists, compareVersions, downloadAndInstallApk, getLocalApkUri, getLocalVersion, installApk } from '../utils/updateUtils';
+import { checkLocalApkExists, compareVersions, downloadWithSystemManager, getLocalApkUri, getLocalVersion, installApk } from '../utils/updateUtils';
 
 // 配置常量
 const GITHUB_USER = 'mmdctjj';
@@ -83,10 +83,27 @@ export const useCheckUpdate = () => {
     }
   };
 
+  /**
+   * 使用系统下载管理器下载更新
+   */
   const startUpdate = () => {
     if (isUpdating) return;
     if (updateInfo) {
-      startDownload(updateInfo.downloadUrl);
+      startSystemDownload(updateInfo.downloadUrl);
+    }
+  };
+
+  /**
+   * 安装本地已下载的 APK
+   */
+  const installLocalUpdate = async () => {
+    if (updateInfo) {
+      const localUri = getLocalApkUri(updateInfo.downloadUrl);
+      try {
+        await installApk(localUri);
+      } catch (e) {
+        Alert.alert('安装失败', '无法打开安装程序');
+      }
     }
   };
 
@@ -101,29 +118,31 @@ export const useCheckUpdate = () => {
     setUpdateInfo(null);
   };
 
-  const installLocalUpdate = async () => {
-    if (updateInfo) {
-      const localUri = getLocalApkUri(updateInfo.downloadUrl);
-      try {
-        await installApk(localUri);
-      } catch (e) {
-        Alert.alert('安装失败', '无法打开安装程序');
-      }
-    }
-  };
-
-  // 内部函数：处理下载流程
-  const startDownload = async (url: string) => {
+  // 内部函数：调起系统下载管理器
+  const startSystemDownload = async (url: string) => {
     setIsUpdating(true);
     setProgress(0);
 
     try {
-      await downloadAndInstallApk(url, (p) => {
-        setProgress(p); // 实时更新进度条
-      });
+      // 使用系统下载管理器
+      await downloadWithSystemManager(url);
+      
+      // 系统下载管理器调起后，标记为已开始
+      // 注意：系统下载是后台进行的，应用无法直接获取进度
+      setProgress(0.1); // 标记为已开始
+      
+      // 提示用户
+      Alert.alert(
+        '已开始下载',
+        '更新正在系统下载管理器中下载，完成后请在通知栏中点击安装。',
+        [{ text: '知道了', onPress: () => {
+          setIsUpdating(false);
+          setUpdateInfo(null); // 关闭弹窗
+        }}]
+      );
     } catch (e) {
-      Alert.alert('更新失败', '网络连接错误，请重试');
-    } finally {
+      console.error('系统下载调起失败:', e);
+      Alert.alert('更新失败', '无法调起系统下载，请重试');
       setIsUpdating(false);
     }
   };

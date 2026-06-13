@@ -120,7 +120,7 @@ export async function synthesizeParagraphAudio(
 
 export async function playParagraphAudio(
   uris: string[],
-  trackMeta: { id: string; title: string; artist: string },
+  trackMeta: { id: string; title: string; artist: string; artwork?: string },
   startOffsetMs = 0,
 ) {
   const tracks = uris.map((uri, i) => ({
@@ -128,7 +128,7 @@ export async function playParagraphAudio(
     url: uri,
     title: trackMeta.title,
     artist: trackMeta.artist,
-    artwork: undefined,
+    artwork: trackMeta.artwork,
     duration: 0,
   }));
 
