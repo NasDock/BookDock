@@ -67,6 +67,7 @@ export function TTSMiniPlayer() {
               id: paragraphs[nextIdx].id,
               title: `${book.title} - ${ttsStore.chapterTitle || ''}`,
               artist: book.author || '未知作者',
+              artwork: getCoverImageUrl(book.coverUrl),
             });
             ttsStore.setState('playing');
             ttsStore.setCurrentBook(book.id, nextIdx, paragraphs.length);
@@ -118,6 +119,7 @@ export function TTSMiniPlayer() {
           id: paragraphs[prevIdx].id,
           title: `${book.title} - ${ttsStore.chapterTitle || ''}`,
           artist: book.author || '未知作者',
+          artwork: getCoverImageUrl(book.coverUrl),
         });
         ttsStore.setState('playing');
         ttsStore.setCurrentBook(book.id, prevIdx, paragraphs.length);
