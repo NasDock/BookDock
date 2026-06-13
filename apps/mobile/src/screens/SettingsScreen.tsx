@@ -294,31 +294,6 @@ export function SettingsScreen() {
         </>
       )}
 
-      {/* 内测参与 */}
-      {renderSection('内测计划',
-        <>
-          {renderRow(
-            'flask-outline',
-            '参与内测',
-            <View style={styles.rowValueRow}>
-              <Text style={styles.rowValueText}>
-                {isVip ? '已参与' : redeemingInternalTest ? '申请中...' : '点击参与'}
-              </Text>
-              <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
-            </View>,
-            handleJoinInternalTest
-          )}
-          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
-          {renderRow(
-            'trash-outline',
-            '删除会员账户',
-            <Ionicons name="chevron-forward" size={18} color={theme.colors.error} />,
-            handleDeleteAccount,
-            theme.colors.error
-          )}
-        </>
-      )}
-
       {/* Theme Selection Modal */}
       <Modal visible={themeModalVisible} transparent animationType="fade" onRequestClose={() => setThemeModalVisible(false)}>
         <Pressable style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' }} onPress={() => setThemeModalVisible(false)}>
@@ -359,6 +334,14 @@ export function SettingsScreen() {
           )}
         </>
       )}
+
+       {renderRow(
+          'trash-outline',
+          '删除会员账户',
+          <Ionicons name="chevron-forward" size={18} color={theme.colors.error} />,
+          handleDeleteAccount,
+          theme.colors.error
+        )}
 
       {/* Logout */}
       <TouchableOpacity style={styles.logoutButton} onPress={useAuthStore.getState().logout}>
