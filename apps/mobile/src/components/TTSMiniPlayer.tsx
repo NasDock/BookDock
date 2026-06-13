@@ -260,7 +260,7 @@ export function TTSMiniPlayer() {
               styles.modalContent,
               {
                 backgroundColor: theme.colors.background,
-                maxWidth: isWide ? 600 : screenWidth - 32,
+                width: isWide ? 600 : screenWidth - 32,
               },
             ]}
           >
@@ -378,11 +378,10 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     modalOverlay: {
       flex: 1,
       justifyContent: 'flex-end',
-      alignItems: 'center',
       backgroundColor: 'rgba(0,0,0,0.5)',
     },
     modalContent: {
-      width: '100%',
+      alignSelf: 'center',
       borderTopLeftRadius: borderRadius.xl,
       borderTopRightRadius: borderRadius.xl,
       paddingHorizontal: spacing.md,

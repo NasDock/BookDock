@@ -103,13 +103,13 @@ function formatVoiceName(voice: TTSVoice, providerName: string): string {
 
     const chineseName = nameMap[voiceId] || voiceId.replace('Neural', '');
 
-    // Region tag for Edge TTS only
+    // Region tag for Edge TTS only - use shorter tags
     let regionTag = '';
-    if (region === 'zh-hk' || region === 'zh-hant-hk') regionTag = 'HK';
-    else if (region === 'zh-tw' || region === 'zh-hant-tw') regionTag = 'TW';
-    else if (region === 'zh-cn' || region === 'zh-hans') regionTag = 'CN';
+    if (region === 'zh-hk' || region === 'zh-hant-hk') regionTag = '港';
+    else if (region === 'zh-tw' || region === 'zh-hant-tw') regionTag = '台';
+    else if (region === 'zh-cn' || region === 'zh-hans') regionTag = '陆';
 
-    return regionTag ? `${chineseName} (${regionTag})` : chineseName;
+    return regionTag ? `${chineseName}·${regionTag}` : chineseName;
   }
 
   // For other providers or fallback, return name as-is but truncate if too long
@@ -1008,31 +1008,33 @@ export function TTSScreen() {
             onPress={() => setShowSpeedPicker(false)}
           />
           <View style={[styles.sheetWrapper, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.sheetHandle} />
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>倍速</Text>
-              <TouchableOpacity onPress={() => setShowSpeedPicker(false)}>
-                <Ionicons name="close" size={24} color={theme.colors.text} />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.sleepOptions}>
-              {[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((r) => (
-                <TouchableOpacity
-                  key={r}
-                  onPress={() => {
-                    handleRateChange(r);
-                    setShowSpeedPicker(false);
-                  }}
-                  style={[
-                    styles.sleepOption,
-                    ttsStore.playbackRate === r && { backgroundColor: theme.colors.primary },
-                  ]}
-                >
-                  <Text style={[styles.sleepOptionText, ttsStore.playbackRate === r && { color: '#fff' }]}>
-                    {r}x
-                  </Text>
+            <View style={styles.sheetInner}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>倍速</Text>
+                <TouchableOpacity onPress={() => setShowSpeedPicker(false)}>
+                  <Ionicons name="close" size={24} color={theme.colors.text} />
                 </TouchableOpacity>
-              ))}
+              </View>
+              <View style={styles.sleepOptions}>
+                {[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((r) => (
+                  <TouchableOpacity
+                    key={r}
+                    onPress={() => {
+                      handleRateChange(r);
+                      setShowSpeedPicker(false);
+                    }}
+                    style={[
+                      styles.sleepOption,
+                      ttsStore.playbackRate === r && { backgroundColor: theme.colors.primary },
+                    ]}
+                  >
+                    <Text style={[styles.sleepOptionText, ttsStore.playbackRate === r && { color: '#fff' }]}>
+                      {r}x
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           </View>
         </View>
@@ -1051,31 +1053,33 @@ export function TTSScreen() {
             onPress={() => setShowTimerPicker(false)}
           />
           <View style={[styles.sheetWrapper, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.sheetHandle} />
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>定时关闭</Text>
-              <TouchableOpacity onPress={() => setShowTimerPicker(false)}>
-                <Ionicons name="close" size={24} color={theme.colors.text} />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.sleepOptions}>
-              {[0, 5, 10, 15, 30, 45, 60].map((minutes) => (
-                <TouchableOpacity
-                  key={minutes}
-                  onPress={() => {
-                    handleSleepTimerSet(minutes);
-                    setShowTimerPicker(false);
-                  }}
-                  style={[
-                    styles.sleepOption,
-                    sleepMinutes === minutes && { backgroundColor: theme.colors.primary },
-                  ]}
-                >
-                  <Text style={[styles.sleepOptionText, sleepMinutes === minutes && { color: '#fff' }]}>
-                    {minutes === 0 ? '关闭' : `${minutes} 分钟`}
-                  </Text>
+            <View style={styles.sheetInner}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>定时关闭</Text>
+                <TouchableOpacity onPress={() => setShowTimerPicker(false)}>
+                  <Ionicons name="close" size={24} color={theme.colors.text} />
                 </TouchableOpacity>
-              ))}
+              </View>
+              <View style={styles.sleepOptions}>
+                {[0, 5, 10, 15, 30, 45, 60].map((minutes) => (
+                  <TouchableOpacity
+                    key={minutes}
+                    onPress={() => {
+                      handleSleepTimerSet(minutes);
+                      setShowTimerPicker(false);
+                    }}
+                    style={[
+                      styles.sleepOption,
+                      sleepMinutes === minutes && { backgroundColor: theme.colors.primary },
+                    ]}
+                  >
+                    <Text style={[styles.sleepOptionText, sleepMinutes === minutes && { color: '#fff' }]}>
+                      {minutes === 0 ? '关闭' : `${minutes} 分钟`}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           </View>
         </View>
@@ -1094,63 +1098,65 @@ export function TTSScreen() {
             onPress={() => setShowSettings(false)}
           />
           <View style={[styles.sheetWrapper, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.sheetHandle} />
+            <View style={styles.sheetInner}>
+              <View style={styles.sheetHandle} />
 
-            <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>
-              更多选项
-            </Text>
+              <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>
+                更多选项
+              </Text>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <TouchableOpacity
-                style={styles.sheetOption}
-                onPress={() => {
-                  setShowSettings(false);
-                  setShowSpeedPicker(true);
-                }}
-              >
-                <Ionicons name="speedometer-outline" size={22} color={theme.colors.text} />
-                <Text style={[styles.sheetOptionText, { color: theme.colors.text }]}>播放倍速</Text>
-                <Text style={[styles.sheetOptionValue, { color: theme.colors.textSecondary }]}>
-                  {ttsStore.playbackRate.toFixed(1)}x
-                </Text>
-                <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
-              </TouchableOpacity>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <TouchableOpacity
+                  style={styles.sheetOption}
+                  onPress={() => {
+                    setShowSettings(false);
+                    setShowSpeedPicker(true);
+                  }}
+                >
+                  <Ionicons name="speedometer-outline" size={22} color={theme.colors.text} />
+                  <Text style={[styles.sheetOptionText, { color: theme.colors.text }]}>播放倍速</Text>
+                  <Text style={[styles.sheetOptionValue, { color: theme.colors.textSecondary }]}>
+                    {ttsStore.playbackRate.toFixed(1)}x
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.sheetOption}
-                onPress={() => {
-                  setShowSettings(false);
-                  setShowTimerPicker(true);
-                }}
-              >
-                <Ionicons name="time-outline" size={22} color={theme.colors.text} />
-                <Text style={[styles.sheetOptionText, { color: theme.colors.text }]}>定时关闭</Text>
-                <Text style={[styles.sheetOptionValue, { color: theme.colors.textSecondary }]}>
-                  {sleepMinutes > 0 ? `${sleepMinutes}分钟` : '关闭'}
-                </Text>
-                <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.sheetOption}
+                  onPress={() => {
+                    setShowSettings(false);
+                    setShowTimerPicker(true);
+                  }}
+                >
+                  <Ionicons name="time-outline" size={22} color={theme.colors.text} />
+                  <Text style={[styles.sheetOptionText, { color: theme.colors.text }]}>定时关闭</Text>
+                  <Text style={[styles.sheetOptionValue, { color: theme.colors.textSecondary }]}>
+                    {sleepMinutes > 0 ? `${sleepMinutes}分钟` : '关闭'}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.sheetOption}
-                onPress={() => {
-                  setShowSettings(false);
-                  setShowTTSConfig(true);
-                }}
-              >
-                <Ionicons name="options-outline" size={22} color={theme.colors.text} />
-                <Text style={[styles.sheetOptionText, { color: theme.colors.text }]}>TTS 设置</Text>
-                <Text style={[styles.sheetOptionValue, { color: theme.colors.textSecondary }]}>
-                  {providerLabel(provider)} · {(() => {
-                    const v = voices.find((v) => v.id === voiceId);
-                    return v ? formatVoiceName(v, provider) : '默认';
-                  })()}
-                </Text>
-                <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.sheetOption}
+                  onPress={() => {
+                    setShowSettings(false);
+                    setShowTTSConfig(true);
+                  }}
+                >
+                  <Ionicons name="options-outline" size={22} color={theme.colors.text} />
+                  <Text style={[styles.sheetOptionText, { color: theme.colors.text }]}>TTS 设置</Text>
+                  <Text style={[styles.sheetOptionValue, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                    {providerLabel(provider)} · {(() => {
+                      const v = voices.find((v) => v.id === voiceId);
+                      return v ? formatVoiceName(v, provider) : '默认';
+                    })()}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
 
-              <View style={[styles.sheetDivider, { backgroundColor: theme.colors.border + '40' }]} />
-            </ScrollView>
+                <View style={[styles.sheetDivider, { backgroundColor: theme.colors.border + '40' }]} />
+              </ScrollView>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1168,76 +1174,78 @@ export function TTSScreen() {
             onPress={() => setShowTTSConfig(false)}
           />
           <View style={[styles.sheetWrapper, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.sheetHandle} />
-            <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>
-              TTS 设置
-            </Text>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={[styles.sheetSectionTitle, { color: theme.colors.textSecondary }]}>
-                TTS 服务商
+            <View style={styles.sheetInner}>
+              <View style={styles.sheetHandle} />
+              <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>
+                TTS 设置
               </Text>
-              <View style={styles.chipRow}>
-                {providers.map((p) => {
-                  const active = provider === p.name;
-                  return (
-                    <TouchableOpacity
-                      key={p.name}
-                      disabled={!p.enabled}
-                      onPress={() => setProvider(p.name)}
-                      style={[
-                        styles.chip,
-                        {
-                          backgroundColor: active ? theme.colors.primary : theme.colors.background,
-                          opacity: p.enabled ? 1 : 0.4,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.chipText, { color: active ? '#fff' : theme.colors.text }]}>
-                        {providerLabel(p.name)}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <Text style={[styles.sheetSectionTitle, { color: theme.colors.textSecondary }]}>
-                音色
-              </Text>
-              <View style={styles.voiceList}>
-                {voices
-                  .filter((v) => {
-                    const lang = (v.language || v.lang || '').toLowerCase();
-                    return lang.startsWith('zh');
-                  })
-                  .map((v) => {
-                    const active = voiceId === v.id;
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <Text style={[styles.sheetSectionTitle, { color: theme.colors.textSecondary }]}>
+                  TTS 服务商
+                </Text>
+                <View style={styles.chipRow}>
+                  {providers.map((p) => {
+                    const active = provider === p.name;
                     return (
                       <TouchableOpacity
-                        key={v.id}
-                        onPress={() => {
-                          setVoiceId(v.id);
-                          ttsStore.setSelectedVoice(v);
-                        }}
+                        key={p.name}
+                        disabled={!p.enabled}
+                        onPress={() => setProvider(p.name)}
                         style={[
-                          styles.voiceListItem,
-                          active && { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary },
+                          styles.chip,
+                          {
+                            backgroundColor: active ? theme.colors.primary : theme.colors.background,
+                            opacity: p.enabled ? 1 : 0.4,
+                          },
                         ]}
                       >
-                        <View style={styles.voiceListLeft}>
-                          <Text style={[styles.voiceListName, { color: active ? theme.colors.primary : theme.colors.text }]}>
-                            {formatVoiceName(v, provider)}
-                          </Text>
-                          <Text style={styles.voiceListLang}>
-                            {v.language || v.lang || 'zh-CN'}
-                          </Text>
-                        </View>
-                        {active && (
-                          <Ionicons name="checkmark-circle" size={22} color={theme.colors.primary} />
-                        )}
+                        <Text style={[styles.chipText, { color: active ? '#fff' : theme.colors.text }]}>
+                          {providerLabel(p.name)}
+                        </Text>
                       </TouchableOpacity>
                     );
                   })}
-              </View>
-            </ScrollView>
+                </View>
+                <Text style={[styles.sheetSectionTitle, { color: theme.colors.textSecondary }]}>
+                  音色
+                </Text>
+                <View style={styles.voiceList}>
+                  {voices
+                    .filter((v) => {
+                      const lang = (v.language || v.lang || '').toLowerCase();
+                      return lang.startsWith('zh');
+                    })
+                    .map((v) => {
+                      const active = voiceId === v.id;
+                      return (
+                        <TouchableOpacity
+                          key={v.id}
+                          onPress={() => {
+                            setVoiceId(v.id);
+                            ttsStore.setSelectedVoice(v);
+                          }}
+                          style={[
+                            styles.voiceListItem,
+                            active && { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary },
+                          ]}
+                        >
+                          <View style={styles.voiceListLeft}>
+                            <Text style={[styles.voiceListName, { color: active ? theme.colors.primary : theme.colors.text }]}>
+                              {formatVoiceName(v, provider)}
+                            </Text>
+                            <Text style={styles.voiceListLang}>
+                              {v.language || v.lang || 'zh-CN'}
+                            </Text>
+                          </View>
+                          {active && (
+                            <Ionicons name="checkmark-circle" size={22} color={theme.colors.primary} />
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                </View>
+              </ScrollView>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1255,38 +1263,40 @@ export function TTSScreen() {
             onPress={() => setShowChapterPicker(false)}
           />
           <View style={[styles.sheetWrapper, { backgroundColor: theme.colors.surface }]}>
-            <View style={styles.sheetHandle} />
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>章节列表</Text>
-              <TouchableOpacity onPress={() => setShowChapterPicker(false)}>
-                <Ionicons name="close" size={24} color={theme.colors.text} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {chapters.map((c) => {
-                const active = chapterIndex === c.index;
-                return (
-                  <TouchableOpacity
-                    key={c.index}
-                    onPress={() => handleChapterChange(c.index)}
-                    style={[
-                      styles.chapterListItem,
-                      active && { backgroundColor: theme.colors.primary + '20' },
-                    ]}
-                  >
-                    <Text
+            <View style={styles.sheetInner}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>章节列表</Text>
+                <TouchableOpacity onPress={() => setShowChapterPicker(false)}>
+                  <Ionicons name="close" size={24} color={theme.colors.text} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {chapters.map((c) => {
+                  const active = chapterIndex === c.index;
+                  return (
+                    <TouchableOpacity
+                      key={c.index}
+                      onPress={() => handleChapterChange(c.index)}
                       style={[
-                        styles.chapterListText,
-                        { color: active ? theme.colors.primary : theme.colors.text },
+                        styles.chapterListItem,
+                        active && { backgroundColor: theme.colors.primary + '20' },
                       ]}
                     >
-                      <Text style={styles.chapterListNumber}>{c.index + 1}. </Text>
-                      {c.title}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                      <Text
+                        style={[
+                          styles.chapterListText,
+                          { color: active ? theme.colors.primary : theme.colors.text },
+                        ]}
+                      >
+                        <Text style={styles.chapterListNumber}>{c.index + 1}. </Text>
+                        {c.title}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
           </View>
         </View>
       </Modal>
@@ -1766,16 +1776,19 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     sheetWrapper: {
       position: 'absolute',
       bottom: 0,
-      left: '50%',
-      transform: [{ translateX: -300 }],
-      width: '100%',
+      left: 0,
+      right: 0,
+      alignItems: 'center',
       maxHeight: '60%',
-      maxWidth: 600,
       borderTopLeftRadius: 20,
       borderTopRightRadius: 20,
       paddingTop: 8,
       paddingHorizontal: spacing.lg,
       paddingBottom: spacing.xl,
+    },
+    sheetInner: {
+      width: '100%',
+      maxWidth: 600,
     },
     sheetHandle: {
       width: 40,
@@ -1845,6 +1858,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     sheetOptionValue: {
       fontSize: fontSizes.sm,
       marginRight: spacing.xs,
+      maxWidth: 120,
     },
   });
 }
