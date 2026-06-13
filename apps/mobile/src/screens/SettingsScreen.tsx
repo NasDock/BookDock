@@ -281,6 +281,23 @@ export function SettingsScreen() {
         </>
       )}
 
+      {/* 内测计划 */}
+      {renderSection('内测计划',
+        <>
+          {renderRow(
+            'flask-outline',
+            '参与内测',
+            <View style={styles.rowValueRow}>
+              <Text style={styles.rowValueText}>
+                {isVip ? '已参与' : redeemingInternalTest ? '申请中...' : '点击参与'}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+            </View>,
+            handleJoinInternalTest
+          )}
+        </>
+      )}
+
       {/* About */}
       {renderSection('关于',
         <>
@@ -318,35 +335,23 @@ export function SettingsScreen() {
         </Pressable>
       </Modal>
 
-      {/* 内测计划 */}
-      {renderSection('内测计划',
-        <>
-          {renderRow(
-            'flask-outline',
-            '参与内测',
-            <View style={styles.rowValueRow}>
-              <Text style={styles.rowValueText}>
-                {isVip ? '已参与' : redeemingInternalTest ? '申请中...' : '点击参与'}
-              </Text>
-              <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
-            </View>,
-            handleJoinInternalTest
-          )}
-        </>
-      )}
 
-       {renderRow(
-          'trash-outline',
-          '删除会员账户',
-          <Ionicons name="chevron-forward" size={18} color={theme.colors.error} />,
-          handleDeleteAccount,
-          theme.colors.error
-        )}
+      {/* Action Buttons */}
+      <View style={styles.actionButtonsContainer}>
+        <TouchableOpacity
+          style={[styles.actionButton, { backgroundColor: theme.colors.error }]}
+          onPress={useAuthStore.getState().logout}
+        >
+          <Text style={[styles.actionButtonText, { color: '#fff' }]}>退出登录</Text>
+        </TouchableOpacity>
 
-      {/* Logout */}
-      <TouchableOpacity style={styles.logoutButton} onPress={useAuthStore.getState().logout}>
-        <Text style={styles.logoutText}>退出登录</Text>
-      </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionButton, { backgroundColor: theme.colors.error + '20', borderWidth: 1, borderColor: theme.colors.error }]}
+          onPress={handleDeleteAccount}
+        >
+          <Text style={[styles.actionButtonText, { color: theme.colors.error }]}>注销会员账号</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
@@ -402,14 +407,19 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       height: 1,
       marginLeft: spacing.md + 28,
     },
-    logoutButton: {
+    actionButtonsContainer: {
       marginTop: spacing.lg,
-      paddingVertical: spacing.md,
-      alignItems: 'center',
+      paddingHorizontal: spacing.md,
+      gap: spacing.md,
     },
-    logoutText: {
+    actionButton: {
+      paddingVertical: spacing.md,
+      borderRadius: borderRadius.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    actionButtonText: {
       fontSize: fontSizes.md,
-      color: theme.colors.error,
       fontWeight: '500',
     },
     themeModal: {
