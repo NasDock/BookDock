@@ -326,6 +326,7 @@ export function TTSScreen() {
         }
         setChapters(chRes.data);
         chaptersRef.current = chRes.data;
+        ttsStore.setChapters(chRes.data);
 
         // Load first chapter (loadChapter will skip empty ones)
         console.log('[TTSScreen] Loading chapter 0, voice:', vs[0]?.id || voiceId, 'provider:', finalProvider);
@@ -342,6 +343,13 @@ export function TTSScreen() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book.id]);
+
+  // ── Auto-open chapter picker if requested via route params ──────────
+  useEffect(() => {
+    if (route.params?.showChapterPicker && chapters.length > 0 && !loading) {
+      setShowChapterPicker(true);
+    }
+  }, [route.params?.showChapterPicker, chapters.length, loading]);
 
   // ── Reload voices when provider changes ─────────────────────────────
   useEffect(() => {
@@ -439,6 +447,25 @@ export function TTSScreen() {
       return () => clearTimeout(timeout);
     }
   }, [currentParagraph, paragraphs.length]);
+
+  // Scroll to current paragraph when entering content view (initial mount)
+  useEffect(() => {
+    if (viewMode === 'content' && flatListRef.current && currentParagraph >= 0 && paragraphs.length > 0) {
+      const timeout = setTimeout(() => {
+        try {
+          flatListRef.current?.scrollToIndex({
+            index: currentParagraph,
+            animated: false,
+            viewPosition: 0.5,
+          });
+        } catch (e) {
+          console.warn('Initial scrollToIndex failed:', e);
+        }
+      }, 300);
+      return () => clearTimeout(timeout);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode]);
 
   const loadChapter = async (ci: number, vid: string, prov: string) => {
     setChapterIndex(ci);
@@ -945,11 +972,23 @@ export function TTSScreen() {
           </TouchableOpacity>
         );
       }}
+      getItemLayout={(data, index) => {
+        // Estimate item height based on text length (approx 40 chars per line, 24px per line + padding)
+        const text = data?.[index]?.text || '';
+        const lines = Math.max(1, Math.ceil(text.length / 40));
+        const height = lines * 24 + 16; // 16px for padding (8 top + 8 bottom)
+        return { length: height, offset: height * index, index };
+      }}
       maintainVisibleContentPosition={{
         minIndexForVisible: 0,
       }}
       onScrollToIndexFailed={(info) => {
         console.warn('Scroll to index failed:', info);
+        // Fallback: scroll to approximate offset
+        flatListRef.current?.scrollToOffset({
+          offset: info.averageItemLength * info.index,
+          animated: true,
+        });
       }}
     />
   );
