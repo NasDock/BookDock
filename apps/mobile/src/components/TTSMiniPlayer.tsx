@@ -159,8 +159,8 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       gap: spacing.sm,
     },
     cover: {
-      width: 40,
-      height: 40,
+      width: 32,
+      height: 44,
       borderRadius: borderRadius.sm,
       overflow: 'hidden',
     },

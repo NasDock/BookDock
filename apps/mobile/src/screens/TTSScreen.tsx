@@ -1334,17 +1334,11 @@ export function TTSScreen() {
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
     >
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={handleToggleViewMode} style={styles.headerButton}>
-          <Ionicons name="chevron-back" size={28} color={theme.colors.text} />
-        </TouchableOpacity>
-        <View style={styles.headerCenter}>
-          <Text style={styles.headerSubtitle} numberOfLines={1}>{chapterTitle}</Text>
-        </View>
-        <View style={styles.headerButton} />
+      {renderHeader()}
+      <View style={styles.contentViewContainer}>
+        {renderParagraphList()}
+        {renderBottomBar()}
       </View>
-      {renderParagraphList()}
       {renderModals()}
     </SafeAreaView>
   );
@@ -1613,7 +1607,9 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       borderTopWidth: 1,
       borderTopColor: theme.colors.border + '30',
     },
-    // Content view
+    contentViewContainer: {
+      flex: 1,
+    },
     paragraphsScroll: {
       flex: 1,
       padding: spacing.md,
