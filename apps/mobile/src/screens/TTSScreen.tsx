@@ -21,7 +21,11 @@ import {
   ActivityIndicator,
   Alert,
   AppState,
+  Dimensions,
+  FlatList,
   Image,
+  Modal,
+  Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -48,6 +52,72 @@ const providerLabel = (name: string) => {
   if (name === "mi") return "小米";
   return name;
 };
+
+/**
+ * Format voice name for display.
+ * Edge TTS names are long like "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoxiaoNeural)"
+ * We extract just the Chinese name and region tag.
+ */
+function formatVoiceName(voice: TTSVoice, providerName: string): string {
+  const name = voice.name || '';
+
+  // 小米 TTS: return name as-is, no region tag
+  if (providerName === 'mi') {
+    return name;
+  }
+
+  // Edge TTS: extract name from parentheses, e.g. "(zh-CN, XiaoxiaoNeural)"
+  const match = name.match(/\(([a-z]{2}-[A-Z]{2}),\s*([^)]+)\)/);
+  if (match) {
+    const region = match[1].toLowerCase(); // e.g. "zh-cn", "zh-hk", "zh-tw"
+    const voiceId = match[2]; // e.g. "XiaoxiaoNeural"
+
+    // Map voice IDs to Chinese names
+    const nameMap: Record<string, string> = {
+      'XiaoxiaoNeural': '晓晓',
+      'XiaoyiNeural': '晓伊',
+      'YunjianNeural': '云健',
+      'YunxiNeural': '云希',
+      'YunxiaNeural': '云夏',
+      'YunyangNeural': '云扬',
+      'XiaochenNeural': '晓辰',
+      'XiaohanNeural': '晓涵',
+      'XiaomengNeural': '晓梦',
+      'XiaomoNeural': '晓墨',
+      'XiaoqiuNeural': '晓秋',
+      'XiaoruiNeural': '晓睿',
+      'XiaoshuangNeural': '晓双',
+      'XiaoyanNeural': '晓颜',
+      'XiaoyouNeural': '晓悠',
+      'XiaozhenNeural': '晓甄',
+      'YunfengNeural': '云枫',
+      'YunhaoNeural': '云浩',
+      'YunyeNeural': '云野',
+      'YunzeNeural': '云泽',
+      'HiuMaanNeural': '晓曼',
+      'WanLungNeural': '云龙',
+      'HsiaoChenNeural': '晓臻',
+      'HsiaoYuNeural': '晓雨',
+      'YunJheNeural': '云哲',
+    };
+
+    const chineseName = nameMap[voiceId] || voiceId.replace('Neural', '');
+
+    // Region tag for Edge TTS only - use shorter tags
+    let regionTag = '';
+    if (region === 'zh-hk' || region === 'zh-hant-hk') regionTag = '港';
+    else if (region === 'zh-tw' || region === 'zh-hant-tw') regionTag = '台';
+    else if (region === 'zh-cn' || region === 'zh-hans') regionTag = '陆';
+
+    return regionTag ? `${chineseName}·${regionTag}` : chineseName;
+  }
+
+  // For other providers or fallback, return name as-is but truncate if too long
+  if (name.length > 20) {
+    return name.slice(0, 18) + '...';
+  }
+  return name;
+}
 
 const TTS_CHUNK_MAX = 2500;
 
@@ -100,6 +170,11 @@ export function TTSScreen() {
   const chapterIndex = ttsStore.chapterIndex;
   const currentParagraph = ttsStore.currentParagraph;
 
+  // Local setters for chapter data (since these come from API, not store)
+  const setParagraphs = useCallback((p: Paragraph[]) => ttsStore.setParagraphs(p), [ttsStore]);
+  const setChapterTitle = useCallback((t: string) => ttsStore.setChapterTitle(t), [ttsStore]);
+  const setChapterIndex = useCallback((i: number) => ttsStore.setChapterIndex(i), [ttsStore]);
+
   // ── Local UI state ──────────────────────────────────────────────────
   const [chapters, setChapters] = useState<{ title: string; index: number }[]>(
     [],
@@ -118,6 +193,7 @@ export function TTSScreen() {
     ttsStore.selectedVoice?.id || "",
   );
   const [showSettings, setShowSettings] = useState(false);
+  const [showTTSConfig, setShowTTSConfig] = useState(false);
   const [showChapterPicker, setShowChapterPicker] = useState(false);
   const [showSpeedPicker, setShowSpeedPicker] = useState(false);
   const [showTimerPicker, setShowTimerPicker] = useState(false);
@@ -126,6 +202,17 @@ export function TTSScreen() {
 
   // View mode: 'controls' = cover + controls, 'content' = paragraph list
   const [viewMode, setViewMode] = useState<'controls' | 'content'>('controls');
+
+  // Screen width for responsive layout
+  const [screenWidth, setScreenWidth] = useState(Dimensions.get('window').width);
+  const isWideScreen = screenWidth > 600;
+
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setScreenWidth(window.width);
+    });
+    return () => subscription?.remove();
+  }, []);
 
   // RNTP progress
   const playbackState = usePlaybackState();
@@ -142,7 +229,7 @@ export function TTSScreen() {
   const prefetchedRef = useRef<Map<string, string>>(new Map());
   const cancelledRef = useRef(false);
   const sleepTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const paragraphsScrollRef = useRef<ScrollView>(null);
+  const flatListRef = useRef<FlatList>(null);
   const paragraphRefs = useRef<Map<number, View>>(new Map());
 
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -239,6 +326,7 @@ export function TTSScreen() {
         }
         setChapters(chRes.data);
         chaptersRef.current = chRes.data;
+        ttsStore.setChapters(chRes.data);
 
         // Load first chapter (loadChapter will skip empty ones)
         console.log('[TTSScreen] Loading chapter 0, voice:', vs[0]?.id || voiceId, 'provider:', finalProvider);
@@ -255,6 +343,13 @@ export function TTSScreen() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book.id]);
+
+  // ── Auto-open chapter picker if requested via route params ──────────
+  useEffect(() => {
+    if (route.params?.showChapterPicker && chapters.length > 0 && !loading) {
+      setShowChapterPicker(true);
+    }
+  }, [route.params?.showChapterPicker, chapters.length, loading]);
 
   // ── Reload voices when provider changes ─────────────────────────────
   useEffect(() => {
@@ -334,49 +429,55 @@ export function TTSScreen() {
   }, [currentParagraph, paragraphs.length, chapterIndex, voiceId, provider, ttsStore]);
 
 
-  // Auto-scroll to current paragraph in content view
+  // Auto-scroll to current paragraph when it changes
   useEffect(() => {
-    if (viewMode === 'content' && currentParagraph >= 0) {
-      const ref = paragraphRefs.current.get(currentParagraph);
-      if (ref && paragraphsScrollRef.current) {
-        ref.measureLayout(
-          paragraphsScrollRef.current as any,
-          (_x, y) => {
-            paragraphsScrollRef.current?.scrollTo({ y: Math.max(0, y - 100), animated: true });
-          },
-          () => {}
-        );
-      }
+    if (flatListRef.current && currentParagraph >= 0 && paragraphs.length > 0) {
+      const timeout = setTimeout(() => {
+        try {
+          flatListRef.current?.scrollToIndex({
+            index: currentParagraph,
+            animated: true,
+            viewPosition: 0.5,
+          });
+        } catch (e) {
+          // Fallback to scrollToOffset if scrollToIndex fails
+          console.warn('scrollToIndex failed, falling back');
+        }
+      }, 100);
+      return () => clearTimeout(timeout);
     }
-  }, [currentParagraph, viewMode]);
+  }, [currentParagraph, paragraphs.length]);
+
+  // Scroll to current paragraph when entering content view (initial mount)
+  useEffect(() => {
+    if (viewMode === 'content' && flatListRef.current && currentParagraph >= 0 && paragraphs.length > 0) {
+      const timeout = setTimeout(() => {
+        try {
+          flatListRef.current?.scrollToIndex({
+            index: currentParagraph,
+            animated: false,
+            viewPosition: 0.5,
+          });
+        } catch (e) {
+          console.warn('Initial scrollToIndex failed:', e);
+        }
+      }, 300);
+      return () => clearTimeout(timeout);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode]);
 
   const loadChapter = async (ci: number, vid: string, prov: string) => {
-    console.log('[TTSScreen] loadChapter called, ci:', ci, 'vid:', vid, 'prov:', prov);
-    ttsStore.setChapterIndex(ci);
+    setChapterIndex(ci);
     try {
       const apiClient = getApiClient();
-      console.log('[TTSScreen] Fetching paragraphs for book:', book.id, 'chapter:', ci);
       const pRes = await apiClient.getChapterParagraphs(book.id, ci);
-      console.log('[TTSScreen] Paragraphs response:', JSON.stringify(pRes).substring(0, 500));
       if (!pRes.success || !pRes.data) {
-        console.log('[TTSScreen] Failed to load paragraphs:', pRes);
         setLoadError("加载章节失败");
         return;
       }
-      console.log('[TTSScreen] Paragraphs loaded, count:', pRes.data.paragraphs?.length);
-
-      // If chapter has no paragraphs, try next chapter
-      if (!pRes.data.paragraphs || pRes.data.paragraphs.length === 0) {
-        const nextChapter = ci + 1;
-        if (nextChapter < chaptersRef.current.length) {
-          console.log('[TTSScreen] Chapter empty, trying next:', nextChapter);
-          return loadChapter(nextChapter, vid, prov);
-        } else {
-          setLoadError("没有可朗读的内容");
-          return;
-        }
-      }
-
+      setChapterTitle(pRes.data.title);
+      setParagraphs(pRes.data.paragraphs);
       setParagraphProgress(0);
       setResumeOffsetMs(0);
       prefetchedRef.current.clear();
@@ -384,7 +485,6 @@ export function TTSScreen() {
       ttsStore.setTotalParagraphs(pRes.data.paragraphs.length);
       ttsStore.setChapterTitle(pRes.data.title);
       ttsStore.setChapterIndex(ci);
-      ttsStore.setCurrentParagraph(0);
 
       // Resume from saved cloud progress
       try {
@@ -451,21 +551,53 @@ export function TTSScreen() {
   // ── Persist latest position when user leaves the screen ─────────────
   useEffect(() => {
     const unsubscribe = navigation.addListener("beforeRemove", async () => {
-      await persistProgress(ttsStore.currentParagraph, Math.round(progress.position * 1000));
+      await persistProgress(currentParagraph, Math.round(progress.position * 1000));
       ttsStore.setMiniPlayerVisible(true);
     });
     return unsubscribe;
-  }, [navigation, persistProgress, progress.position, ttsStore]);
+  }, [currentParagraph, navigation, persistProgress, progress.position, ttsStore]);
 
   // ── Persist progress when app goes to background ────────────────────
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       if (nextAppState === "background" || nextAppState === "inactive") {
-        void persistProgress(ttsStore.currentParagraph, Math.round(progress.position * 1000));
+        void persistProgress(currentParagraph, Math.round(progress.position * 1000));
       }
     });
     return () => subscription.remove();
-  }, [persistProgress, progress.position, ttsStore]);
+  }, [currentParagraph, persistProgress, progress.position]);
+
+  const prefetchParagraph = useCallback(
+    async (idx: number) => {
+      if (idx >= paragraphs.length) return;
+      const para = paragraphs[idx];
+      if (prefetchedRef.current.has(para.id)) return;
+      const chunks = splitForTts(para.text, TTS_CHUNK_MAX);
+      const apiClient = getApiClient();
+      try {
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+          const chunkParaId = chunks.length > 1 ? `${para.id}#${i}` : para.id;
+          const r = await apiClient.synthesizeParagraph({
+            bookId: book.id,
+            paragraphId: chunkParaId,
+            text: chunk,
+            provider,
+            voice: voiceId,
+          });
+          if (r.success && r.data) {
+            prefetchedRef.current.set(
+              chunkParaId,
+              resolveAudioUrl(r.data.url, apiClient),
+            );
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+    },
+    [book.id, paragraphs, provider, voiceId],
+  );
 
   const synthesizeParagraph = useCallback(
     async (idx: number): Promise<string[]> => {
@@ -498,47 +630,6 @@ export function TTSScreen() {
     [book.id, paragraphs, provider, voiceId],
   );
 
-  // ── TrackPlayer event: active track changed → update current paragraph ─
-  useEffect(() => {
-    const sub = TrackPlayer.addEventListener(Event.PlaybackTrackChanged, async (event: any) => {
-      if (event.nextTrack === undefined) return;
-      
-      // Get current track to determine which paragraph we're on
-      const track = await TrackPlayer.getTrack(event.nextTrack);
-      if (!track?.id) return;
-      
-      // Extract paragraph index from track ID (format: "paraId-chunkIdx")
-      const paraId = track.id.split('-')[0];
-      const paraIdx = paragraphs.findIndex(p => p.id === paraId);
-      
-      if (paraIdx >= 0 && paraIdx !== ttsStore.currentParagraph) {
-        ttsStore.setCurrentParagraph(paraIdx);
-        
-        // Add next paragraph to queue for seamless playback
-        try {
-          const nextIdx = paraIdx + 1;
-          if (nextIdx < paragraphs.length) {
-            const nextUris = await synthesizeParagraph(nextIdx);
-            if (nextUris.length > 0) {
-              const nextTracks = nextUris.map((uri, i) => ({
-                id: `${paragraphs[nextIdx].id}-${i}`,
-                url: uri,
-                title: `${book.title || '未知书籍'} - ${chapterTitle}`,
-                artist: book.author || "未知作者",
-                artwork: undefined,
-                duration: 0,
-              }));
-              await TrackPlayer.add(nextTracks);
-            }
-          }
-        } catch {
-          // Ignore prefetch errors
-        }
-      }
-    });
-    return () => sub.remove();
-  }, [ttsStore, paragraphs, book, chapterTitle, synthesizeParagraph]);
-
   const playParagraph = useCallback(
     async (idx: number) => {
       if (idx >= paragraphs.length) {
@@ -551,52 +642,30 @@ export function TTSScreen() {
       setParagraphProgress(0);
       const startOffsetMs = resumeOffsetMs;
       setResumeOffsetMs(0);
+      prefetchParagraph(idx + 1);
 
       try {
-        // Synthesize current and next paragraph
         const uris = await synthesizeParagraph(idx);
         if (uris.length === 0) return;
 
-        // Build tracks for current paragraph
+        // Build tracks for RNTP
         const tracks = uris.map((uri, i) => ({
           id: `${paragraphs[idx].id}-${i}`,
           url: uri,
-          title: `${book.title || '未知书籍'} - ${chapterTitle}`,
+          title: `${book.title} - ${chapterTitle}`,
           artist: book.author || "未知作者",
           artwork: undefined,
           duration: 0,
         }));
 
-        // Reset and add current paragraph
         await TrackPlayer.reset();
         await TrackPlayer.add(tracks);
-
-        // Try to add next paragraph to queue for seamless playback
-        try {
-          if (idx + 1 < paragraphs.length) {
-            const nextUris = await synthesizeParagraph(idx + 1);
-            if (nextUris.length > 0) {
-              const nextTracks = nextUris.map((uri, i) => ({
-                id: `${paragraphs[idx + 1].id}-${i}`,
-                url: uri,
-                title: `${book.title || '未知书籍'} - ${chapterTitle}`,
-                artist: book.author || "未知作者",
-                artwork: undefined,
-                duration: 0,
-              }));
-              await TrackPlayer.add(nextTracks);
-            }
-          }
-        } catch {
-          // Ignore prefetch errors
-        }
-
         if (startOffsetMs > 0) {
           await TrackPlayer.seekTo(startOffsetMs / 1000);
         }
         await TrackPlayer.play();
-        ttsStore.setCurrentBook(book.id, idx, paragraphs.length);
         ttsStore.setState("playing");
+        ttsStore.setCurrentBook(book.id, idx, paragraphs.length);
       } catch (e) {
         console.error("TTS paragraph error", e);
         ttsStore.setState("idle");
@@ -609,6 +678,7 @@ export function TTSScreen() {
       book.author,
       chapterTitle,
       paragraphs,
+      prefetchParagraph,
       synthesizeParagraph,
       resumeOffsetMs,
       ttsStore,
@@ -635,6 +705,7 @@ export function TTSScreen() {
   }, [isPaused, isPlaying, paragraphs.length, playParagraph, currentParagraph, ttsStore, persistProgress, progress.position]);
 
   const handleStop = useCallback(async () => {
+    await TrackPlayer.pause();
     await TrackPlayer.reset();
     ttsStore.setState("idle");
     ttsStore.setCurrentParagraph(0);
@@ -666,21 +737,12 @@ export function TTSScreen() {
 
   const handleChapterChange = useCallback(
     async (ci: number) => {
-      console.log('[TTSScreen] handleChapterChange called, ci:', ci, 'chapterIndex:', chapterIndex);
-      if (ci === chapterIndex) {
-        console.log('[TTSScreen] Same chapter, skipping');
-        return;
-      }
-      try {
-        await TrackPlayer.reset();
-        ttsStore.setState("idle");
-        console.log('[TTSScreen] Loading chapter:', ci);
-        await loadChapter(ci, voiceId, provider);
-        console.log('[TTSScreen] Chapter loaded, closing picker');
-        setShowChapterPicker(false);
-      } catch (e) {
-        console.error('[TTSScreen] handleChapterChange error:', e);
-      }
+      if (ci === chapterIndex) return;
+      await TrackPlayer.pause();
+      await TrackPlayer.reset();
+      ttsStore.setState("idle");
+      await loadChapter(ci, voiceId, provider);
+      setShowChapterPicker(false);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [chapterIndex, voiceId, provider],
@@ -727,6 +789,520 @@ export function TTSScreen() {
     ? (currentParagraph + paragraphProgress) / paragraphs.length
     : 0;
 
+  // ── Render helpers ─────────────────────────────────────────────────
+  const renderHeader = () => (
+    <View style={styles.header}>
+      <TouchableOpacity onPress={handleMinimize} style={styles.headerButton}>
+        <Ionicons name="chevron-down" size={28} color={theme.colors.text} />
+      </TouchableOpacity>
+      {!isWideScreen && (
+        <TouchableOpacity 
+          style={styles.headerCenter} 
+          onPress={handleToggleViewMode}
+        >
+          <Ionicons 
+            name={viewMode === 'controls' ? 'document-text-outline' : 'image-outline'} 
+            size={22} 
+            color={theme.colors.text} 
+          />
+        </TouchableOpacity>
+      )}
+      <TouchableOpacity style={styles.headerButton} onPress={() => setShowSettings(true)}>
+        <Ionicons name="ellipsis-vertical" size={22} color={theme.colors.text} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderCover = () => (
+    <TouchableOpacity
+      style={styles.coverSection}
+      onPress={handleToggleViewMode}
+      activeOpacity={0.9}
+    >
+      <View style={[styles.bookCoverLarge, { backgroundColor: theme.colors.surface }]}>
+        {book.coverUrl ? (
+          <Image
+            source={{ uri: getCoverImageUrl(book.coverUrl) }}
+            style={styles.bookCoverImage}
+            resizeMode="cover"
+          />
+        ) : (
+          <Text style={styles.coverInitialLarge}>{(book.title || '?').charAt(0)}</Text>
+        )}
+      </View>
+      {sleepMinutes > 0 && (
+        <View style={[styles.sleepBadge, { backgroundColor: theme.colors.primary }]}>
+          <Ionicons name="moon" size={12} color="#fff" />
+          <Text style={styles.sleepBadgeText}>
+            {Math.floor(sleepRemaining / 60)}m
+          </Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+
+  const renderChapterInfo = () => (
+    <Text style={styles.chapterTitleLarge} numberOfLines={2}>
+      {book.title || '未知书籍'}
+    </Text>
+  );
+
+  const renderDescription = () => (
+    book.description && (
+      <View style={styles.descriptionPanel}>
+        <Text style={styles.settingsLabel}>简介</Text>
+        <Text style={styles.descriptionText} numberOfLines={6}>
+          {book.description}
+        </Text>
+      </View>
+    )
+  );
+
+  const renderProgress = () => (
+    <View style={styles.progressSection}>
+      <View style={styles.progressLabelsRow}>
+        <Text style={styles.muted} numberOfLines={1}>
+          {chapterTitle}
+        </Text>
+        <Text style={styles.muted}>{Math.round(overallProgress * 100)}%</Text>
+      </View>
+      <View style={[styles.progressBar, { backgroundColor: theme.colors.border + '40' }]}>
+        <View
+          style={[
+            styles.progressFill,
+            { backgroundColor: theme.colors.primary, width: `${overallProgress * 100}%` },
+          ]}
+        />
+      </View>
+    </View>
+  );
+
+  const handleReadBook = useCallback(() => {
+    navigation.navigate('Reader', { book });
+  }, [navigation, book]);
+
+  const renderControls = () => (
+    <View style={styles.controlsRow}>
+      <TouchableOpacity
+        style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
+        onPress={handleReadBook}
+      >
+        <Ionicons name="book-outline" size={20} color={theme.colors.text} />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
+        onPress={handleSkipBack}
+      >
+        <Ionicons name="play-skip-back-outline" size={22} color={theme.colors.text} />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.playButtonLarge, { backgroundColor: isPlaying ? theme.colors.error : theme.colors.primary }]}
+        onPress={handlePlayPause}
+        disabled={isLoadingAudio}
+      >
+        {isLoadingAudio ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Ionicons
+            name={isPlaying ? 'pause' : 'play'}
+            size={32}
+            color="#fff"
+          />
+        )}
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
+        onPress={handleSkipForward}
+      >
+        <Ionicons name="play-skip-forward-outline" size={22} color={theme.colors.text} />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
+        onPress={() => setShowChapterPicker(true)}
+      >
+        <Ionicons name="list-outline" size={20} color={theme.colors.text} />
+      </TouchableOpacity>
+    </View>
+  );
+
+  const renderBottomBar = () => (
+    <View style={[styles.bottomBar, { backgroundColor: theme.colors.background }]}>
+      {renderProgress()}
+      {renderControls()}
+    </View>
+  );
+
+  const renderParagraphList = () => (
+    <FlatList
+      ref={flatListRef}
+      data={paragraphs}
+      keyExtractor={(item) => item.id}
+      style={styles.paragraphsScroll}
+      renderItem={({ item, index }) => {
+        const isCurrent = index === currentParagraph;
+        const isPast = index < currentParagraph;
+        return (
+          <TouchableOpacity
+            onPress={() => handleJumpToParagraph(index)}
+            style={[
+              styles.paragraphItem,
+              isCurrent && { backgroundColor: theme.colors.primary + '25' },
+            ]}
+          >
+            <Text
+              style={[
+                styles.paragraphText,
+                {
+                  color: isCurrent
+                    ? theme.colors.text
+                    : isPast
+                      ? theme.colors.textSecondary
+                      : theme.colors.text,
+                  fontWeight: isCurrent ? '600' : '400',
+                  opacity: isPast ? 0.55 : 1,
+                },
+              ]}
+            >
+              {item.text}
+            </Text>
+          </TouchableOpacity>
+        );
+      }}
+      getItemLayout={(data, index) => {
+        // Estimate item height based on text length (approx 40 chars per line, 24px per line + padding)
+        const text = data?.[index]?.text || '';
+        const lines = Math.max(1, Math.ceil(text.length / 40));
+        const height = lines * 24 + 16; // 16px for padding (8 top + 8 bottom)
+        return { length: height, offset: height * index, index };
+      }}
+      maintainVisibleContentPosition={{
+        minIndexForVisible: 0,
+      }}
+      onScrollToIndexFailed={(info) => {
+        console.warn('Scroll to index failed:', info);
+        // Fallback: scroll to approximate offset
+        flatListRef.current?.scrollToOffset({
+          offset: info.averageItemLength * info.index,
+          animated: true,
+        });
+      }}
+    />
+  );
+
+  const renderModals = () => (
+    <>
+      {/* Speed Picker Modal */}
+      <Modal
+        visible={showSpeedPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSpeedPicker(false)}
+      >
+        <View style={{ flex: 1 }}>
+          <Pressable
+            style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
+            onPress={() => setShowSpeedPicker(false)}
+          />
+          <View style={[styles.sheetWrapper, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.sheetInner}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>倍速</Text>
+                <TouchableOpacity onPress={() => setShowSpeedPicker(false)}>
+                  <Ionicons name="close" size={24} color={theme.colors.text} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.sleepOptions}>
+                {[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((r) => (
+                  <TouchableOpacity
+                    key={r}
+                    onPress={() => {
+                      handleRateChange(r);
+                      setShowSpeedPicker(false);
+                    }}
+                    style={[
+                      styles.sleepOption,
+                      ttsStore.playbackRate === r && { backgroundColor: theme.colors.primary },
+                    ]}
+                  >
+                    <Text style={[styles.sleepOptionText, ttsStore.playbackRate === r && { color: '#fff' }]}>
+                      {r}x
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Timer Picker Modal */}
+      <Modal
+        visible={showTimerPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTimerPicker(false)}
+      >
+        <View style={{ flex: 1 }}>
+          <Pressable
+            style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
+            onPress={() => setShowTimerPicker(false)}
+          />
+          <View style={[styles.sheetWrapper, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.sheetInner}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>定时关闭</Text>
+                <TouchableOpacity onPress={() => setShowTimerPicker(false)}>
+                  <Ionicons name="close" size={24} color={theme.colors.text} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.sleepOptions}>
+                {[0, 5, 10, 15, 30, 45, 60].map((minutes) => (
+                  <TouchableOpacity
+                    key={minutes}
+                    onPress={() => {
+                      handleSleepTimerSet(minutes);
+                      setShowTimerPicker(false);
+                    }}
+                    style={[
+                      styles.sleepOption,
+                      sleepMinutes === minutes && { backgroundColor: theme.colors.primary },
+                    ]}
+                  >
+                    <Text style={[styles.sleepOptionText, sleepMinutes === minutes && { color: '#fff' }]}>
+                      {minutes === 0 ? '关闭' : `${minutes} 分钟`}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Settings Bottom Sheet - More Options */}
+      <Modal
+        visible={showSettings}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowSettings(false)}
+      >
+        <View style={{ flex: 1 }}>
+          <Pressable
+            style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
+            onPress={() => setShowSettings(false)}
+          />
+          <View style={[styles.sheetWrapper, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.sheetInner}>
+              <View style={styles.sheetHandle} />
+
+              <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>
+                更多选项
+              </Text>
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <TouchableOpacity
+                  style={styles.sheetOption}
+                  onPress={() => {
+                    setShowSettings(false);
+                    setShowSpeedPicker(true);
+                  }}
+                >
+                  <Ionicons name="speedometer-outline" size={22} color={theme.colors.text} />
+                  <Text style={[styles.sheetOptionText, { color: theme.colors.text }]}>播放倍速</Text>
+                  <Text style={[styles.sheetOptionValue, { color: theme.colors.textSecondary }]}>
+                    {ttsStore.playbackRate.toFixed(1)}x
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.sheetOption}
+                  onPress={() => {
+                    setShowSettings(false);
+                    setShowTimerPicker(true);
+                  }}
+                >
+                  <Ionicons name="time-outline" size={22} color={theme.colors.text} />
+                  <Text style={[styles.sheetOptionText, { color: theme.colors.text }]}>定时关闭</Text>
+                  <Text style={[styles.sheetOptionValue, { color: theme.colors.textSecondary }]}>
+                    {sleepMinutes > 0 ? `${sleepMinutes}分钟` : '关闭'}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.sheetOption}
+                  onPress={() => {
+                    setShowSettings(false);
+                    setShowTTSConfig(true);
+                  }}
+                >
+                  <Ionicons name="options-outline" size={22} color={theme.colors.text} />
+                  <Text style={[styles.sheetOptionText, { color: theme.colors.text }]}>TTS 设置</Text>
+                  <Text style={[styles.sheetOptionValue, { color: theme.colors.textSecondary }]} numberOfLines={1}>
+                    {providerLabel(provider)} · {(() => {
+                      const v = voices.find((v) => v.id === voiceId);
+                      return v ? formatVoiceName(v, provider) : '默认';
+                    })()}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+
+                <View style={[styles.sheetDivider, { backgroundColor: theme.colors.border + '40' }]} />
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* TTS Config Modal */}
+      <Modal
+        visible={showTTSConfig}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTTSConfig(false)}
+      >
+        <View style={{ flex: 1 }}>
+          <Pressable
+            style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
+            onPress={() => setShowTTSConfig(false)}
+          />
+          <View style={[styles.sheetWrapper, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.sheetInner}>
+              <View style={styles.sheetHandle} />
+              <Text style={[styles.sheetTitle, { color: theme.colors.text }]}>
+                TTS 设置
+              </Text>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <Text style={[styles.sheetSectionTitle, { color: theme.colors.textSecondary }]}>
+                  TTS 服务商
+                </Text>
+                <View style={styles.chipRow}>
+                  {providers.map((p) => {
+                    const active = provider === p.name;
+                    return (
+                      <TouchableOpacity
+                        key={p.name}
+                        disabled={!p.enabled}
+                        onPress={() => setProvider(p.name)}
+                        style={[
+                          styles.chip,
+                          {
+                            backgroundColor: active ? theme.colors.primary : theme.colors.background,
+                            opacity: p.enabled ? 1 : 0.4,
+                          },
+                        ]}
+                      >
+                        <Text style={[styles.chipText, { color: active ? '#fff' : theme.colors.text }]}>
+                          {providerLabel(p.name)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <Text style={[styles.sheetSectionTitle, { color: theme.colors.textSecondary }]}>
+                  音色
+                </Text>
+                <View style={styles.voiceList}>
+                  {voices
+                    .filter((v) => {
+                      const lang = (v.language || v.lang || '').toLowerCase();
+                      return lang.startsWith('zh');
+                    })
+                    .map((v) => {
+                      const active = voiceId === v.id;
+                      return (
+                        <TouchableOpacity
+                          key={v.id}
+                          onPress={() => {
+                            setVoiceId(v.id);
+                            ttsStore.setSelectedVoice(v);
+                          }}
+                          style={[
+                            styles.voiceListItem,
+                            active && { backgroundColor: theme.colors.primary + '20', borderColor: theme.colors.primary },
+                          ]}
+                        >
+                          <View style={styles.voiceListLeft}>
+                            <Text style={[styles.voiceListName, { color: active ? theme.colors.primary : theme.colors.text }]}>
+                              {formatVoiceName(v, provider)}
+                            </Text>
+                            <Text style={styles.voiceListLang}>
+                              {v.language || v.lang || 'zh-CN'}
+                            </Text>
+                          </View>
+                          {active && (
+                            <Ionicons name="checkmark-circle" size={22} color={theme.colors.primary} />
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Chapter Picker Modal */}
+      <Modal
+        visible={showChapterPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowChapterPicker(false)}
+      >
+        <View style={{ flex: 1 }}>
+          <Pressable
+            style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]}
+            onPress={() => setShowChapterPicker(false)}
+          />
+          <View style={[styles.sheetWrapper, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.sheetInner}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>章节列表</Text>
+                <TouchableOpacity onPress={() => setShowChapterPicker(false)}>
+                  <Ionicons name="close" size={24} color={theme.colors.text} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {chapters.map((c) => {
+                  const active = chapterIndex === c.index;
+                  return (
+                    <TouchableOpacity
+                      key={c.index}
+                      onPress={() => handleChapterChange(c.index)}
+                      style={[
+                        styles.chapterListItem,
+                        active && { backgroundColor: theme.colors.primary + '20' },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.chapterListText,
+                          { color: active ? theme.colors.primary : theme.colors.text },
+                        ]}
+                      >
+                        <Text style={styles.chapterListNumber}>{c.index + 1}. </Text>
+                        {c.title}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+
   // ── Render ───────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -764,396 +1340,64 @@ export function TTSScreen() {
     );
   }
 
-  // ── Controls View ────────────────────────────────────────────────────
+  // ── Wide Screen Layout (tablet/desktop) ──────────────────────────────
+  if (isWideScreen) {
+    return (
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: theme.colors.background }]}
+      >
+        {renderHeader()}
+        <View style={styles.wideContainer}>
+          {/* Left Panel: Cover + Info + Controls */}
+          <View style={styles.wideLeftPanel}>
+            <ScrollView contentContainerStyle={styles.wideLeftContent}>
+              {renderCover()}
+              {renderChapterInfo()}
+              {renderDescription()}
+            </ScrollView>
+            {renderBottomBar()}
+          </View>
+
+          {/* Right Panel: Paragraph List */}
+          <View style={styles.wideRightPanel}>
+            <Text style={styles.wideRightHeader}>{chapterTitle}</Text>
+            {renderParagraphList()}
+          </View>
+        </View>
+        {renderModals()}
+      </SafeAreaView>
+    );
+  }
+
+  // ── Mobile Layout: Controls View ───────────────────────────────────
   if (viewMode === 'controls') {
     return (
       <SafeAreaView
         style={[styles.container, { backgroundColor: theme.colors.background }]}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={handleMinimize} style={styles.headerButton}>
-            <Ionicons name="chevron-down" size={28} color={theme.colors.text} />
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={styles.headerSubtitle} numberOfLines={1}>{book.title || '未知书籍'}</Text>
-          </View>
-          <TouchableOpacity style={styles.headerButton} onPress={() => setShowSettings(true)}>
-            <Ionicons name="ellipsis-vertical" size={22} color={theme.colors.text} />
-          </TouchableOpacity>
-        </View>
-
+        {renderHeader()}
         <ScrollView contentContainerStyle={styles.controlsContent}>
-          {/* Book Cover - tap to switch to content view */}
-          <TouchableOpacity
-            style={styles.coverSection}
-            onPress={handleToggleViewMode}
-            activeOpacity={0.9}
-          >
-            <View style={[styles.bookCoverLarge, { backgroundColor: theme.colors.surface }]}>
-              {book.coverUrl ? (
-                <Image
-                  source={{ uri: getCoverImageUrl(book.coverUrl) }}
-                  style={styles.bookCoverImage}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Text style={styles.coverInitialLarge}>{(book.title || '?').charAt(0)}</Text>
-              )}
-            </View>
-            {sleepMinutes > 0 && (
-              <View style={[styles.sleepBadge, { backgroundColor: theme.colors.primary }]}>
-                <Ionicons name="moon" size={12} color="#fff" />
-                <Text style={styles.sleepBadgeText}>
-                  {Math.floor(sleepRemaining / 60)}m
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-
-          {/* Chapter Info */}
-          <Text style={styles.chapterTitleLarge} numberOfLines={2}>
-            {chapterTitle}
-          </Text>
-          <Text style={styles.bookAuthorLarge}>{book.author}</Text>
-
-          {/* Progress */}
-          <View style={styles.progressSection}>
-            <View style={styles.progressLabelsRow}>
-              <Text style={styles.muted}>
-                第 {currentParagraph + 1} 段 / 共 {paragraphs.length} 段
-              </Text>
-              <Text style={styles.muted}>{Math.round(overallProgress * 100)}%</Text>
-            </View>
-            <View style={[styles.progressBar, { backgroundColor: theme.colors.border + '40' }]}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { backgroundColor: theme.colors.primary, width: `${overallProgress * 100}%` },
-                ]}
-              />
-            </View>
-          </View>
-
-          {/* Playback Controls - compact row */}
-          <View style={styles.controlsRow}>
-            {/* Settings */}
-            <TouchableOpacity
-              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
-              onPress={() => setShowSettings(true)}
-            >
-              <Ionicons name="settings-outline" size={20} color={theme.colors.text} />
-            </TouchableOpacity>
-
-            {/* Speed */}
-            <TouchableOpacity
-              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
-              onPress={() => setShowSpeedPicker(!showSpeedPicker)}
-            >
-              <Ionicons name="speedometer-outline" size={20} color={theme.colors.text} />
-              {ttsStore.playbackRate !== 1.0 && (
-                <View style={[styles.badge, { backgroundColor: theme.colors.primary }]}>
-                  <Text style={styles.badgeText}>{ttsStore.playbackRate.toFixed(1)}x</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-
-            {/* Skip back */}
-            <TouchableOpacity
-              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
-              onPress={handleSkipBack}
-            >
-              <Ionicons name="play-skip-back-outline" size={22} color={theme.colors.text} />
-            </TouchableOpacity>
-
-            {/* Play/Pause */}
-            <TouchableOpacity
-              style={[styles.playButtonLarge, { backgroundColor: isPlaying ? theme.colors.error : theme.colors.primary }]}
-              onPress={handlePlayPause}
-              disabled={isLoadingAudio}
-            >
-              {isLoadingAudio ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Ionicons
-                  name={isPlaying ? 'pause' : 'play'}
-                  size={32}
-                  color="#fff"
-                />
-              )}
-            </TouchableOpacity>
-
-            {/* Skip forward */}
-            <TouchableOpacity
-              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
-              onPress={handleSkipForward}
-            >
-              <Ionicons name="play-skip-forward-outline" size={22} color={theme.colors.text} />
-            </TouchableOpacity>
-
-            {/* Chapter picker */}
-            <TouchableOpacity
-              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
-              onPress={() => setShowChapterPicker(true)}
-            >
-              <Ionicons name="book-outline" size={20} color={theme.colors.text} />
-            </TouchableOpacity>
-
-            {/* Sleep timer */}
-            <TouchableOpacity
-              style={[styles.iconButton, { backgroundColor: theme.colors.surface }]}
-              onPress={() => setShowTimerPicker(!showTimerPicker)}
-            >
-              <Ionicons name="time-outline" size={20} color={theme.colors.text} />
-              {sleepMinutes > 0 && (
-                <View style={[styles.badge, { backgroundColor: theme.colors.warning }]}>
-                  <Text style={styles.badgeText}>{Math.floor(sleepRemaining / 60)}m</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {/* Book description */}
-          {book.description && (
-            <View style={styles.descriptionPanel}>
-              <Text style={styles.settingsLabel}>简介</Text>
-              <Text style={styles.descriptionText} numberOfLines={6}>
-                {book.description}
-              </Text>
-            </View>
-          )}
+          {renderCover()}
+          {renderChapterInfo()}
+          {renderDescription()}
         </ScrollView>
-
-        {/* Chapter Picker Modal */}
-        {showChapterPicker && (
-          <View style={styles.modalOverlay}>
-            <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowChapterPicker(false)} />
-            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>章节列表</Text>
-                <TouchableOpacity onPress={() => setShowChapterPicker(false)}>
-                  <Ionicons name="close" size={24} color={theme.colors.text} />
-                </TouchableOpacity>
-              </View>
-              <ScrollView>
-                {chapters.map((c) => {
-                  const active = chapterIndex === c.index;
-                  return (
-                    <TouchableOpacity
-                      key={c.index}
-                      onPress={() => handleChapterChange(c.index)}
-                      style={[
-                        styles.chapterListItem,
-                        active && { backgroundColor: theme.colors.primary + '20' },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.chapterListText,
-                          { color: active ? theme.colors.primary : theme.colors.text },
-                        ]}
-                      >
-                        <Text style={styles.chapterListNumber}>{c.index + 1}. </Text>
-                        {c.title}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          </View>
-        )}
-
-        {/* Speed Picker Modal */}
-        {showSpeedPicker && (
-          <View style={styles.modalOverlay}>
-            <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowSpeedPicker(false)} />
-            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>倍速</Text>
-                <TouchableOpacity onPress={() => setShowSpeedPicker(false)}>
-                  <Ionicons name="close" size={24} color={theme.colors.text} />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.sleepOptions}>
-                {[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((r) => (
-                  <TouchableOpacity
-                    key={r}
-                    onPress={() => {
-                      handleRateChange(r);
-                      setShowSpeedPicker(false);
-                    }}
-                    style={[
-                      styles.sleepOption,
-                      ttsStore.playbackRate === r && { backgroundColor: theme.colors.primary },
-                    ]}
-                  >
-                    <Text style={[styles.sleepOptionText, ttsStore.playbackRate === r && { color: '#fff' }]}>
-                      {r}x
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* Timer Picker Modal */}
-        {showTimerPicker && (
-          <View style={styles.modalOverlay}>
-            <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowTimerPicker(false)} />
-            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>定时关闭</Text>
-                <TouchableOpacity onPress={() => setShowTimerPicker(false)}>
-                  <Ionicons name="close" size={24} color={theme.colors.text} />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.sleepOptions}>
-                {[0, 5, 10, 15, 30, 45, 60].map((minutes) => (
-                  <TouchableOpacity
-                    key={minutes}
-                    onPress={() => {
-                      handleSleepTimerSet(minutes);
-                      setShowTimerPicker(false);
-                    }}
-                    style={[
-                      styles.sleepOption,
-                      sleepMinutes === minutes && { backgroundColor: theme.colors.primary },
-                    ]}
-                  >
-                    <Text style={[styles.sleepOptionText, sleepMinutes === minutes && { color: '#fff' }]}>
-                      {minutes === 0 ? '关闭' : `${minutes} 分钟`}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </View>
-        )}
-
-        {/* Settings Bottom Sheet */}
-        {showSettings && (
-          <View style={styles.modalOverlay}>
-            <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowSettings(false)} />
-            <View style={[styles.modalContent, { backgroundColor: theme.colors.surface }]}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>播放设置</Text>
-                <TouchableOpacity onPress={() => setShowSettings(false)}>
-                  <Ionicons name="close" size={24} color={theme.colors.text} />
-                </TouchableOpacity>
-              </View>
-              <ScrollView>
-                {/* Provider section */}
-                <Text style={styles.settingsLabel}>TTS 服务商</Text>
-                <View style={styles.chipRow}>
-                  {providers.map((p) => {
-                    const active = provider === p.name;
-                    return (
-                      <TouchableOpacity
-                        key={p.name}
-                        disabled={!p.enabled}
-                        onPress={() => setProvider(p.name)}
-                        style={[
-                          styles.chip,
-                          {
-                            backgroundColor: active ? theme.colors.primary : theme.colors.background,
-                            opacity: p.enabled ? 1 : 0.4,
-                          },
-                        ]}
-                      >
-                        <Text style={[styles.chipText, { color: active ? '#fff' : theme.colors.text }]}>
-                          {providerLabel(p.name)}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                {/* Voice section */}
-                <Text style={styles.settingsLabel}>音色</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-                  {voices.map((v) => {
-                    const active = voiceId === v.id;
-                    return (
-                      <TouchableOpacity
-                        key={v.id}
-                        onPress={() => {
-                          setVoiceId(v.id);
-                          ttsStore.setSelectedVoice(v);
-                        }}
-                        style={[
-                          styles.chip,
-                          { backgroundColor: active ? theme.colors.primary : theme.colors.background },
-                        ]}
-                      >
-                        <Text style={[styles.chipText, { color: active ? '#fff' : theme.colors.text }]}>
-                          {v.name}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              </ScrollView>
-            </View>
-          </View>
-        )}
-
+        {renderBottomBar()}
+        {renderModals()}
       </SafeAreaView>
     );
   }
 
-  // ── Content View (Paragraph List) ────────────────────────────────────
+  // ── Mobile Layout: Content View ────────────────────────────────────
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
     >
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={handleToggleViewMode} style={styles.headerButton}>
-          <Ionicons name="chevron-back" size={28} color={theme.colors.text} />
-        </TouchableOpacity>
-      <View style={styles.headerCenter}>
-        <Text style={styles.headerSubtitle} numberOfLines={1}>{chapterTitle}</Text>
+      {renderHeader()}
+      <View style={styles.contentViewContainer}>
+        {renderParagraphList()}
+        {renderBottomBar()}
       </View>
-        <View style={styles.headerButton} />
-      </View>
-
-      {/* Paragraph list */}
-      <ScrollView ref={paragraphsScrollRef} style={styles.paragraphsScroll}>
-        {paragraphs.map((p, idx) => {
-          const isCurrent = idx === currentParagraph;
-          const isPast = idx < currentParagraph;
-          return (
-            <TouchableOpacity
-              key={p.id}
-              onPress={() => handleJumpToParagraph(idx)}
-              ref={(ref) => { if (ref) paragraphRefs.current.set(idx, ref as any); }}
-              style={[
-                styles.paragraphItem,
-                isCurrent && { backgroundColor: theme.colors.primary + '25' },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.paragraphText,
-                  {
-                    color: isCurrent
-                      ? theme.colors.text
-                      : isPast
-                        ? theme.colors.textSecondary
-                        : theme.colors.text,
-                    fontWeight: isCurrent ? '600' : '400',
-                    opacity: isPast ? 0.55 : 1,
-                  },
-                ]}
-              >
-                {p.text}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+      {renderModals()}
     </SafeAreaView>
   );
 }
@@ -1213,6 +1457,33 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontSize: fontSizes.md,
       fontWeight: '600',
       color: theme.colors.text,
+    },
+    // Wide screen layout
+    wideContainer: {
+      flex: 1,
+      flexDirection: 'row',
+    },
+    wideLeftPanel: {
+      width: 360,
+      borderRightWidth: 1,
+      borderRightColor: theme.colors.border + '30',
+    },
+    wideLeftContent: {
+      padding: spacing.lg,
+      paddingTop: spacing.xl,
+      paddingBottom: spacing.xxl,
+      alignItems: 'center',
+    },
+    wideRightPanel: {
+      flex: 1,
+    },
+    wideRightHeader: {
+      fontSize: fontSizes.lg,
+      fontWeight: '600',
+      color: theme.colors.text,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.lg,
+      paddingBottom: spacing.sm,
     },
     // Controls view
     controlsContent: {
@@ -1307,7 +1578,6 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       alignItems: 'center',
       justifyContent: 'center',
       gap: spacing.sm,
-      marginBottom: spacing.lg,
     },
     iconButton: {
       width: 44,
@@ -1387,7 +1657,17 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       color: theme.colors.text,
       lineHeight: fontSizes.sm * 1.6,
     },
-    // Content view
+    // Bottom fixed bar
+    bottomBar: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.sm,
+      paddingBottom: 20,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.border + '30',
+    },
+    contentViewContainer: {
+      flex: 1,
+    },
     paragraphsScroll: {
       flex: 1,
       padding: spacing.md,
@@ -1461,6 +1741,124 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     sleepOptionText: {
       fontSize: fontSizes.md,
       color: theme.colors.text,
+    },
+    // Voice list (vertical)
+    voiceList: {
+      gap: spacing.xs,
+      marginTop: spacing.xs,
+    },
+    voiceListItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      borderRadius: borderRadius.md,
+      borderWidth: 1,
+      borderColor: theme.colors.border + '40',
+      backgroundColor: theme.colors.background,
+    },
+    voiceListLeft: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    voiceListName: {
+      fontSize: fontSizes.md,
+      fontWeight: '500',
+    },
+    voiceListLang: {
+      fontSize: fontSizes.sm,
+      color: theme.colors.textSecondary,
+    },
+    // Bottom Sheet (More Options)
+    sheetWrapper: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      alignItems: 'center',
+      maxHeight: '60%',
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingTop: 8,
+      paddingHorizontal: spacing.lg,
+      paddingBottom: spacing.xl,
+    },
+    sheetInner: {
+      width: '100%',
+      maxWidth: 600,
+    },
+    sheetHandle: {
+      width: 40,
+      height: 4,
+      backgroundColor: 'rgba(150,150,150,0.3)',
+      borderRadius: 2,
+      alignSelf: 'center',
+      marginBottom: spacing.md,
+      marginTop: spacing.xs,
+    },
+    sheetTitle: {
+      fontSize: fontSizes.xl,
+      fontWeight: '600',
+      textAlign: 'center',
+      marginBottom: spacing.lg,
+    },
+    sheetQuickControls: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      paddingVertical: spacing.md,
+      marginBottom: spacing.sm,
+    },
+    sheetQuickItem: {
+      alignItems: 'center',
+      gap: spacing.xs,
+      flex: 1,
+    },
+    sheetQuickIcon: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: spacing.xs,
+    },
+    sheetQuickLabel: {
+      fontSize: fontSizes.sm,
+      fontWeight: '500',
+    },
+    sheetQuickValue: {
+      fontSize: fontSizes.xs,
+      fontWeight: '600',
+    },
+    sheetDivider: {
+      height: 1,
+      marginVertical: spacing.sm,
+    },
+    sheetSectionTitle: {
+      fontSize: fontSizes.sm,
+      fontWeight: '600',
+      marginTop: spacing.md,
+      marginBottom: spacing.xs,
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    sheetOption: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: spacing.md,
+      gap: spacing.md,
+    },
+    sheetOptionText: {
+      flex: 1,
+      fontSize: fontSizes.md,
+      fontWeight: '500',
+    },
+    sheetOptionValue: {
+      fontSize: fontSizes.sm,
+      marginRight: spacing.xs,
+      maxWidth: 120,
     },
   });
 }

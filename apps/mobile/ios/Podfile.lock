@@ -1516,6 +1516,9 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - Yoga
+  - react-native-track-player (3.2.0):
+    - React-Core
+    - SwiftAudioEx (= 0.15.3)
   - react-native-webview (13.12.5):
     - DoubleConversion
     - glog
@@ -1876,6 +1879,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - Yoga
   - SocketRocket (0.7.1)
+  - SwiftAudioEx (0.15.3)
   - Yoga (0.0.0)
   - ZXingObjC/Core (3.6.9)
   - ZXingObjC/OneD (3.6.9):
@@ -1887,12 +1891,12 @@ DEPENDENCIES:
   - "boost (from `../../../node_modules/.pnpm/react-native@0.76.9_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7.29.0__@ty_5b47f4191fccc6326c7433113200ce36/node_modules/react-native/third-party-podspecs/boost.podspec`)"
   - "DoubleConversion (from `../../../node_modules/.pnpm/react-native@0.76.9_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7.29.0__@ty_5b47f4191fccc6326c7433113200ce36/node_modules/react-native/third-party-podspecs/DoubleConversion.podspec`)"
   - "EXApplication (from `../../../node_modules/.pnpm/expo-application@6.0.2_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+_8aada838badbbb9b9fc0db20947b91ec/node_modules/expo-application/ios`)"
-  - "EXAV (from `../../../node_modules/.pnpm/expo-av@15.0.2_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7.2_523bd471ae0ea5a1ff9ffbd66fa60126/node_modules/expo-av/ios`)"
+  - "EXAV (from `../../../node_modules/.pnpm/expo-av@15.0.2_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7.2_ec04850fe5d65ebc0b21084fa9d0198e/node_modules/expo-av/ios`)"
   - "EXConstants (from `../../../node_modules/.pnpm/expo-constants@17.0.8_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+c_827742c1a7387a8d561caf738fb8f26d/node_modules/expo-constants/ios`)"
   - "EXNotifications (from `../../../node_modules/.pnpm/expo-notifications@0.29.14_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@ba_897aec8a6574faddb4568e8feebce4dc/node_modules/expo-notifications/ios`)"
   - "Expo (from `../../../node_modules/.pnpm/expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7.29.0__@expo+metr_dfe6d2a5b8d690dd262b65d9b96bf258/node_modules/expo`)"
   - "ExpoAsset (from `../../../node_modules/.pnpm/expo-asset@11.0.5_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@_6a1c7d3533930fa99087cea314242ee7/node_modules/expo-asset/ios`)"
-  - "ExpoCamera (from `../../../node_modules/.pnpm/expo-camera@16.0.18_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+cor_0d37fed885492298cff92477878ee31e/node_modules/expo-camera/ios`)"
+  - "ExpoCamera (from `../../../node_modules/.pnpm/expo-camera@16.0.18_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+cor_cf62aa9939b7cff329a990cdec18e6e8/node_modules/expo-camera/ios`)"
   - "ExpoFileSystem (from `../../../node_modules/.pnpm/expo-file-system@18.0.12_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babe_fb4bb0a638b1739f514d5cede251db5c/node_modules/expo-file-system/ios`)"
   - "ExpoFont (from `../../../node_modules/.pnpm/expo-font@13.0.4_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7_62c91e13165fe4e7305c20cdf48274da/node_modules/expo-font/ios`)"
   - "ExpoKeepAwake (from `../../../node_modules/.pnpm/expo-keep-awake@14.0.3_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+_db919d6e9cb9acbff9755fad0b5ebe61/node_modules/expo-keep-awake/ios`)"
@@ -1944,6 +1948,7 @@ DEPENDENCIES:
   - react-native-pdf (from `../node_modules/react-native-pdf`)
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
   - "react-native-slider (from `../node_modules/@react-native-community/slider`)"
+  - react-native-track-player (from `../node_modules/react-native-track-player`)
   - react-native-webview (from `../node_modules/react-native-webview`)
   - "React-nativeconfig (from `../../../node_modules/.pnpm/react-native@0.76.9_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7.29.0__@ty_5b47f4191fccc6326c7433113200ce36/node_modules/react-native/ReactCommon`)"
   - "React-NativeModulesApple (from `../../../node_modules/.pnpm/react-native@0.76.9_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7.29.0__@ty_5b47f4191fccc6326c7433113200ce36/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)"
@@ -1979,6 +1984,7 @@ DEPENDENCIES:
 SPEC REPOS:
   trunk:
     - SocketRocket
+    - SwiftAudioEx
     - ZXingObjC
 
 EXTERNAL SOURCES:
@@ -1989,7 +1995,7 @@ EXTERNAL SOURCES:
   EXApplication:
     :path: "../../../node_modules/.pnpm/expo-application@6.0.2_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+_8aada838badbbb9b9fc0db20947b91ec/node_modules/expo-application/ios"
   EXAV:
-    :path: "../../../node_modules/.pnpm/expo-av@15.0.2_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7.2_523bd471ae0ea5a1ff9ffbd66fa60126/node_modules/expo-av/ios"
+    :path: "../../../node_modules/.pnpm/expo-av@15.0.2_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@7.2_ec04850fe5d65ebc0b21084fa9d0198e/node_modules/expo-av/ios"
   EXConstants:
     :path: "../../../node_modules/.pnpm/expo-constants@17.0.8_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+c_827742c1a7387a8d561caf738fb8f26d/node_modules/expo-constants/ios"
   EXNotifications:
@@ -1999,7 +2005,7 @@ EXTERNAL SOURCES:
   ExpoAsset:
     :path: "../../../node_modules/.pnpm/expo-asset@11.0.5_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+core@_6a1c7d3533930fa99087cea314242ee7/node_modules/expo-asset/ios"
   ExpoCamera:
-    :path: "../../../node_modules/.pnpm/expo-camera@16.0.18_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+cor_0d37fed885492298cff92477878ee31e/node_modules/expo-camera/ios"
+    :path: "../../../node_modules/.pnpm/expo-camera@16.0.18_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babel+cor_cf62aa9939b7cff329a990cdec18e6e8/node_modules/expo-camera/ios"
   ExpoFileSystem:
     :path: "../../../node_modules/.pnpm/expo-file-system@18.0.12_expo@52.0.49_@babel+core@7.29.0_@babel+preset-env@7.29.2_@babe_fb4bb0a638b1739f514d5cede251db5c/node_modules/expo-file-system/ios"
   ExpoFont:
@@ -2099,6 +2105,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-safe-area-context"
   react-native-slider:
     :path: "../node_modules/@react-native-community/slider"
+  react-native-track-player:
+    :path: "../node_modules/react-native-track-player"
   react-native-webview:
     :path: "../node_modules/react-native-webview"
   React-nativeconfig:
@@ -2221,6 +2229,7 @@ SPEC CHECKSUMS:
   react-native-pdf: 1f4d418f1408001468263a7638f668593dad144d
   react-native-safe-area-context: cd916088cac5300c3266876218377518987b995e
   react-native-slider: 18a34929dbeb86db5375b56ef28551299a3fa89c
+  react-native-track-player: 12bd55f56b5557bfd9aa59d5284954529874fb57
   react-native-webview: 6b9fc65c1951203a3e958ff3cc0a858d4b6be901
   React-nativeconfig: 8efdb1ef1e9158c77098a93085438f7e7b463678
   React-NativeModulesApple: cebca2e5320a3d66e123cade23bd90a167ffce5e
@@ -2252,6 +2261,7 @@ SPEC CHECKSUMS:
   RNCAsyncStorage: 66991bb6672ed988a8c56289a08bf4fc3a29d4b3
   RNScreens: 362f4c861dd155f898908d5035d97b07a3f1a9d1
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
+  SwiftAudioEx: 83eabba2940924fc1c0d5cb0896049921365229c
   Yoga: feb4910aba9742cfedc059e2b2902e22ffe9954a
   ZXingObjC: 8898711ab495761b2dbbdec76d90164a6d7e14c5
 

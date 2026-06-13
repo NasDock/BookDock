@@ -29,6 +29,8 @@ interface TTSStoreState {
   paragraphs: Paragraph[];
   chapterTitle: string;
   chapterIndex: number;
+  // Chapters list (for mini player chapter picker)
+  chapters: { title: string; index: number }[];
 
   // Actions
   setState: (state: TTSState) => void;
@@ -48,6 +50,7 @@ interface TTSStoreState {
   setParagraphs: (paragraphs: Paragraph[]) => void;
   setChapterTitle: (title: string) => void;
   setChapterIndex: (index: number) => void;
+  setChapters: (chapters: { title: string; index: number }[]) => void;
   reset: () => void;
 }
 
@@ -72,6 +75,7 @@ export const useTTSStore = create<TTSStoreState>()(
       paragraphs: [],
       chapterTitle: '',
       chapterIndex: 0,
+      chapters: [],
 
       setState: (state) => set({ state }),
 
@@ -111,6 +115,8 @@ export const useTTSStore = create<TTSStoreState>()(
 
       setChapterIndex: (index) => set({ chapterIndex: index }),
 
+      setChapters: (chapters) => set({ chapters }),
+
       reset: () => set({
         state: 'idle',
         currentBookId: null,
@@ -122,6 +128,7 @@ export const useTTSStore = create<TTSStoreState>()(
         paragraphs: [],
         chapterTitle: '',
         chapterIndex: 0,
+        chapters: [],
         isMiniPlayerVisible: false,
         viewMode: 'controls',
       }),

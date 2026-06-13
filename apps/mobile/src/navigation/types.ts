@@ -5,7 +5,7 @@ import type { EbookSource } from '../services/api';
 export type RootStackParamList = {
   Main: undefined;
   Reader: { book: Book };
-  TTSScreen: { book: Book };
+  TTSScreen: { book: Book; showChapterPicker?: boolean };
   TTSReader: { book: Book };
   BookDetails: { book: Book };
   AuthorDetail: { author: Author };
