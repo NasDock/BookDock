@@ -768,9 +768,18 @@ export function TTSScreen() {
       <TouchableOpacity onPress={handleMinimize} style={styles.headerButton}>
         <Ionicons name="chevron-down" size={28} color={theme.colors.text} />
       </TouchableOpacity>
-      <View style={styles.headerCenter}>
-        <Text style={styles.headerSubtitle} numberOfLines={1}>{chapterTitle || '未知章节'}</Text>
-      </View>
+      {!isWideScreen && (
+        <TouchableOpacity 
+          style={styles.headerCenter} 
+          onPress={handleToggleViewMode}
+        >
+          <Ionicons 
+            name={viewMode === 'controls' ? 'document-text-outline' : 'image-outline'} 
+            size={22} 
+            color={theme.colors.text} 
+          />
+        </TouchableOpacity>
+      )}
       <TouchableOpacity style={styles.headerButton} onPress={() => setShowSettings(true)}>
         <Ionicons name="ellipsis-vertical" size={22} color={theme.colors.text} />
       </TouchableOpacity>
@@ -825,8 +834,8 @@ export function TTSScreen() {
   const renderProgress = () => (
     <View style={styles.progressSection}>
       <View style={styles.progressLabelsRow}>
-        <Text style={styles.muted}>
-          第 {currentParagraph + 1} 段 / 共 {paragraphs.length} 段
+        <Text style={styles.muted} numberOfLines={1}>
+          {chapterTitle}
         </Text>
         <Text style={styles.muted}>{Math.round(overallProgress * 100)}%</Text>
       </View>
