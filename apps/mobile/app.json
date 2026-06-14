@@ -6,7 +6,7 @@
     "orientation": "default",
     "icon": "./assets/logo.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "scheme": "bookdock",
     "splash": {
       "image": "./assets/logo.png",
