@@ -1,6 +1,6 @@
 {
   "name": "@bookdock/smb",
-  "version": "0.0.67",
+  "version": "0.0.68",
   "private": true,
   "type": "commonjs",
   "main": "./dist/index.js",

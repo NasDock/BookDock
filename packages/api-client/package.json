@@ -1,6 +1,6 @@
 {
   "name": "@bookdock/api-client",
-  "version": "0.0.67",
+  "version": "0.0.68",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
