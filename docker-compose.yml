@@ -17,17 +17,28 @@ services:
       PORT: 8088
       # SQLite database (persisted in volume)
       DATABASE_URL: file:/data/db/bookdock.db
-      # NAS / data paths inside container
-      NAS_EBOOK_PATH: /data/ebooks
+      # NAS / data paths inside container. NAS_EBOOK_PATH is a
+      # colon/comma-separated list of *container* paths the server
+      # scans. The matching *host* paths come from NAS_EBOOK_PATHS_0/1
+      # (one per root) so each container path can be bound to a
+      # distinct host directory — `${NAS_EBOOK_PATH}` is a single
+      # string and would be passed to docker as a single host path,
+      # which is not what we want.
+      NAS_EBOOK_PATH: /data/ebooks,/data/ebooks2
       CACHE_PATH: /data/covers
       # MiMo TTS provider (optional — fill in to enable Xiaomi TTS)
       TTS_MIMO_API_TOKEN: sk-xxxx
-      TTS_MIMO_MODEL: mimo-v2.5-tts
+      TTS_MIMO_MODEL: mimo-v2-tts
     volumes:
       # Database persistence
       - bookdock-db:/data/db
-      # E-book library (read-only recommended if scanning)
-      - ${NAS_EBOOK_PATH:-./data/ebooks}:/data/ebooks
+      # E-book library. Each container path declared in
+      # NAS_EBOOK_PATH needs its own host→container bind. Override
+      # NAS_EBOOK_PATHS_0/1 in your shell or .env to point at real
+      # host directories; the defaults below only exist so a stock
+      # `docker compose up` still works on a fresh checkout.
+      - ${NAS_EBOOK_PATHS_0:-./data/ebooks}:/data/ebooks
+      - ${NAS_EBOOK_PATHS_1:-./data/ebooks2}:/data/ebooks2
       # Cover cache (read-only recommended)
       - ${CACHE_PATH:-./data/covers}:/data/covers
 

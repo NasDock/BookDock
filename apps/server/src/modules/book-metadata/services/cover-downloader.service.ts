@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import * as sharp from 'sharp';
 import { promises as fs } from 'fs';
 import * as path from 'path';
+import * as sharp from 'sharp';
 
 export interface CoverDownloadResult {
   localPath: string;  // 本地绝对路径
@@ -18,14 +18,18 @@ export class CoverDownloaderService {
 
   /**
    * 获取封面存储目录的绝对路径
-   * 优先使用 CACHE_PATH，未设置时回退到 NAS_EBOOK_PATH/covers
+   * 优先使用 CACHE_PATH，未设置时回退到 NAS_EBOOK_PATH（第一个根）的 covers 子目录。
+   * 多个 NAS 根时封面统一放在主根下，避免分裂到多个目录。
    */
   private getCoversDir(): string {
     const cachePath = this.configService.get<string>('app.cachePath');
     if (cachePath) {
       return path.join(cachePath, 'covers');
     }
-    const nasPath = this.configService.get<string>('app.nasEbookPath') || '/data/ebooks';
+    const nasPaths = this.configService.get<string[]>('app.nasEbookPaths');
+    const nasPath = (Array.isArray(nasPaths) && nasPaths.length > 0)
+      ? nasPaths[0]
+      : (this.configService.get<string>('app.nasEbookPath') || '/data/ebooks');
     return path.join(nasPath, 'covers');
   }
 

@@ -45,6 +45,17 @@ COPY apps/desktop ./apps/desktop
 COPY packages ./packages
 COPY tsconfig.json ./
 
+# Re-run pnpm install offline to fix any dangling symlinks left over
+# from the deps stage. With `shamefully-hoist=true` in .npmrc, pnpm
+# can leave symlinks under `apps/desktop/node_modules/<pkg>` pointing
+# at a `.pnpm/<pkg>@<ver>/` directory that the lockfile never
+# actually populated (the real package lives at
+# `.pnpm/<pkg>@<ver>_<peer>/node_modules/<pkg>/`). Those dangling
+# symlinks break `require('tailwindcss')` and friends from the
+# postcss / vite plugins. Re-installing against the same lockfile
+# (offline, frozen) reconciles the symlinks without re-downloading.
+RUN pnpm install --offline --frozen-lockfile
+
 # Build the web app (browser mode)
 RUN pnpm --filter @bookdock/desktop exec vite build
 

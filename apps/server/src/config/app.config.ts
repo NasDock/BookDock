@@ -35,6 +35,25 @@ function resolveJwtSecret(): string {
   return generated;
 }
 
+/**
+ * Parse NAS_EBOOK_PATH into a deduplicated, ordered list of absolute
+ * filesystem paths. Accepts both `:` (POSIX standard, recommended)
+ * and `,` (more familiar to .env authors on Windows) as separators
+ * so existing single-path deployments keep working unchanged.
+ */
+function parseEbookPaths(raw: string | undefined): string[] {
+  const fallback = '/data/ebooks';
+  if (!raw) return [fallback];
+  return Array.from(
+    new Set(
+      raw
+        .split(/[:,]/)
+        .map((p) => p.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
 export const AppConfig = registerAs('app', () => ({
   nodeEnv: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '8088', 10),
@@ -43,7 +62,11 @@ export const AppConfig = registerAs('app', () => ({
   jwtRefreshExpiry: process.env.JWT_REFRESH_EXPIRY || '30d',
   apiBaseUrl: process.env.API_BASE_URL || 'http://localhost:8088',
   corsOrigins: process.env.CORS_ORIGINS || '*',
-  nasEbookPath: process.env.NAS_EBOOK_PATH || '/data/ebooks',
+  // NAS_EBOOK_PATH accepts a single path or a colon/comma-separated
+  // list. Internally we always treat it as an array; the first entry
+  // is the "primary" root used for new uploads and as the cover
+  // directory fallback.
+  nasEbookPaths: parseEbookPaths(process.env.NAS_EBOOK_PATH),
   nasAudioPath: process.env.NAS_AUDIO_PATH || '/data/audio',
   sourceLocalPath: process.env.SOURCE_LOCAL_PATH || '/data/sources',
   cachePath: process.env.CACHE_PATH || '',

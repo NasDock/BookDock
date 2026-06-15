@@ -1,6 +1,7 @@
 import {
     Inject,
     Injectable,
+    Logger,
     NotFoundException,
     OnModuleInit
 } from '@nestjs/common';
@@ -43,7 +44,9 @@ async function getMobiParser() {
 
 @Injectable()
 export class BooksService implements OnModuleInit {
-  private readonly nasEbookPath: string;
+  private readonly logger = new Logger(BooksService.name);
+  private readonly nasEbookPaths: string[];
+  private readonly primaryEbookPath: string;
   private readonly apiBaseUrl: string;
 
   constructor(
@@ -51,8 +54,59 @@ export class BooksService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly metadataService?: BookMetadataService, // T7: optional metadata service
   ) {
-    this.nasEbookPath = this.configService.get<string>('app.nasEbookPath') || '/data/ebooks';
+    // NAS_EBOOK_PATH may be a single path or a colon/comma-separated
+    // list. We always treat it as an array; the first entry is the
+    // "primary" root used for new uploads.
+    const configured =
+      this.configService.get<string[]>('app.nasEbookPaths') ||
+      this.configService.get<string>('app.nasEbookPath') || // legacy single-string form
+      '/data/ebooks';
+    this.nasEbookPaths = Array.isArray(configured)
+      ? (configured.length > 0 ? configured : ['/data/ebooks'])
+      : [configured];
+    this.primaryEbookPath = this.nasEbookPaths[0];
     this.apiBaseUrl = this.configService.get<string>('app.apiBaseUrl') || 'http://localhost:3000';
+
+    // Log the parsed roots so misconfigurations (typo, missing
+    // volume mount) are immediately visible in `docker logs`.
+    this.logger.log(
+      `NAS_EBOOK_PATH resolved to ${this.nasEbookPaths.length} root(s): ${JSON.stringify(this.nasEbookPaths)}`,
+    );
+    for (const root of this.nasEbookPaths) {
+      if (existsSync(root)) {
+        this.logger.log(`  [ok]    ${root}`);
+      } else {
+        this.logger.warn(
+          `  [MISS]  ${root} — directory not found, scan will skip it. ` +
+            `If this is unexpected, check the volume mount in docker-compose.yml: ` +
+            `for multi-root setups you need a separate host→container bind per root.`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Resolve a relative `filePath` (as stored on the Book row) to an
+   * absolute path on disk. Order of resolution:
+   *   1. filePath → root cache populated by the most recent scan.
+   *   2. First configured root where `filePath` exists.
+   *   3. `join(primaryEbookPath, filePath)` — used so callers can
+   *      surface a clear "file not found" error from a stable path.
+   */
+  private resolveEbookPath(filePath: string): string {
+    const cached = this.filePathRootCache.get(filePath);
+    if (cached) {
+      const candidate = join(cached, filePath);
+      if (existsSync(candidate)) return candidate;
+    }
+    for (const root of this.nasEbookPaths) {
+      const candidate = join(root, filePath);
+      if (existsSync(candidate)) {
+        this.filePathRootCache.set(filePath, root);
+        return candidate;
+      }
+    }
+    return join(this.primaryEbookPath, filePath);
   }
 
   onModuleInit() {
@@ -66,7 +120,7 @@ export class BooksService implements OnModuleInit {
     let fileHash: string | undefined;
     let fileSize: bigint | undefined;
 
-    const fullPath = join(this.nasEbookPath, dto.filePath);
+    const fullPath = this.resolveEbookPath(dto.filePath);
     if (existsSync(fullPath)) {
       try {
         const crypto = await import('crypto');
@@ -120,7 +174,7 @@ export class BooksService implements OnModuleInit {
       throw new Error(`不支持的文件格式: ${ext}`);
     }
 
-    const destPath = join(this.nasEbookPath, originalname);
+    const destPath = join(this.primaryEbookPath, originalname);
 
     // If file already exists, append a number
     let finalFileName = originalname;
@@ -129,7 +183,7 @@ export class BooksService implements OnModuleInit {
     while (existsSync(finalDestPath)) {
       const nameWithoutExt = originalname.replace(/\.[^/.]+$/, '');
       finalFileName = `${nameWithoutExt} (${counter}).${ext}`;
-      finalDestPath = join(this.nasEbookPath, finalFileName);
+      finalDestPath = join(this.primaryEbookPath, finalFileName);
       counter++;
     }
 
@@ -195,20 +249,39 @@ export class BooksService implements OnModuleInit {
     return this.toBookResponse(book);
   }
 
+  /**
+   * Map of `filePath` (as stored on Book) → root directory that first
+   * surfaced that path during the most recent scan. Used by
+   * `resolveEbookPath` to look up the correct absolute path on disk
+   * even after server restarts. Entries are written by
+   * `collectEbookFilesRecursively` and read by `resolveEbookPath`.
+   *
+   * On a server restart the map starts empty; missing entries fall
+   * through to "first existing root" / primary root, which is
+   * correct for the common single-root deployment and still works
+   * when the user has multiple roots with non-overlapping file names.
+   */
+  private readonly filePathRootCache = new Map<string, string>();
+
   async scanLocalBooks(): Promise<number> {
     const ebookExts = ['txt', 'epub', 'pdf', 'mobi', 'azw3', 'fb2', 'djvu'];
     let added = 0;
 
     try {
-      const entries = await this.collectEbookFilesRecursively(this.nasEbookPath, ebookExts);
-      for (const filePath of entries) {
+      const entries = await this.collectEbookFilesRecursively(ebookExts);
+      for (const { filePath, rootPath } of entries) {
         const ext = filePath.split('.').pop()?.toLowerCase() || '';
         const existing = await this.prisma.book.findFirst({
           where: { filePath, isDeleted: false },
         });
-        if (existing) continue;
+        if (existing) {
+          // Refresh root cache from re-scan results (e.g. user moved
+          // the file to a different root and restarted the server).
+          this.filePathRootCache.set(filePath, rootPath);
+          continue;
+        }
 
-        const fullPath = join(this.nasEbookPath, filePath);
+        const fullPath = join(rootPath, filePath);
         const fileStat = await stat(fullPath);
         const fileName = filePath.split(/[\\/]/).pop() || filePath;
         const title = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
@@ -224,6 +297,7 @@ export class BooksService implements OnModuleInit {
             metadata: '{}',
           },
         });
+        this.filePathRootCache.set(filePath, rootPath);
 
         // T7: auto metadata fetch
         if (this.metadataService) {
@@ -239,28 +313,62 @@ export class BooksService implements OnModuleInit {
     return added;
   }
 
-  private async collectEbookFilesRecursively(basePath: string, ebookExts: string[], relativePath = ''): Promise<string[]> {
-    const currentPath = relativePath ? join(basePath, relativePath) : basePath;
-    const entries = await readdir(currentPath, { withFileTypes: true });
-    const files: string[] = [];
+  /**
+   * Walk every configured NAS root in priority order and return the
+   * list of ebook files (with the root that surfaced each one). On
+   * collisions — same relative path in two roots — the earlier root
+   * wins and the later one is skipped, so the on-disk canonical
+   * location is deterministic and matches the user's primary root.
+   */
+  private async collectEbookFilesRecursively(
+    ebookExts: string[],
+    rootOverride?: string,
+    relativePath = '',
+  ): Promise<{ filePath: string; rootPath: string }[]> {
+    const roots = rootOverride ? [rootOverride] : this.nasEbookPaths;
+    const seen = new Set<string>();
+    const out: { filePath: string; rootPath: string }[] = [];
 
-    for (const entry of entries) {
-      const nextRelativePath = relativePath ? join(relativePath, entry.name) : entry.name;
-      if (entry.isDirectory()) {
-        const nestedFiles = await this.collectEbookFilesRecursively(basePath, ebookExts, nextRelativePath);
-        files.push(...nestedFiles);
+    for (const root of roots) {
+      let entries: import('fs').Dirent[];
+      try {
+        const currentPath = relativePath ? join(root, relativePath) : root;
+        entries = await readdir(currentPath, { withFileTypes: true });
+      } catch {
+        // Root doesn't exist or isn't readable; skip it. Single-root
+        // setups keep working because the default '/data/ebooks' is
+        // the only entry and is allowed to be missing in dev.
         continue;
       }
 
-      if (!entry.isFile()) continue;
+      for (const entry of entries) {
+        const nextRelativePath = relativePath
+          ? join(relativePath, entry.name)
+          : entry.name;
+        if (entry.isDirectory()) {
+          const nested = await this.collectEbookFilesRecursively(
+            ebookExts,
+            root,
+            nextRelativePath,
+          );
+          for (const f of nested) {
+            if (seen.has(f.filePath)) continue;
+            seen.add(f.filePath);
+            out.push(f);
+          }
+          continue;
+        }
 
-      const ext = entry.name.split('.').pop()?.toLowerCase() || '';
-      if (ebookExts.includes(ext)) {
-        files.push(nextRelativePath);
+        if (!entry.isFile()) continue;
+        const ext = entry.name.split('.').pop()?.toLowerCase() || '';
+        if (!ebookExts.includes(ext)) continue;
+        if (seen.has(nextRelativePath)) continue;
+        seen.add(nextRelativePath);
+        out.push({ filePath: nextRelativePath, rootPath: root });
       }
     }
 
-    return files;
+    return out;
   }
 
 
@@ -281,7 +389,7 @@ export class BooksService implements OnModuleInit {
   }
 
   private async parseTxtChapters(filePath: string): Promise<{ title: string; startLine: number }[]> {
-    const fullPath = join(this.nasEbookPath, filePath);
+    const fullPath = this.resolveEbookPath(filePath);
     if (!existsSync(fullPath)) return [];
 
     const text = await this.readTextFile(fullPath);
@@ -371,7 +479,7 @@ export class BooksService implements OnModuleInit {
       throw new NotFoundException('Chapter not found');
     }
 
-    const fullPath = join(this.nasEbookPath, filePath);
+    const fullPath = this.resolveEbookPath(filePath);
     const text = await this.readTextFile(fullPath);
     const lines = text.split(/\r?\n/);
 
@@ -392,7 +500,7 @@ export class BooksService implements OnModuleInit {
   // ─── EPUB Parsing ────────────────────────────────────────────────────────
 
   private async parseEpubChapters(filePath: string): Promise<{ title: string; id: string; index: number }[]> {
-    const fullPath = join(this.nasEbookPath, filePath);
+    const fullPath = this.resolveEbookPath(filePath);
     if (!existsSync(fullPath)) return [];
 
     try {
@@ -500,7 +608,7 @@ export class BooksService implements OnModuleInit {
     filePath: string,
     chapterIndex: number,
   ): Promise<{ title: string; paragraphs: BookParagraph[] }> {
-    const fullPath = join(this.nasEbookPath, filePath);
+    const fullPath = this.resolveEbookPath(filePath);
     if (!existsSync(fullPath)) {
       throw new NotFoundException('EPUB file not found');
     }
@@ -534,7 +642,7 @@ export class BooksService implements OnModuleInit {
     if (chapterIndex < 0 || chapterIndex >= chapters.length) {
       throw new NotFoundException('Chapter not found');
     }
-    const fullPath = join(this.nasEbookPath, filePath);
+    const fullPath = this.resolveEbookPath(filePath);
     const text = await this.readTextFile(fullPath);
     const lines = text.split(/\r?\n/);
     const startLine = chapters[chapterIndex].startLine;
@@ -560,7 +668,7 @@ export class BooksService implements OnModuleInit {
     chapterIndex: number,
   ): Promise<{ title: string; paragraphs: BookParagraph[] }> {
     let mobi: any;
-    const fullPath = join(this.nasEbookPath, filePath);
+    const fullPath = this.resolveEbookPath(filePath);
     if (!existsSync(fullPath)) throw new NotFoundException('MOBI/AZW3 file not found');
     try {
       const parser = await getMobiParser();
@@ -606,7 +714,7 @@ export class BooksService implements OnModuleInit {
   }
 
   private async getEpubChapterContent(filePath: string, chapterIndex: number): Promise<{ title: string; content: string }> {
-    const fullPath = join(this.nasEbookPath, filePath);
+    const fullPath = this.resolveEbookPath(filePath);
     if (!existsSync(fullPath)) {
       throw new NotFoundException('EPUB file not found');
     }
@@ -798,7 +906,7 @@ export class BooksService implements OnModuleInit {
   // ─── MOBI / AZW3 Parsing ─────────────────────────────────────────────────
 
   private async parseMobiChapters(filePath: string): Promise<{ title: string; id: string; index: number }[]> {
-    const fullPath = join(this.nasEbookPath, filePath);
+    const fullPath = this.resolveEbookPath(filePath);
     if (!existsSync(fullPath)) return [];
 
     let mobi: any;
@@ -853,7 +961,7 @@ export class BooksService implements OnModuleInit {
   }
 
   private async getMobiChapterContent(filePath: string, chapterIndex: number): Promise<{ title: string; content: string }> {
-    const fullPath = join(this.nasEbookPath, filePath);
+    const fullPath = this.resolveEbookPath(filePath);
     if (!existsSync(fullPath)) {
       throw new NotFoundException('MOBI/AZW3 file not found');
     }
@@ -1043,9 +1151,9 @@ export class BooksService implements OnModuleInit {
     let updated = 0;
 
     try {
-      // 1. Collect all files on disk
-      const entries = await this.collectEbookFilesRecursively(this.nasEbookPath, ebookExts);
-      const filePathsOnDisk = new Set(entries);
+      // 1. Collect all files on disk (across every configured NAS root)
+      const entries = await this.collectEbookFilesRecursively(ebookExts);
+      const filePathsOnDisk = new Set(entries.map((e) => e.filePath));
 
       // 2. Get all existing books from DB
       const existingBooks = await this.prisma.book.findMany({
@@ -1055,11 +1163,11 @@ export class BooksService implements OnModuleInit {
       const existingPaths = new Map(existingBooks.map((b) => [b.filePath, b]));
 
       // 3. Add new books
-      for (const filePath of entries) {
+      for (const { filePath, rootPath } of entries) {
         if (existingPaths.has(filePath)) continue;
 
         const ext = filePath.split('.').pop()?.toLowerCase() || '';
-        const fullPath = join(this.nasEbookPath, filePath);
+        const fullPath = join(rootPath, filePath);
         const fileStat = await stat(fullPath);
         const fileName = filePath.split(/[\\/]/).pop() || filePath;
         const title = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
@@ -1075,6 +1183,7 @@ export class BooksService implements OnModuleInit {
             metadata: '{}',
           },
         });
+        this.filePathRootCache.set(filePath, rootPath);
 
         if (this.metadataService) {
           this.metadataService.fetchAndUpdateBook(createdBook.id).catch(() => {});
@@ -1115,16 +1224,19 @@ export class BooksService implements OnModuleInit {
     let added = 0;
 
     try {
-      const entries = await this.collectEbookFilesRecursively(this.nasEbookPath, ebookExts);
+      const entries = await this.collectEbookFilesRecursively(ebookExts);
 
-      for (const filePath of entries) {
+      for (const { filePath, rootPath } of entries) {
         const existing = await this.prisma.book.findFirst({
           where: { filePath, isDeleted: false },
         });
-        if (existing) continue;
+        if (existing) {
+          this.filePathRootCache.set(filePath, rootPath);
+          continue;
+        }
 
         const ext = filePath.split('.').pop()?.toLowerCase() || '';
-        const fullPath = join(this.nasEbookPath, filePath);
+        const fullPath = join(rootPath, filePath);
         const fileStat = await stat(fullPath);
         const fileName = filePath.split(/[\\/]/).pop() || filePath;
         const title = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
@@ -1140,6 +1252,7 @@ export class BooksService implements OnModuleInit {
             metadata: '{}',
           },
         });
+        this.filePathRootCache.set(filePath, rootPath);
 
         if (this.metadataService) {
           this.metadataService.fetchAndUpdateBook(createdBook.id).catch(() => {});
@@ -1201,7 +1314,7 @@ export class BooksService implements OnModuleInit {
     };
 
     return {
-      path: join(this.nasEbookPath, book.filePath),
+      path: this.resolveEbookPath(book.filePath),
       filename: `${book.title}.${book.format}`,
       contentType: formatMimeTypes[book.format as BookFormat],
     };
