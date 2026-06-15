@@ -48,11 +48,19 @@ import React, {
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { getCoverImageUrl } from "../utils/network";
 
-function BookCover({ book, className = "" }: { book: Book; className?: string }) {
+function BookCover({
+  book,
+  className = "",
+}: {
+  book: Book;
+  className?: string;
+}) {
   const [coverError, setCoverError] = useState(false);
   const coverSrc = getCoverImageUrl(book.coverUrl);
   return (
-    <div className={`bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-lg ${className}`}>
+    <div
+      className={`bg-gray-100 dark:bg-gray-700 rounded-lg overflow-hidden shadow-lg ${className}`}
+    >
       {coverSrc && !coverError ? (
         <img
           src={coverSrc}
@@ -259,7 +267,7 @@ export default function ReaderTTS() {
           return;
         }
         setChapters(chRes.data);
-    chaptersRef.current = chRes.data;
+        chaptersRef.current = chRes.data;
         // Chapter index resolution, in priority order:
         //   1. ?ci=N in the URL  (deep-link / "继续听书" button target)
         //   2. GET /books/:id/last-read  (global "last listened" pointer)
@@ -269,7 +277,7 @@ export default function ReaderTTS() {
         //   4. 0
         let ci = 0;
         const ciParam = searchParams.get("ci");
-        console.log('[Reader-TTS] URL ciParam:', ciParam);
+        console.log("[Reader-TTS] URL ciParam:", ciParam);
         if (ciParam !== null) {
           const parsed = parseInt(ciParam, 10);
           if (Number.isFinite(parsed) && parsed >= 0) {
@@ -278,7 +286,7 @@ export default function ReaderTTS() {
         } else {
           try {
             const lastRes = await apiClient.getBookLastRead(id);
-            console.log('[Reader-TTS] getBookLastRead res:', lastRes);
+            console.log("[Reader-TTS] getBookLastRead res:", lastRes);
             if (lastRes.success && lastRes.data) {
               ci = lastRes.data.chapterIndex;
             } else {
@@ -297,13 +305,23 @@ export default function ReaderTTS() {
               }
             }
           } catch (e) {
-            console.error('[Reader-TTS] getBookLastRead error:', e);
+            console.error("[Reader-TTS] getBookLastRead error:", e);
           }
         }
-        console.log('[Reader-TTS] resolved ci:', ci, 'chapters:', chRes.data.length);
+        console.log(
+          "[Reader-TTS] resolved ci:",
+          ci,
+          "chapters:",
+          chRes.data.length,
+        );
         ci = Math.max(0, Math.min(ci, chRes.data.length - 1));
-        console.log('[Reader-TTS] clamped ci:', ci);
-        await loadChapter(apiClient, id, ci);
+        console.log("[Reader-TTS] clamped ci:", ci);
+        // skipEmpty: true on initial open so EPUBs that start with a
+        // cover/copyright page silently advance to the first chapter
+        // with readable text. User-driven navigation later
+        // (chapter picker, deep-link, queue-end auto-advance) keeps
+        // its original ci.
+        await loadChapter(apiClient, id, ci, { skipEmpty: true });
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -318,11 +336,43 @@ export default function ReaderTTS() {
     apiClient: ReturnType<typeof getApiClient>,
     bookId: string,
     ci: number,
+    options: { skipEmpty?: boolean } = {},
   ) => {
     setChapterIndex(ci);
     chapterIndexRef.current = ci;
     manager.setConfig({ chapterIndex: ci });
-    const r = await apiClient.getChapterParagraphs(bookId, ci);
+    let r = await apiClient.getChapterParagraphs(bookId, ci);
+    let effectiveCi = ci;
+    // Some EPUBs open with cover/copyright/TOC pages that contain no
+    // readable text. When the user hasn't explicitly asked for that
+    // chapter (deep-link or manual selection), silently advance to the
+    // next chapter that actually has paragraphs so the TTS screen
+    // doesn't fall into its empty-state UI. User-initiated navigation
+    // (URL ?ci=N, chapter picker, queue end) is still honoured verbatim.
+    if (
+      options.skipEmpty &&
+      (!r.success || !r.data || r.data.paragraphs.length === 0) &&
+      chaptersRef.current.length > 1
+    ) {
+      for (let i = ci + 1; i < chaptersRef.current.length; i++) {
+        const tryRes = await apiClient.getChapterParagraphs(bookId, i);
+        if (
+          tryRes.success &&
+          tryRes.data &&
+          tryRes.data.paragraphs.length > 0
+        ) {
+          console.log(
+            `[Reader-TTS] Chapter ${ci} has no readable text; auto-advancing to ${i}`,
+          );
+          effectiveCi = i;
+          setChapterIndex(i);
+          chapterIndexRef.current = i;
+          manager.setConfig({ chapterIndex: i });
+          r = tryRes;
+          break;
+        }
+      }
+    }
     if (!r.success || !r.data) {
       showError(r.error || "加载章节失败");
       return;
@@ -341,7 +391,7 @@ export default function ReaderTTS() {
 
     // Resume from saved cloud progress (cross-device sync)
     try {
-      const p = await apiClient.getTtsProgress(bookId, ci);
+      const p = await apiClient.getTtsProgress(bookId, effectiveCi);
       if (p.success && p.data && !Array.isArray(p.data)) {
         const rec = p.data as TtsProgressRecord;
         // Apply the saved voice/provider into the manager IMMEDIATELY
@@ -427,7 +477,9 @@ export default function ReaderTTS() {
             const apiClient = getApiClient();
             await loadChapter(apiClient, bookIdRef.current!, nextChapterIndex);
             // Update URL to reflect new chapter
-            navigate(`/book/${bookIdRef.current}/tts?ci=${nextChapterIndex}`, { replace: true });
+            navigate(`/book/${bookIdRef.current}/tts?ci=${nextChapterIndex}`, {
+              replace: true,
+            });
             // Wait for state to settle then start playing with fresh paragraphs
             setTimeout(() => {
               const cfg = manager.getConfig();
@@ -437,25 +489,29 @@ export default function ReaderTTS() {
                 rate: cfg.rate,
                 volume: cfg.volume,
               };
-              manager.play(
-                paragraphsRef.current,
-                0,
-                {
-                  onStart: () => setState("playing"),
-                  onPause: () => setState("paused"),
-                  onResume: () => setState("playing"),
-                  onEnd: () => setState("idle"),
-                  onError: (e) => {
-                    showError(e.message || "朗读失败");
-                    setState("error");
+              manager
+                .play(
+                  paragraphsRef.current,
+                  0,
+                  {
+                    onStart: () => setState("playing"),
+                    onPause: () => setState("paused"),
+                    onResume: () => setState("playing"),
+                    onEnd: () => setState("idle"),
+                    onError: (e) => {
+                      showError(e.message || "朗读失败");
+                      setState("error");
+                    },
+                    onProgress: (p) => setProgress(p),
+                    onParagraphChange: (idx) =>
+                      setProgress((prev) => ({ ...prev, paragraphIndex: idx })),
                   },
-                  onProgress: (p) => setProgress(p),
-                  onParagraphChange: (idx) =>
-                    setProgress((prev) => ({ ...prev, paragraphIndex: idx })),
-                },
-                freshOverrides,
-                0,
-              ).catch((e) => console.error("Auto-play next chapter failed", e));
+                  freshOverrides,
+                  0,
+                )
+                .catch((e) =>
+                  console.error("Auto-play next chapter failed", e),
+                );
             }, 800);
           }
         },

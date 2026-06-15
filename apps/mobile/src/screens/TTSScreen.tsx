@@ -302,14 +302,19 @@ export function TTSScreen() {
         chaptersRef.current = chRes.data;
         ttsStore.setChapters(chRes.data);
 
-        // Load first chapter (loadChapter will skip empty ones)
+        // Load first chapter. skipEmpty: true so EPUBs that open with
+        // a cover/copyright page silently advance to the first chapter
+        // with readable text instead of dropping the user into the
+        // empty-state error page.
         console.log(
           "[TTSScreen] Loading chapter 0, voice:",
           vs[0]?.id || voiceId,
           "provider:",
           finalProvider,
         );
-        await loadChapter(0, vs[0]?.id || voiceId, finalProvider);
+        await loadChapter(0, vs[0]?.id || voiceId, finalProvider, {
+          skipEmpty: true,
+        });
       } catch (e) {
         console.error("[TTSScreen] Load error:", e);
         setLoadError((e as Error).message || "加载失败");
@@ -502,11 +507,46 @@ export function TTSScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode]);
 
-  const loadChapter = async (ci: number, vid: string, prov: string) => {
+  const loadChapter = async (
+    ci: number,
+    vid: string,
+    prov: string,
+    options: { skipEmpty?: boolean } = {},
+  ) => {
     setChapterIndex(ci);
     try {
       const apiClient = getApiClient();
-      const pRes = await apiClient.getChapterParagraphs(book.id, ci);
+      // Some EPUBs have leading chapters (cover, copyright, dedication,
+      // table of contents) that contain only images or whitespace and
+      // would otherwise leave the TTS screen with an empty state. When
+      // the caller has not explicitly chosen this chapter, silently
+      // advance to the next chapter that has at least one paragraph.
+      // User navigation (chapter picker, deep-link, queue-end
+      // auto-advance) is still honoured verbatim.
+      let pRes = await apiClient.getChapterParagraphs(book.id, ci);
+      let effectiveCi = ci;
+      if (
+        options.skipEmpty &&
+        (!pRes.success || !pRes.data || pRes.data.paragraphs.length === 0) &&
+        chaptersRef.current.length > 1
+      ) {
+        for (let i = ci + 1; i < chaptersRef.current.length; i++) {
+          const tryRes = await apiClient.getChapterParagraphs(book.id, i);
+          if (
+            tryRes.success &&
+            tryRes.data &&
+            tryRes.data.paragraphs.length > 0
+          ) {
+            console.log(
+              `[TTSScreen] Chapter ${ci} has no readable text; auto-advancing to ${i}`,
+            );
+            effectiveCi = i;
+            setChapterIndex(i);
+            pRes = tryRes;
+            break;
+          }
+        }
+      }
       if (!pRes.success || !pRes.data) {
         setLoadError("加载章节失败");
         return;
@@ -519,11 +559,11 @@ export function TTSScreen() {
       ttsStore.setParagraphs(pRes.data.paragraphs);
       ttsStore.setTotalParagraphs(pRes.data.paragraphs.length);
       ttsStore.setChapterTitle(pRes.data.title);
-      ttsStore.setChapterIndex(ci);
+      ttsStore.setChapterIndex(effectiveCi);
 
       // Resume from saved cloud progress
       try {
-        const prog = await apiClient.getTtsProgress(book.id, ci);
+        const prog = await apiClient.getTtsProgress(book.id, effectiveCi);
         if (prog.success && prog.data && !Array.isArray(prog.data)) {
           const rec = prog.data;
           if (rec.provider) {
