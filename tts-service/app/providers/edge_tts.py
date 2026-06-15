@@ -20,6 +20,82 @@ logger = logging.getLogger("tts.edge")
 DEFAULT_VOICE_LANGUAGES = {"en", "zh", "ja", "ko", "es", "fr", "de", "ru", "it"}
 
 
+# ─── Friendly display names for Chinese Edge voices ─────────────────────
+# Map from ShortName suffix (e.g. "XiaoxiaoNeural" from "zh-CN-XiaoxiaoNeural")
+# to a short Chinese display name. Used to replace the verbose
+# "Microsoft Server Speech Text to Speech Voice (zh-CN, XiaoxiaoNeural)"
+# default friendly name with a cleaner "晓晓·陆" style label.
+# The `id` returned to the client remains the ShortName (unchanged), so
+# synthesize calls still work without any client-side remapping.
+_ZH_VOICE_NAME_MAP: dict[str, str] = {
+    "XiaoxiaoNeural": "晓晓",
+    "XiaoyiNeural": "晓伊",
+    "YunjianNeural": "云健",
+    "YunxiNeural": "云希",
+    "YunxiaNeural": "云夏",
+    "YunyangNeural": "云扬",
+    "XiaochenNeural": "晓辰",
+    "XiaohanNeural": "晓涵",
+    "XiaomengNeural": "晓梦",
+    "XiaomoNeural": "晓墨",
+    "XiaoqiuNeural": "晓秋",
+    "XiaoruiNeural": "晓睿",
+    "XiaoshuangNeural": "晓双",
+    "XiaoyanNeural": "晓颜",
+    "XiaoyouNeural": "晓悠",
+    "XiaozhenNeural": "晓甄",
+    "YunfengNeural": "云枫",
+    "YunhaoNeural": "云浩",
+    "YunyeNeural": "云野",
+    "YunzeNeural": "云泽",
+    "HiuMaanNeural": "晓曼",
+    "WanLungNeural": "云龙",
+    "HsiaoChenNeural": "晓臻",
+    "HsiaoYuNeural": "晓雨",
+    "YunJheNeural": "云哲",
+    # Voices added later by Microsoft — only present in newer edge_tts
+    # builds. Region tag still comes from the voice's Locale.
+    "HiuGaaiNeural": "晓佳",   # zh-HK Cantonese
+    "XiaobeiNeural": "晓北",   # zh-CN-liaoning Northeastern Mandarin
+    "XiaoniNeural": "晓妮",    # zh-CN-shaanxi Zhongyuan Mandarin (Shaanxi)
+}
+
+
+def _region_tag(locale: str) -> str:
+    """Map a BCP-47 locale to a short region tag for Chinese locales.
+
+    Returns "陆" for Simplified Chinese (mainland), "港" for Hong Kong,
+    "台" for Taiwan. Empty string for any other locale (so the
+    display name stays clean for non-zh voices).
+    """
+    loc = (locale or "").lower()
+    if not loc.startswith("zh"):
+        return ""
+    if loc.startswith("zh-hk") or "hant-hk" in loc:
+        return "港"
+    if loc.startswith("zh-tw") or "hant-tw" in loc:
+        return "台"
+    # All other zh-* locales (zh-CN, zh-Hans, zh-Hant-CN, etc.) are
+    # treated as mainland Mandarin.
+    return "陆"
+
+
+def _friendly_zh_voice_name(short_name: str, locale: str) -> Optional[str]:
+    """Build a friendly "晓晓·陆" style name for a Chinese Edge voice.
+
+    Returns None if the voice isn't in our translation table — callers
+    should fall back to the verbose default FriendlyName in that case.
+    """
+    # ShortName is "zh-CN-XiaoxiaoNeural" or similar. Extract the part
+    # after the last "-" (e.g. "XiaoxiaoNeural").
+    voice_id = short_name.rsplit("-", 1)[-1] if short_name else ""
+    chinese_name = _ZH_VOICE_NAME_MAP.get(voice_id)
+    if not chinese_name:
+        return None
+    tag = _region_tag(locale)
+    return f"{chinese_name}·{tag}" if tag else chinese_name
+
+
 # rate / pitch / volume must be strings in edge-tts.
 # Convert a multiplier (0.5–2.0) to edge-tts percent string e.g. "+10%" / "-25%"
 def _to_rate_str(rate: float) -> str:
@@ -69,14 +145,26 @@ class EdgeTTSProvider(TTSProvider):
                         short = v.get("ShortName", "")
                         locale = v.get("Locale", "")
                         gender = (v.get("Gender") or "Neutral").lower()
-                        # Filter to common languages to keep the list manageable
-                        lang_prefix = locale.split("-")[0].lower() if locale else ""
-                        if lang_prefix not in DEFAULT_VOICE_LANGUAGES:
+                        # Only show Chinese-region voices (mainland / HK /
+                        # TW). Other locales (en, ja, ko, ...) are hidden
+                        # to keep the picker focused on BookDock's primary
+                        # language.
+                        if not locale.lower().startswith("zh"):
                             continue
+                        # Replace the verbose default FriendlyName
+                        # ("Microsoft Server Speech Text to Speech Voice
+                        # (zh-CN, XiaoxiaoNeural)") with a short
+                        # "晓晓·陆" style name for Chinese voices we
+                        # recognise. The voice `id` (ShortName) is left
+                        # unchanged so clients can still pass it to
+                        # /synthesize directly.
+                        friendly = _friendly_zh_voice_name(short, locale)
+                        if not friendly:
+                            friendly = v.get("FriendlyName", short)
                         parsed.append(
                             VoiceInfo(
                                 id=short,
-                                name=v.get("FriendlyName", short),
+                                name=friendly,
                                 language=locale,
                                 gender=gender,
                                 description=f"Microsoft Edge TTS — {locale}",

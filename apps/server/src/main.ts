@@ -17,9 +17,15 @@ async function bootstrap() {
   app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
   // Serve cover images statically (before global prefix, before ServeStaticModule)
-  // 优先使用 CACHE_PATH，未设置时回退到 NAS_EBOOK_PATH/covers
+  // 优先使用 CACHE_PATH，未设置时回退到 NAS_EBOOK_PATH（第一个根）的 covers 子目录。
+  // NAS_EBOOK_PATH 支持单路径或多路径（: 或 , 分隔），封面统一放在主根下。
   const cachePath = process.env.CACHE_PATH;
-  const nasEbookPath = resolve(process.env.NAS_EBOOK_PATH || '/data/ebooks');
+  const nasEbookPath = resolve(
+    (process.env.NAS_EBOOK_PATH || '/data/ebooks')
+      .split(/[:,]/)
+      .map((p) => p.trim())
+      .filter(Boolean)[0] || '/data/ebooks',
+  );
   const coversPath = cachePath
     ? join(resolve(cachePath), 'covers')
     : join(nasEbookPath, 'covers');
