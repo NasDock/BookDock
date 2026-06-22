@@ -1192,6 +1192,8 @@ export function ReaderScreen() {
   const readingStartTimeRef = useRef<number>(0);
   const accumulatedReadingTimeRef = useRef<number>(0);
   const isReadingActiveRef = useRef<boolean>(false);
+  const readingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const REPORT_INTERVAL = 3; // Report every 3 seconds
 
   const startReadingTimer = useCallback(() => {
     if (!isReadingActiveRef.current) {
@@ -1223,13 +1225,41 @@ export function ReaderScreen() {
     accumulatedReadingTimeRef.current = 0;
   }, [pauseReadingTimer, book.id]);
 
+  const startPeriodicReport = useCallback(() => {
+    if (readingIntervalRef.current) return;
+    readingIntervalRef.current = setInterval(() => {
+      if (isReadingActiveRef.current && readingStartTimeRef.current > 0) {
+        const elapsed = Math.floor((Date.now() - readingStartTimeRef.current) / 1000);
+        accumulatedReadingTimeRef.current += elapsed;
+        readingStartTimeRef.current = Date.now();
+
+        // Report accumulated time every interval
+        const total = accumulatedReadingTimeRef.current;
+        accumulatedReadingTimeRef.current = 0;
+        if (total >= 1) {
+          getApiClient().recordReadingSession(book.id, total, new Date().getHours())
+            .catch((err) => console.warn('Failed to report reading session:', err));
+        }
+      }
+    }, REPORT_INTERVAL * 1000);
+  }, [book.id]);
+
+  const stopPeriodicReport = useCallback(() => {
+    if (readingIntervalRef.current) {
+      clearInterval(readingIntervalRef.current);
+      readingIntervalRef.current = null;
+    }
+  }, []);
+
   // Handle AppState changes for reading timer
   useEffect(() => {
     const handleAppStateChange = (nextAppState: string) => {
       if (nextAppState === 'active') {
         startReadingTimer();
+        startPeriodicReport();
       } else {
         pauseReadingTimer();
+        stopPeriodicReport();
       }
     };
 
@@ -1237,16 +1267,18 @@ export function ReaderScreen() {
     return () => {
       subscription.remove();
     };
-  }, [startReadingTimer, pauseReadingTimer]);
+  }, [startReadingTimer, pauseReadingTimer, startPeriodicReport, stopPeriodicReport]);
 
   // Start timer when screen is focused, flush when unfocused
   useFocusEffect(
     useCallback(() => {
       startReadingTimer();
+      startPeriodicReport();
       return () => {
+        stopPeriodicReport();
         flushReadingTimer();
       };
-    }, [startReadingTimer, flushReadingTimer])
+    }, [startReadingTimer, flushReadingTimer, startPeriodicReport, stopPeriodicReport])
   );
 
   // Stable WebView source object. The scroll-mode WebView re-renders

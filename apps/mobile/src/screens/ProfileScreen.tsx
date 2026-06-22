@@ -374,39 +374,55 @@ export function ProfileScreen() {
         </View>
 
         {/* Reading Time Card */}
-        {readingSummary && (
+        {isVip ? (
+          readingSummary && (
+            <TouchableOpacity
+              style={[styles.readingTimeCard, { backgroundColor: theme.colors.primary }]}
+              onPress={() => navigation.navigate('Stats')}
+            >
+              <View style={styles.readingTimeContent}>
+                <Ionicons name="time-outline" size={24} color="#fff" />
+                <View style={styles.readingTimeTextContainer}>
+                  <Text style={styles.readingTimeLabel}>阅读时长</Text>
+                  <Text style={styles.readingTimeValue}>
+                    {(() => {
+                      const format = (secs: number) => {
+                        if (secs < 60) return `${secs}秒`;
+                        if (secs < 3600) return `${Math.floor(secs / 60)}分钟`;
+                        const h = Math.floor(secs / 3600);
+                        const m = Math.floor((secs % 3600) / 60);
+                        return m > 0 ? `${h}小时${m}分钟` : `${h}小时`;
+                      };
+                      if (readingSummary.todaySecs > 0) {
+                        return `今日阅读 ${format(readingSummary.todaySecs)}`;
+                      }
+                      if (readingSummary.weekSecs > 0) {
+                        return `本周阅读 ${format(readingSummary.weekSecs)}`;
+                      }
+                      if (readingSummary.monthSecs > 0) {
+                        return `本月阅读 ${format(readingSummary.monthSecs)}`;
+                      }
+                      if (readingSummary.yearSecs > 0) {
+                        return `今年阅读 ${format(readingSummary.yearSecs)}`;
+                      }
+                      return '今日还没有阅读';
+                    })()}
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#fff" />
+            </TouchableOpacity>
+          )
+        ) : (
           <TouchableOpacity
-            style={[styles.readingTimeCard, { backgroundColor: theme.colors.primary }]}
-            onPress={() => navigation.navigate('Stats')}
+            style={[styles.readingTimeCard, { backgroundColor: theme.colors.textSecondary }]}
+            onPress={() => navigation.navigate('MemberBenefits')}
           >
             <View style={styles.readingTimeContent}>
-              <Ionicons name="time-outline" size={24} color="#fff" />
+              <Ionicons name="diamond-outline" size={24} color="#fff" />
               <View style={styles.readingTimeTextContainer}>
                 <Text style={styles.readingTimeLabel}>阅读时长</Text>
-                <Text style={styles.readingTimeValue}>
-                  {(() => {
-                    const format = (secs: number) => {
-                      if (secs < 60) return `${secs}秒`;
-                      if (secs < 3600) return `${Math.floor(secs / 60)}分钟`;
-                      const h = Math.floor(secs / 3600);
-                      const m = Math.floor((secs % 3600) / 60);
-                      return m > 0 ? `${h}小时${m}分钟` : `${h}小时`;
-                    };
-                    if (readingSummary.todaySecs > 0) {
-                      return `今日阅读 ${format(readingSummary.todaySecs)}`;
-                    }
-                    if (readingSummary.weekSecs > 0) {
-                      return `本周阅读 ${format(readingSummary.weekSecs)}`;
-                    }
-                    if (readingSummary.monthSecs > 0) {
-                      return `本月阅读 ${format(readingSummary.monthSecs)}`;
-                    }
-                    if (readingSummary.yearSecs > 0) {
-                      return `今年阅读 ${format(readingSummary.yearSecs)}`;
-                    }
-                    return '今日还没有阅读';
-                  })()}
-                </Text>
+                <Text style={styles.readingTimeValue}>开通会员解锁阅读时长统计</Text>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#fff" />

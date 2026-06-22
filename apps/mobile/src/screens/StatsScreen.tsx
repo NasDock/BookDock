@@ -11,7 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { getApiClient, type PeriodReadingStats, type DailyHourStats } from '@bookdock/api-client';
-import { useThemeStore } from '../stores';
+import { useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -37,6 +37,7 @@ export default function StatsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
+  const { isVip } = useAuthStore();
 
   const [period, setPeriod] = useState<Period>('week');
   const [stats, setStats] = useState<PeriodReadingStats | null>(null);
@@ -45,6 +46,17 @@ export default function StatsScreen() {
   const [totalTime, setTotalTime] = useState(0);
 
   const styles = useMemo(() => createStyles(theme), [theme]);
+
+  // Redirect non-vip users
+  useEffect(() => {
+    if (!isVip) {
+      navigation.navigate('MemberBenefits');
+    }
+  }, [isVip, navigation]);
+
+  if (!isVip) {
+    return null;
+  }
 
   // Fetch summary
   useEffect(() => {
@@ -177,7 +189,7 @@ export default function StatsScreen() {
               <Text style={[styles.chartTitle, { color: theme.colors.text }]}>
                 {period === 'day' ? '24小时分布' : `${PERIOD_LABELS[period]}阅读分布`}
               </Text>
-              {chartData.length > 0 && maxValue > 0 ? (
+              {stats && stats.totalDurationSecs > 0 ? (
                 <View style={styles.chartContainer}>
                   {chartData.map((item, i) => {
                     const height = maxValue > 0 ? (item.durationSecs / maxValue) * 100 : 0;
@@ -203,7 +215,11 @@ export default function StatsScreen() {
                 </View>
               ) : (
                 <View style={styles.emptyContainer}>
-                  <Text style={{ color: theme.colors.textSecondary }}>暂无阅读数据</Text>
+                  <Ionicons name="book-outline" size={48} color={theme.colors.textSecondary} style={{ opacity: 0.3, marginBottom: 12 }} />
+                  <Text style={{ color: theme.colors.textSecondary, fontSize: fontSizes.md }}>暂无阅读数据</Text>
+                  <Text style={{ color: theme.colors.textSecondary, fontSize: fontSizes.sm, marginTop: 4, opacity: 0.7 }}>
+                    {PERIOD_LABELS[period]}内还没有阅读记录
+                  </Text>
                 </View>
               )}
             </>

@@ -12,6 +12,7 @@ import {
   List,
   PenLine,
   Search,
+  ArrowLeft,
 } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -489,6 +490,12 @@ export default function Library() {
     <div className="space-y-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        {/* Mobile Header */}
+        <div className="flex md:hidden items-center gap-3">
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">我的书库</h1>
+        </div>
+
+        {/* Desktop Header */}
         <div className="hidden md:block">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             我的书库

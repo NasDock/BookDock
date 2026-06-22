@@ -22,6 +22,12 @@ import {
 export class ReadingProgressService {
   constructor(@Inject(PRISMA_CLIENT) private readonly prisma: PrismaClient) {}
 
+  // VIP check removed - VIP status is managed by external Plus API
+  // Client controls feature access based on local isVip state
+  private async checkVip(_userId: string): Promise<boolean> {
+    return true;
+  }
+
   async upsert(
     userId: string,
     bookId: string,
@@ -238,6 +244,11 @@ export class ReadingProgressService {
     userId: string,
     dto: RecordReadingSessionDto,
   ): Promise<{ success: boolean; message: string }> {
+    const isVip = await this.checkVip(userId);
+    if (!isVip) {
+      return { success: false, message: 'VIP required' };
+    }
+
     const book = await this.prisma.book.findUnique({ where: { id: dto.bookId, isDeleted: false } });
     if (!book) throw new NotFoundException(`Book ${dto.bookId} not found`);
 
@@ -275,7 +286,10 @@ export class ReadingProgressService {
   }
 
   async getReadingTimeSummary(userId: string): Promise<ReadingTimeSummaryDto> {
-    const now = new Date();
+    const isVip = await this.checkVip(userId);
+    if (!isVip) {
+      return { todaySecs: 0, weekSecs: 0, monthSecs: 0, yearSecs: 0, totalSecs: 0 };
+    }    const now = new Date();
     const today = now.toISOString().split('T')[0];
     const weekStart = new Date(now);
     weekStart.setDate(now.getDate() - now.getDay() + (now.getDay() === 0 ? -6 : 1)); // Monday
@@ -320,6 +334,16 @@ export class ReadingProgressService {
     period: 'day' | 'week' | 'month' | 'year',
     refDate?: string,
   ): Promise<PeriodReadingStatsDto> {
+    const isVip = await this.checkVip(userId);
+    if (!isVip) {
+      return {
+        period,
+        totalDurationSecs: 0,
+        bookCount: 0,
+        breakdown: [],
+      };
+    }
+
     const date = refDate || new Date().toISOString().split('T')[0];
     const d = new Date(date);
 
@@ -330,12 +354,25 @@ export class ReadingProgressService {
 
     switch (period) {
       case 'day': {
-        startDate = new Date(d);
-        endDate = new Date(d);
-        endDate.setDate(endDate.getDate() + 1);
-        labels = Array.from({ length: 24 }, (_, i) => `${i}时`);
-        dateKeys = [date];
-        break;
+        // For day period, query by hour and return 24-hour breakdown
+        const targetDate = date;
+        const hourSessions = await this.prisma.readingSession.groupBy({
+          by: ['hour'],
+          _sum: { durationSecs: true },
+          where: { userId, date: targetDate },
+        });
+        const hourMap = new Map(hourSessions.map((s) => [s.hour, s._sum.durationSecs || 0]));
+        const breakdown = Array.from({ length: 24 }, (_, i) => ({
+          label: `${i}时`,
+          durationSecs: hourMap.get(i) || 0,
+          date: targetDate,
+        }));
+        const totalDurationSecs = breakdown.reduce((sum, b) => sum + b.durationSecs, 0);
+        const bookCount = await this.prisma.readingSession.groupBy({
+          by: ['bookId'],
+          where: { userId, date: targetDate },
+        }).then((groups) => groups.length);
+        return { period, totalDurationSecs, bookCount, breakdown };
       }
       case 'week': {
         const dayOfWeek = d.getDay() || 7;
@@ -420,6 +457,14 @@ export class ReadingProgressService {
     userId: string,
     date?: string,
   ): Promise<DailyHourStatsDto> {
+    const isVip = await this.checkVip(userId);
+    if (!isVip) {
+      return {
+        date: date || new Date().toISOString().split('T')[0],
+        hours: Array.from({ length: 24 }, (_, i) => ({ hour: i, durationSecs: 0 })),
+      };
+    }
+
     const targetDate = date || new Date().toISOString().split('T')[0];
 
     const sessions = await this.prisma.readingSession.groupBy({

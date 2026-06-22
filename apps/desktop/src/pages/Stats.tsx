@@ -60,12 +60,23 @@ function BarChart({ data, maxValue, labelKey, valueKey }: { data: any[]; maxValu
 
 export default function Stats() {
   const navigate = useNavigate();
-  const { user } = useAuthStore();
+  const { user, isVip } = useAuthStore();
   const [period, setPeriod] = useState<Period>("week");
   const [stats, setStats] = useState<PeriodReadingStats | null>(null);
   const [dailyHours, setDailyHours] = useState<DailyHourStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [totalTime, setTotalTime] = useState(0);
+
+  // Redirect non-vip users to membership page
+  useEffect(() => {
+    if (!isVip) {
+      navigate("/membership");
+    }
+  }, [isVip, navigate]);
+
+  if (!isVip) {
+    return null;
+  }
 
   // Fetch summary
   useEffect(() => {
@@ -208,12 +219,20 @@ export default function Stats() {
                     共 {stats?.bookCount || 0} 本书
                   </span>
                 </div>
-                <BarChart
-                  data={chartData}
-                  maxValue={maxValue}
-                  labelKey="label"
-                  valueKey="durationSecs"
-                />
+                {stats && stats.totalDurationSecs === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                    <BookOpen className="w-12 h-12 mb-3 text-gray-300 dark:text-gray-600" />
+                    <p className="text-sm">暂无阅读数据</p>
+                    <p className="text-xs mt-1 text-gray-400">{PERIOD_LABELS[period]}内还没有阅读记录</p>
+                  </div>
+                ) : (
+                  <BarChart
+                    data={chartData}
+                    maxValue={maxValue}
+                    labelKey="label"
+                    valueKey="durationSecs"
+                  />
+                )}
               </>
             )}
           </div>
