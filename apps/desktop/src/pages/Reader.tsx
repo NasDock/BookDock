@@ -1,15 +1,42 @@
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { getApiClient, Book } from '@bookdock/api-client';
-import { useReaderStore } from '../stores/themeStore';
-import { useAuthStore } from '../stores/authStore';
-import { Button } from '@bookdock/ui';
-import type { ReaderMode } from '@bookdock/ebook-reader';
-import { ArrowLeft, Settings, BookOpen, Bookmark, ChevronLeft, ChevronRight, Volume2, Timer, X, Sun, Moon, ScrollText, Plus, Highlighter, MessageSquare, MessageSquarePlus } from 'lucide-react';
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { getCachedChapters, setCachedChapters, getCachedChapterContent, setCachedChapterContent, getCachedFile, setCachedFile } from '../utils/bookCache';
-import { useReadingTimer } from '../hooks/useReadingTimer';
+import { Book, getApiClient } from "@bookdock/api-client";
+import type { ReaderMode } from "@bookdock/ebook-reader";
+import { Button } from "@bookdock/ui";
+import {
+  ArrowLeft,
+  BookOpen,
+  Bookmark,
+  ChevronLeft,
+  ChevronRight,
+  Highlighter,
+  MessageSquarePlus,
+  Moon,
+  Settings,
+  Sun,
+  Timer,
+  Volume2,
+  X,
+} from "lucide-react";
+import * as pdfjsLib from "pdfjs-dist";
+import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { useReadingTimer } from "../hooks/useReadingTimer";
+import { useAuthStore } from "../stores/authStore";
+import { useReaderStore } from "../stores/themeStore";
+import {
+  getCachedChapterContent,
+  getCachedChapters,
+  getCachedFile,
+  setCachedChapterContent,
+  setCachedChapters,
+  setCachedFile,
+} from "../utils/bookCache";
 
 // 设置 PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -55,7 +82,12 @@ interface SelectionMenuProps {
   onDismiss: () => void;
 }
 
-function SelectionMenu({ position, onNote, onHighlight, onDismiss }: SelectionMenuProps) {
+function SelectionMenu({
+  position,
+  onNote,
+  onHighlight,
+  onDismiss,
+}: SelectionMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -64,15 +96,19 @@ function SelectionMenu({ position, onNote, onHighlight, onDismiss }: SelectionMe
         onDismiss();
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [onDismiss]);
 
   return (
     <div
       ref={menuRef}
       className="fixed z-50 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 px-1 flex gap-1"
-      style={{ left: position.x, top: position.y, transform: 'translate(-50%, -120%)' }}
+      style={{
+        left: position.x,
+        top: position.y,
+        transform: "translate(-50%, -120%)",
+      }}
     >
       <button
         onClick={onHighlight}
@@ -101,25 +137,38 @@ interface NoteModalProps {
 }
 
 function NoteModal({ isOpen, selectedText, onClose, onSave }: NoteModalProps) {
-  const [noteText, setNoteText] = useState('');
+  const [noteText, setNoteText] = useState("");
 
   useEffect(() => {
-    if (isOpen) setNoteText('');
+    if (isOpen) setNoteText("");
   }, [isOpen]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full mx-4 p-6" onClick={e => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full mx-4 p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">添加笔记</h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            添加笔记
+          </h3>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          >
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
         <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border-l-4 border-amber-400">
-          <p className="text-sm text-gray-600 dark:text-gray-300 italic">{selectedText}</p>
+          <p className="text-sm text-gray-600 dark:text-gray-300 italic">
+            {selectedText}
+          </p>
         </div>
         <textarea
           value={noteText}
@@ -129,7 +178,14 @@ function NoteModal({ isOpen, selectedText, onClose, onSave }: NoteModalProps) {
         />
         <div className="flex justify-end gap-3 mt-4">
           <Button onClick={onClose}>取消</Button>
-          <Button onClick={() => { onSave(noteText); onClose(); }}>保存</Button>
+          <Button
+            onClick={() => {
+              onSave(noteText);
+              onClose();
+            }}
+          >
+            保存
+          </Button>
         </div>
       </div>
     </div>
@@ -145,12 +201,21 @@ interface TocPanelProps {
   bookTitle: string;
 }
 
-function TocPanel({ chapters, currentChapter, onSelect, onClose, bookTitle }: TocPanelProps) {
+function TocPanel({
+  chapters,
+  currentChapter,
+  onSelect,
+  onClose,
+  bookTitle,
+}: TocPanelProps) {
   const currentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (currentRef.current) {
-      currentRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      currentRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
     }
   }, []);
 
@@ -159,8 +224,13 @@ function TocPanel({ chapters, currentChapter, onSelect, onClose, bookTitle }: To
       <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
       <div className="fixed left-0 top-0 bottom-0 z-50 w-80 bg-white dark:bg-gray-800 shadow-xl flex flex-col">
         <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white truncate pr-2">{bookTitle}</h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors flex-shrink-0">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white truncate pr-2">
+            {bookTitle}
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors flex-shrink-0"
+          >
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
@@ -169,11 +239,14 @@ function TocPanel({ chapters, currentChapter, onSelect, onClose, bookTitle }: To
             <div
               key={chapter.index}
               ref={chapter.index === currentChapter ? currentRef : null}
-              onClick={() => { onSelect(chapter.index); onClose(); }}
+              onClick={() => {
+                onSelect(chapter.index);
+                onClose();
+              }}
               className={`px-4 py-3 cursor-pointer text-sm transition-colors ${
                 chapter.index === currentChapter
-                  ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium border-r-2 border-blue-500'
-                  : 'text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                  ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium border-r-2 border-blue-500"
+                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50"
               }`}
             >
               {chapter.title}
@@ -201,36 +274,56 @@ interface SettingsPanelProps {
 }
 
 function SettingsPanel({
-  fontSize, lineHeight, fontFamily, margin, mode,
-  onFontSizeChange, onLineHeightChange, onFontFamilyChange, onMarginChange, onModeChange, onClose
+  fontSize,
+  lineHeight,
+  fontFamily,
+  margin,
+  mode,
+  onFontSizeChange,
+  onLineHeightChange,
+  onFontFamilyChange,
+  onMarginChange,
+  onModeChange,
+  onClose,
 }: SettingsPanelProps) {
   return (
     <>
       <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
       <div className="fixed right-0 top-0 bottom-0 z-50 w-80 bg-white dark:bg-gray-800 shadow-xl flex flex-col">
         <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">阅读设置</h2>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            阅读设置
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+          >
             <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-6">
           {/* Theme */}
           <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">主题</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">
+              主题
+            </label>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { mode: 'light' as ReaderMode, label: '白天', icon: Sun },
-                { mode: 'dark' as ReaderMode, label: '夜间', icon: Moon },
-                { mode: 'sepia' as ReaderMode, label: ' sepia', icon: BookOpen },
+                { mode: "light" as ReaderMode, label: "白天", icon: Sun },
+                { mode: "dark" as ReaderMode, label: "夜间", icon: Moon },
+                {
+                  mode: "sepia" as ReaderMode,
+                  label: " sepia",
+                  icon: BookOpen,
+                },
               ].map(({ mode: m, label, icon: Icon }) => (
                 <button
                   key={m}
                   onClick={() => onModeChange(m)}
                   className={`flex flex-col items-center gap-1 p-3 rounded-lg border transition-colors ${
                     mode === m
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                      : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                      ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400"
+                      : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"
                   }`}
                 >
                   <Icon className="w-5 h-5" />
@@ -242,9 +335,14 @@ function SettingsPanel({
 
           {/* Font Size */}
           <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">字号 {fontSize}px</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">
+              字号 {fontSize}px
+            </label>
             <input
-              type="range" min="12" max="32" value={fontSize}
+              type="range"
+              min="12"
+              max="32"
+              value={fontSize}
               onChange={(e) => onFontSizeChange(Number(e.target.value))}
               className="w-full"
             />
@@ -256,9 +354,15 @@ function SettingsPanel({
 
           {/* Line Height */}
           <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">行距 {lineHeight}</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">
+              行距 {lineHeight}
+            </label>
             <input
-              type="range" min="1.2" max="2.5" step="0.1" value={lineHeight}
+              type="range"
+              min="1.2"
+              max="2.5"
+              step="0.1"
+              value={lineHeight}
               onChange={(e) => onLineHeightChange(Number(e.target.value))}
               className="w-full"
             />
@@ -266,9 +370,14 @@ function SettingsPanel({
 
           {/* Margin */}
           <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">边距 {margin}px</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">
+              边距 {margin}px
+            </label>
             <input
-              type="range" min="16" max="64" value={margin}
+              type="range"
+              min="16"
+              max="64"
+              value={margin}
               onChange={(e) => onMarginChange(Number(e.target.value))}
               className="w-full"
             />
@@ -276,15 +385,23 @@ function SettingsPanel({
 
           {/* Font Family */}
           <div>
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">字体</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3 block">
+              字体
+            </label>
             <select
               value={fontFamily}
               onChange={(e) => onFontFamilyChange(e.target.value)}
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
-              <option value="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">系统默认</option>
-              <option value="'Noto Serif SC', 'Source Han Serif SC', serif">思源宋体</option>
-              <option value="'Noto Sans SC', 'Source Han Sans SC', sans-serif">思源黑体</option>
+              <option value="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+                系统默认
+              </option>
+              <option value="'Noto Serif SC', 'Source Han Serif SC', serif">
+                思源宋体
+              </option>
+              <option value="'Noto Sans SC', 'Source Han Sans SC', sans-serif">
+                思源黑体
+              </option>
             </select>
           </div>
         </div>
@@ -297,7 +414,10 @@ function SettingsPanel({
 interface PdfViewerProps {
   url: string;
   currentPage: number;
-  onPdfLoaded: (info: { totalPages: number; outline: Array<{ title: string; page: number }> }) => void;
+  onPdfLoaded: (info: {
+    totalPages: number;
+    outline: Array<{ title: string; page: number }>;
+  }) => void;
 }
 
 function PdfViewer({ url, currentPage, onPdfLoaded }: PdfViewerProps) {
@@ -344,20 +464,27 @@ function PdfViewer({ url, currentPage, onPdfLoaded }: PdfViewerProps) {
             for (const item of rawOutline) {
               let pageNum = 1;
               if (item.dest) {
-                const dest = Array.isArray(item.dest) ? item.dest[0] : item.dest;
-                if (typeof dest === 'string' && dests[dest]) {
-                  const destRef = Array.isArray(dests[dest]) ? dests[dest][0] : dests[dest];
+                const dest = Array.isArray(item.dest)
+                  ? item.dest[0]
+                  : item.dest;
+                if (typeof dest === "string" && dests[dest]) {
+                  const destRef = Array.isArray(dests[dest])
+                    ? dests[dest][0]
+                    : dests[dest];
                   pageNum = (await pdf.getPageIndex(destRef)) + 1;
-                } else if (dest && typeof dest === 'object' && 'num' in dest) {
+                } else if (dest && typeof dest === "object" && "num" in dest) {
                   pageNum = (await pdf.getPageIndex(dest)) + 1;
                 }
               }
-              outlineItems.push({ title: item.title || '未命名', page: pageNum });
+              outlineItems.push({
+                title: item.title || "未命名",
+                page: pageNum,
+              });
             }
             outline = outlineItems;
           }
         } catch (e) {
-          console.warn('Failed to extract PDF outline:', e);
+          console.warn("Failed to extract PDF outline:", e);
         }
 
         onPdfLoaded({ totalPages: pdf.numPages, outline });
@@ -367,7 +494,7 @@ function PdfViewer({ url, currentPage, onPdfLoaded }: PdfViewerProps) {
         }
       } catch (err: any) {
         if (!cancelled) {
-          setError(err.message || '加载 PDF 失败');
+          setError(err.message || "加载 PDF 失败");
           setLoading(false);
         }
       }
@@ -414,7 +541,7 @@ function PdfViewer({ url, currentPage, onPdfLoaded }: PdfViewerProps) {
 
       try {
         const page = await pdf.getPage(currentPage);
-        const context = canvas.getContext('2d');
+        const context = canvas.getContext("2d");
         if (!context) return;
 
         const scale = calculateScale();
@@ -429,12 +556,15 @@ function PdfViewer({ url, currentPage, onPdfLoaded }: PdfViewerProps) {
 
         // Clear and render
         context.clearRect(0, 0, canvas.width, canvas.height);
-        renderTaskRef.current = page.render({ canvasContext: context, viewport });
+        renderTaskRef.current = page.render({
+          canvasContext: context,
+          viewport,
+        });
         await renderTaskRef.current.promise;
         renderTaskRef.current = null;
       } catch (err: any) {
-        if (err.name !== 'RenderingCancelledException') {
-          setError(err.message || '渲染页面失败');
+        if (err.name !== "RenderingCancelledException") {
+          setError(err.message || "渲染页面失败");
         }
       }
     };
@@ -458,7 +588,7 @@ function PdfViewer({ url, currentPage, onPdfLoaded }: PdfViewerProps) {
           }
           try {
             const page = await pdf.getPage(currentPage);
-            const context = canvas.getContext('2d');
+            const context = canvas.getContext("2d");
             if (!context) return;
             const scale = calculateScale();
             const viewport = page.getViewport({ scale });
@@ -467,12 +597,15 @@ function PdfViewer({ url, currentPage, onPdfLoaded }: PdfViewerProps) {
             canvas.style.width = `${viewport.width}px`;
             canvas.style.height = `${viewport.height}px`;
             context.clearRect(0, 0, canvas.width, canvas.height);
-            renderTaskRef.current = page.render({ canvasContext: context, viewport });
+            renderTaskRef.current = page.render({
+              canvasContext: context,
+              viewport,
+            });
             await renderTaskRef.current.promise;
             renderTaskRef.current = null;
           } catch (err: any) {
-            if (err.name !== 'RenderingCancelledException') {
-              console.error('Resize render error:', err);
+            if (err.name !== "RenderingCancelledException") {
+              console.error("Resize render error:", err);
             }
           }
         };
@@ -480,25 +613,30 @@ function PdfViewer({ url, currentPage, onPdfLoaded }: PdfViewerProps) {
       }
     };
 
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, [ready, currentPage, calculateScale]);
 
   return (
     <div className="fixed inset-0 pt-14 pb-16 bg-white dark:bg-gray-900 flex flex-col">
-      <div ref={containerRef} className="flex-1 overflow-hidden flex justify-center items-center p-4">
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-hidden flex justify-center items-center p-4"
+      >
         <canvas
           ref={canvasRef}
           className="shadow-lg"
           style={{
-            visibility: loading || error ? 'hidden' : 'visible',
+            visibility: loading || error ? "hidden" : "visible",
           }}
         />
         {loading && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto"></div>
-              <p className="mt-4 text-gray-600 dark:text-gray-400">加载 PDF 中...</p>
+              <p className="mt-4 text-gray-600 dark:text-gray-400">
+                加载 PDF 中...
+              </p>
             </div>
           </div>
         )}
@@ -568,8 +706,11 @@ function ReaderControls({
   onMouseEnterBottom,
   onMouseLeaveBottom,
 }: ReaderControlsProps) {
-  const progress = totalChapters > 0 ? Math.round(((currentChapter + 1) / totalChapters) * 100) : 0;
-  const barTransition = 'transform 0.3s ease-in-out';
+  const progress =
+    totalChapters > 0
+      ? Math.round(((currentChapter + 1) / totalChapters) * 100)
+      : 0;
+  const barTransition = "transform 0.3s ease-in-out";
 
   return (
     <>
@@ -581,7 +722,10 @@ function ReaderControls({
       >
         <div
           className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700"
-          style={{ transform: hidden ? 'translateY(-100%)' : 'translateY(0)', transition: barTransition }}
+          style={{
+            transform: hidden ? "translateY(-100%)" : "translateY(0)",
+            transition: barTransition,
+          }}
         >
           <div className="flex items-center justify-between px-4 h-14">
             <button
@@ -593,16 +737,18 @@ function ReaderControls({
             </button>
             <div className="flex-1 mx-4 text-center">
               <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                {book?.title || '阅读中'}
+                {book?.title || "阅读中"}
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                {isPdf ? `${book?.title || ''} · 第 ${currentChapter + 1} / ${totalChapters} 页` : chapterTitle}
+                {isPdf
+                  ? `${book?.title || ""} · 第 ${currentChapter + 1} / ${totalChapters} 页`
+                  : chapterTitle}
               </p>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={onToggleSettings}
-                className={`p-2 rounded-lg transition-colors ${showSettings ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                className={`p-2 rounded-lg transition-colors ${showSettings ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
               >
                 <Settings className="w-5 h-5" />
               </button>
@@ -619,7 +765,10 @@ function ReaderControls({
       >
         <div
           className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700"
-          style={{ transform: hidden ? 'translateY(100%)' : 'translateY(0)', transition: barTransition }}
+          style={{
+            transform: hidden ? "translateY(100%)" : "translateY(0)",
+            transition: barTransition,
+          }}
         >
           {/* Progress bar */}
           <div className="px-4 pt-2">
@@ -633,7 +782,9 @@ function ReaderControls({
             />
             <div className="flex justify-between text-xs text-gray-400 mt-1">
               <span>{progress}%</span>
-              <span>{currentChapter + 1} / {totalChapters}</span>
+              <span>
+                {currentChapter + 1} / {totalChapters}
+              </span>
               <span>100%</span>
             </div>
           </div>
@@ -643,7 +794,7 @@ function ReaderControls({
             <div className="flex items-center gap-1">
               <button
                 onClick={onToggleToc}
-                className={`p-2 rounded-lg transition-colors ${showToc ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                className={`p-2 rounded-lg transition-colors ${showToc ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
                 title="目录"
               >
                 <BookOpen className="w-5 h-5" />
@@ -662,7 +813,7 @@ function ReaderControls({
                 onClick={onPrevPage}
                 disabled={currentChapter <= 0}
                 className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                title={isPdf ? '上一页' : '上一章'}
+                title={isPdf ? "上一页" : "上一章"}
               >
                 <ChevronLeft className="w-5 h-5" />
               </button>
@@ -670,7 +821,7 @@ function ReaderControls({
                 onClick={onNextPage}
                 disabled={currentChapter >= totalChapters - 1}
                 className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                title={isPdf ? '下一页 (→)' : '下一章 (→)'}
+                title={isPdf ? "下一页 (→)" : "下一章 (→)"}
               >
                 <ChevronRight className="w-5 h-5" />
               </button>
@@ -686,7 +837,7 @@ function ReaderControls({
               </button>
               <button
                 onClick={onToggleAutoScroll}
-                className={`p-2 rounded-lg transition-colors ${isAutoScroll ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                className={`p-2 rounded-lg transition-colors ${isAutoScroll ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600" : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"}`}
                 title="自动滚动"
               >
                 <Timer className="w-5 h-5" />
@@ -711,9 +862,11 @@ export default function Reader() {
   const autoScrollTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [book, setBook] = useState<Book | null>(null);
-  const [chapters, setChapters] = useState<Array<{ title: string; content?: string }>>([]);
+  const [chapters, setChapters] = useState<
+    Array<{ title: string; content?: string }>
+  >([]);
   const [currentChapter, setCurrentChapter] = useState(0);
-  const [chapterContent, setChapterContent] = useState('');
+  const [chapterContent, setChapterContent] = useState("");
   const [isChapterLoading, setIsChapterLoading] = useState(false);
   const [readerError, setReaderError] = useState<string | null>(null);
   const [pendingScrollTop, setPendingScrollTop] = useState<number | null>(null);
@@ -728,11 +881,11 @@ export default function Reader() {
   const lastScrollY = useRef(0);
   const hideTimer = useRef<NodeJS.Timeout | null>(null);
 
-  const [selectedText, setSelectedText] = useState('');
+  const [selectedText, setSelectedText] = useState("");
   const [selectionMenuPos, setSelectionMenuPos] = useState({ x: 0, y: 0 });
   const [showSelectionMenu, setShowSelectionMenu] = useState(false);
   const [showNoteModal, setShowNoteModal] = useState(false);
-  const [noteSelectedText, setNoteSelectedText] = useState('');
+  const [noteSelectedText, setNoteSelectedText] = useState("");
 
   const [noteSavedToast, setNoteSavedToast] = useState(false);
   const [highlightSavedToast, setHighlightSavedToast] = useState(false);
@@ -742,15 +895,17 @@ export default function Reader() {
 
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [pdfTotalPages, setPdfTotalPages] = useState(0);
-  const [pdfOutline, setPdfOutline] = useState<Array<{ title: string; page: number }>>([]);
-  const isPdf = book ? (book.fileType || book.format) === 'pdf' : false;
+  const [pdfOutline, setPdfOutline] = useState<
+    Array<{ title: string; page: number }>
+  >([]);
+  const isPdf = book ? (book.fileType || book.format) === "pdf" : false;
 
   // ── Reading Timer ───────────────────────────────────────────────────────
   const { flushTimer } = useReadingTimer(id);
 
   // ── Note & Highlight state ────────────────────────────────────────────
   const [showNoteModalState, setShowNoteModalState] = useState(false);
-  const [noteSelectedTextState, setNoteSelectedTextState] = useState('');
+  const [noteSelectedTextState, setNoteSelectedTextState] = useState("");
 
   const {
     mode,
@@ -765,6 +920,21 @@ export default function Reader() {
     setMargin,
   } = useReaderStore();
 
+  // 会话级主题色：仅在当前阅读期间生效，离开阅读器后还原全局主题
+  const initialModeRef = useRef<ReaderMode | null>(null);
+  useEffect(() => {
+    if (initialModeRef.current === null) {
+      initialModeRef.current = mode;
+    }
+    return () => {
+      if (initialModeRef.current) {
+        setMode(initialModeRef.current);
+        initialModeRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Fetch book
   useEffect(() => {
     const fetchBook = async () => {
@@ -776,7 +946,7 @@ export default function Reader() {
           setBook(res.data);
         }
       } catch (err) {
-        console.error('Failed to fetch book:', err);
+        console.error("Failed to fetch book:", err);
       }
     };
     fetchBook();
@@ -792,10 +962,11 @@ export default function Reader() {
           api.getNotes({ bookId: id }),
           api.getHighlights(id),
         ]);
-        if (notesRes.success && notesRes.data) setNotes(notesRes.data.items || []);
+        if (notesRes.success && notesRes.data)
+          setNotes(notesRes.data.items || []);
         if (hlRes.success && hlRes.data) setHighlights(hlRes.data);
       } catch (err) {
-        console.error('Failed to fetch reader data:', err);
+        console.error("Failed to fetch reader data:", err);
       }
     };
     fetchData();
@@ -815,25 +986,38 @@ export default function Reader() {
     scrollPositionRef.current = 0;
   }, []);
 
-  const applyScrollTop = useCallback((top: number, behavior: ScrollBehavior = 'auto') => {
-    if (contentRef.current) {
-      contentRef.current.scrollTo({ top, behavior });
-    }
-    window.scrollTo({ top, behavior });
-    scrollPositionRef.current = top;
-  }, []);
+  const applyScrollTop = useCallback(
+    (top: number, behavior: ScrollBehavior = "auto") => {
+      if (contentRef.current) {
+        contentRef.current.scrollTo({ top, behavior });
+      }
+      window.scrollTo({ top, behavior });
+      scrollPositionRef.current = top;
+    },
+    [],
+  );
 
-  const saveReadingPosition = useCallback((scrollTop = getCurrentScrollTop(), reason = 'progress') => {
-    if (!id || chapters.length === 0) return;
+  const saveReadingPosition = useCallback(
+    (scrollTop = getCurrentScrollTop(), reason = "progress") => {
+      if (!id || chapters.length === 0) return;
 
-    const progressPct = Math.round(((currentChapter + 1) / chapters.length) * 100);
-    scrollPositionRef.current = scrollTop;
+      const progressPct = Math.round(
+        ((currentChapter + 1) / chapters.length) * 100,
+      );
+      scrollPositionRef.current = scrollTop;
 
-    getApiClient()
-      .updateReadingProgress(id, progressPct, currentChapter, scrollTop)
-      .then(() => console.log(`${reason} saved:`, { chapter: currentChapter, scrollTop }))
-      .catch((err) => console.warn(`Failed to save ${reason}:`, err));
-  }, [chapters.length, currentChapter, getCurrentScrollTop, id]);
+      getApiClient()
+        .updateReadingProgress(id, progressPct, currentChapter, scrollTop)
+        .then(() =>
+          console.log(`${reason} saved:`, {
+            chapter: currentChapter,
+            scrollTop,
+          }),
+        )
+        .catch((err) => console.warn(`Failed to save ${reason}:`, err));
+    },
+    [chapters.length, currentChapter, getCurrentScrollTop, id],
+  );
 
   // Fetch chapters + load cloud progress (parallel to avoid race)
   useEffect(() => {
@@ -843,18 +1027,18 @@ export default function Reader() {
       // PDF files: skip chapters, use direct download URL
       if (isPdf) {
         const apiClient = getApiClient();
-        const token = localStorage.getItem('bookdock_auth_token') || '';
+        const token = localStorage.getItem("bookdock_auth_token") || "";
         const baseUrl = `${apiClient.baseURL}/books/${id}/download`;
-        
+
         // Try cache first
         const cachedBlob = await getCachedFile(id);
         if (cachedBlob) {
-          const pdfBlob = new Blob([cachedBlob], { type: 'application/pdf' });
+          const pdfBlob = new Blob([cachedBlob], { type: "application/pdf" });
           const blobUrl = URL.createObjectURL(pdfBlob);
           setPdfUrl(blobUrl);
           return;
         }
-        
+
         // Fetch from server and cache
         fetch(`${baseUrl}?token=${encodeURIComponent(token)}`)
           .then((res) => {
@@ -862,22 +1046,22 @@ export default function Reader() {
             return res.blob();
           })
           .then(async (blob) => {
-            const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+            const pdfBlob = new Blob([blob], { type: "application/pdf" });
             const blobUrl = URL.createObjectURL(pdfBlob);
             setPdfUrl(blobUrl);
             // Cache the blob for next time
-            await setCachedFile(id, blob, 'application/pdf');
+            await setCachedFile(id, blob, "application/pdf");
           })
           .catch((err) => {
-            console.error('Failed to load PDF:', err);
-            setError('PDF 加载失败: ' + err.message);
+            console.error("Failed to load PDF:", err);
+            setError("PDF 加载失败: " + err.message);
           });
         return;
       }
 
       try {
         const apiClient = getApiClient();
-        
+
         // Try cache first
         const cachedChapters = await getCachedChapters(id);
         if (cachedChapters && cachedChapters.length > 0) {
@@ -893,32 +1077,37 @@ export default function Reader() {
             setChapters(cachedChapters);
           }
           // Still fetch fresh chapters in background to update cache
-          apiClient.getChapters(id).then((res) => {
-            if (res.success && res.data && res.data.length > 0) {
-              setCachedChapters(id, res.data);
-            }
-          }).catch(() => { /* ignore background refresh error */ });
+          apiClient
+            .getChapters(id)
+            .then((res) => {
+              if (res.success && res.data && res.data.length > 0) {
+                setCachedChapters(id, res.data);
+              }
+            })
+            .catch(() => {
+              /* ignore background refresh error */
+            });
           return;
         }
-        
+
         const [chaptersRes, progressRes] = await Promise.allSettled([
           apiClient.getChapters(id),
           apiClient.getReadingProgress(id),
         ]);
 
         const chaptersData =
-          chaptersRes.status === 'fulfilled' && chaptersRes.value.success
+          chaptersRes.status === "fulfilled" && chaptersRes.value.success
             ? chaptersRes.value.data
             : null;
         const progressData =
-          progressRes.status === 'fulfilled' && progressRes.value?.success
+          progressRes.status === "fulfilled" && progressRes.value?.success
             ? progressRes.value.data
             : null;
 
         if (chaptersData && chaptersData.length > 0) {
           // Cache chapters
           await setCachedChapters(id, chaptersData);
-          
+
           const savedChapter = progressData?.currentChapter ?? 0;
           const savedScroll = progressData?.scrollOffset ?? 0;
           if (savedChapter >= 0 && savedChapter < chaptersData.length) {
@@ -930,7 +1119,7 @@ export default function Reader() {
           }
         }
       } catch (err) {
-        console.error('Failed to fetch chapters:', err);
+        console.error("Failed to fetch chapters:", err);
       }
     };
     fetchChaptersAndProgress();
@@ -954,25 +1143,36 @@ export default function Reader() {
           }
           // Still fetch fresh content in background to update cache
           const apiClient = getApiClient();
-          apiClient.getChapterContent(id, currentChapter)
+          apiClient
+            .getChapterContent(id, currentChapter)
             .then((response) => {
               if (response.success && response.data && response.data.content) {
-                setCachedChapterContent(id, currentChapter, response.data.content);
+                setCachedChapterContent(
+                  id,
+                  currentChapter,
+                  response.data.content,
+                );
               }
             })
-            .catch(() => { /* ignore background refresh error */ });
+            .catch(() => {
+              /* ignore background refresh error */
+            });
           return;
         }
-        
+
         const apiClient = getApiClient();
         const response = await apiClient.getChapterContent(id, currentChapter);
         if (cancelled) return;
         if (response.success && response.data) {
           setChapterContent(response.data.content);
           // Cache the content
-          await setCachedChapterContent(id, currentChapter, response.data.content);
+          await setCachedChapterContent(
+            id,
+            currentChapter,
+            response.data.content,
+          );
         } else {
-          setReaderError(response.error || '加载章节失败');
+          setReaderError(response.error || "加载章节失败");
         }
       } catch (err) {
         if (!cancelled) {
@@ -984,7 +1184,9 @@ export default function Reader() {
     };
 
     fetchContent();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [id, currentChapter, chapters.length, book, isPdf]);
 
   // Apply pending scroll after content loads
@@ -1008,7 +1210,7 @@ export default function Reader() {
 
   // ── Auto hide toolbar on scroll ──────────────────────────────────────
   const scrollHandlerRef = useRef<(() => void) | null>(null);
-  
+
   useEffect(() => {
     if (isPdf) return;
     if (scrollHandlerRef.current) return;
@@ -1026,27 +1228,27 @@ export default function Reader() {
     };
 
     scrollHandlerRef.current = handleScroll;
-    
+
     // Try to bind to content container
     const tryBind = () => {
       const container = contentRef.current;
       if (container) {
-        container.addEventListener('scroll', handleScroll, { passive: true });
+        container.addEventListener("scroll", handleScroll, { passive: true });
         return true;
       }
       return false;
     };
-    
+
     // Try immediately and retry after a short delay if not ready
     if (!tryBind()) {
       setTimeout(tryBind, 100);
       setTimeout(tryBind, 500);
     }
-    
+
     return () => {
       const container = contentRef.current;
       if (container && scrollHandlerRef.current) {
-        container.removeEventListener('scroll', scrollHandlerRef.current);
+        container.removeEventListener("scroll", scrollHandlerRef.current);
       }
       scrollHandlerRef.current = null;
     };
@@ -1076,26 +1278,26 @@ export default function Reader() {
       if (showNoteModal || showSettings) return;
 
       switch (e.key) {
-        case 'ArrowLeft':
-        case 'PageUp':
+        case "ArrowLeft":
+        case "PageUp":
           e.preventDefault();
           prevPage();
           break;
-        case 'ArrowRight':
-        case 'PageDown':
-        case ' ':
+        case "ArrowRight":
+        case "PageDown":
+        case " ":
           e.preventDefault();
           nextPage();
           break;
-        case 'Escape':
+        case "Escape":
           if (showToc) setShowToc(false);
           if (showSettings) setShowSettings(false);
           break;
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showToc, showSettings, showNoteModal, currentChapter, chapters.length]);
 
   // ── Auto save scroll position ────────────────────────────────────────
@@ -1108,19 +1310,19 @@ export default function Reader() {
       saveTimer = setTimeout(() => {
         const scrollTop = getCurrentScrollTop();
         if (Math.abs(scrollTop - scrollPositionRef.current) > 50) {
-          saveReadingPosition(scrollTop, 'scroll');
+          saveReadingPosition(scrollTop, "scroll");
         }
       }, 500);
     };
 
     const el = contentRef.current;
-    if (el) el.addEventListener('scroll', handleScroll);
-    window.addEventListener('scroll', handleScroll);
+    if (el) el.addEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", handleScroll);
 
     return () => {
       clearTimeout(saveTimer);
-      if (el) el.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('scroll', handleScroll);
+      if (el) el.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("scroll", handleScroll);
     };
   }, [isPdf, getCurrentScrollTop, saveReadingPosition]);
 
@@ -1163,7 +1365,10 @@ export default function Reader() {
     const rect = range.getBoundingClientRect();
     const firstRect = range.getClientRects()[0] || rect;
     setSelectedText(text);
-    setSelectionMenuPos({ x: firstRect.left + firstRect.width / 2, y: firstRect.top });
+    setSelectionMenuPos({
+      x: firstRect.left + firstRect.width / 2,
+      y: firstRect.top,
+    });
     setShowSelectionMenu(true);
   }, [isPdf]);
 
@@ -1174,8 +1379,8 @@ export default function Reader() {
       setTimeout(handleTextSelection, 10);
     };
 
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => document.removeEventListener('mouseup', handleMouseUp);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => document.removeEventListener("mouseup", handleMouseUp);
   }, [handleTextSelection, isPdf]);
 
   // ── Navigation ───────────────────────────────────────────────────────
@@ -1200,74 +1405,106 @@ export default function Reader() {
     });
   }, [isPdf, chapters.length, pdfTotalPages, resetScroll]);
 
-  const handleGoToPage = useCallback((page: number) => {
-    setCurrentChapter(page);
-    if (!isPdf) resetScroll();
-  }, [isPdf, resetScroll]);
+  const handleGoToPage = useCallback(
+    (page: number) => {
+      setCurrentChapter(page);
+      if (!isPdf) resetScroll();
+    },
+    [isPdf, resetScroll],
+  );
 
   const handleGoBack = useCallback(() => {
-    saveReadingPosition(getCurrentScrollTop(), 'exit');
+    saveReadingPosition(getCurrentScrollTop(), "exit");
     flushTimer();
     navigate(-1);
   }, [navigate, saveReadingPosition, getCurrentScrollTop, flushTimer]);
 
-  const handlePdfLoaded = useCallback(({ totalPages, outline }: { totalPages: number; outline: Array<{ title: string; page: number }> }) => {
-    setPdfTotalPages(totalPages);
-    setPdfOutline(outline);
-  }, []);
+  const handlePdfLoaded = useCallback(
+    ({
+      totalPages,
+      outline,
+    }: {
+      totalPages: number;
+      outline: Array<{ title: string; page: number }>;
+    }) => {
+      setPdfTotalPages(totalPages);
+      setPdfOutline(outline);
+    },
+    [],
+  );
 
   // ── Bookmarks ────────────────────────────────────────────────────────
-  const saveBookmarksToServer = useCallback((bookmarksToSave: Bookmark[]) => {
-    if (!id || bookmarksToSave.length === 0) return;
-    // TODO: implement server-side bookmark saving
-    console.log('Saving bookmarks:', bookmarksToSave);
-  }, [id]);
+  const saveBookmarksToServer = useCallback(
+    (bookmarksToSave: Bookmark[]) => {
+      if (!id || bookmarksToSave.length === 0) return;
+      // TODO: implement server-side bookmark saving
+      console.log("Saving bookmarks:", bookmarksToSave);
+    },
+    [id],
+  );
 
   const handleAddBookmark = useCallback(() => {
     if (!book) return;
     const newBookmark: Bookmark = {
       id: Date.now().toString(),
-      cfi: '',
+      cfi: "",
       position: getCurrentScrollTop(),
       createdAt: new Date().toISOString(),
-      percentage: Math.round(((currentChapter + 1) / (isPdf ? pdfTotalPages : chapters.length)) * 100),
+      percentage: Math.round(
+        ((currentChapter + 1) / (isPdf ? pdfTotalPages : chapters.length)) *
+          100,
+      ),
     };
     const newBookmarks = [...bookmarks, newBookmark];
     setBookmarks(newBookmarks);
     saveBookmarksToServer(newBookmarks);
     setNoteSavedToast(true);
     setTimeout(() => setNoteSavedToast(false), 2000);
-  }, [book, currentChapter, chapters.length, bookmarks, isPdf, pdfTotalPages, getCurrentScrollTop, saveBookmarksToServer]);
+  }, [
+    book,
+    currentChapter,
+    chapters.length,
+    bookmarks,
+    isPdf,
+    pdfTotalPages,
+    getCurrentScrollTop,
+    saveBookmarksToServer,
+  ]);
 
   // ── Notes ────────────────────────────────────────────────────────────
-  const handleSaveNote = useCallback(async (noteText: string) => {
-    const quotedText = noteSelectedText || selectedText;
-    if (!book || !quotedText) return;
-    setShowNoteModal(false);
-    try {
-      const api = getApiClient();
-      const percentage = Math.round(((currentChapter + 1) / chapters.length) * 100);
-      const res = await api.createNote({
-        bookId: book.id,
-        text: quotedText,
-        note: noteText,
-        cfi: '',
-        percentage,
-        author: book.author || '',
-        bookTitle: book.title,
-      });
-      if (res.success && res.data) {
-        setNotes((prev) => [res.data as Note, ...prev]);
-        setNoteSavedToast(true);
-        setTimeout(() => setNoteSavedToast(false), 2000);
+  const handleSaveNote = useCallback(
+    async (noteText: string) => {
+      const quotedText = noteSelectedText || selectedText;
+      if (!book || !quotedText) return;
+      setShowNoteModal(false);
+      try {
+        const api = getApiClient();
+        const percentage = Math.round(
+          ((currentChapter + 1) / chapters.length) * 100,
+        );
+        const res = await api.createNote({
+          bookId: book.id,
+          text: quotedText,
+          note: noteText,
+          cfi: "",
+          percentage,
+          author: book.author || "",
+          bookTitle: book.title,
+        });
+        if (res.success && res.data) {
+          setNotes((prev) => [res.data as Note, ...prev]);
+          setNoteSavedToast(true);
+          setTimeout(() => setNoteSavedToast(false), 2000);
+        }
+      } catch (err) {
+        console.error("Failed to save note:", err);
       }
-    } catch (err) {
-      console.error('Failed to save note:', err);
-    }
-    setSelectedText('');
-    setNoteSelectedText('');
-    window.getSelection()?.removeAllRanges();
-  }, [book, noteSelectedText, selectedText, currentChapter, chapters.length]);
+      setSelectedText("");
+      setNoteSelectedText("");
+      window.getSelection()?.removeAllRanges();
+    },
+    [book, noteSelectedText, selectedText, currentChapter, chapters.length],
+  );
 
   // ── Highlights ───────────────────────────────────────────────────────
   const handleHighlightClick = useCallback(async () => {
@@ -1278,11 +1515,11 @@ export default function Reader() {
       const api = getApiClient();
       const res = await api.createHighlight({
         bookId: book.id,
-        cfi: '',
+        cfi: "",
         startOffset: 0,
         endOffset: highlightedText.length,
         text: highlightedText,
-        color: 'yellow',
+        color: "yellow",
       });
       if (res.success && res.data) {
         setHighlights((prev) => [res.data as Highlight, ...prev]);
@@ -1290,22 +1527,22 @@ export default function Reader() {
         setTimeout(() => setHighlightSavedToast(false), 2000);
       }
     } catch (err) {
-      console.error('Failed to save highlight:', err);
+      console.error("Failed to save highlight:", err);
     }
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
       const range = selection.getRangeAt(0);
-      const mark = document.createElement('mark');
-      mark.style.backgroundColor = 'rgba(255, 235, 59, 0.6)';
-      mark.style.borderRadius = '2px';
-      mark.style.padding = '0 2px';
-      mark.style.boxDecorationBreak = 'clone';
-      (mark.style as any).webkitBoxDecorationBreak = 'clone';
-      mark.className = 'highlight-mark';
+      const mark = document.createElement("mark");
+      mark.style.backgroundColor = "rgba(255, 235, 59, 0.6)";
+      mark.style.borderRadius = "2px";
+      mark.style.padding = "0 2px";
+      mark.style.boxDecorationBreak = "clone";
+      (mark.style as any).webkitBoxDecorationBreak = "clone";
+      mark.className = "highlight-mark";
       try {
         range.surroundContents(mark);
       } catch (e) {
-        console.warn('Cannot highlight cross-element selection');
+        console.warn("Cannot highlight cross-element selection");
       }
       selection.removeAllRanges();
     }
@@ -1315,7 +1552,10 @@ export default function Reader() {
   const pdfTocChapters = useMemo(() => {
     if (!isPdf || pdfTotalPages === 0) return [];
     if (pdfOutline.length > 0) {
-      return pdfOutline.map((item) => ({ title: item.title, index: item.page - 1 }));
+      return pdfOutline.map((item) => ({
+        title: item.title,
+        index: item.page - 1,
+      }));
     }
     return Array.from({ length: pdfTotalPages }, (_, i) => ({
       title: `第 ${i + 1} 页`,
@@ -1323,7 +1563,9 @@ export default function Reader() {
     }));
   }, [isPdf, pdfTotalPages, pdfOutline]);
 
-  const tocChapters: Array<{ title: string; index: number }> = isPdf ? pdfTocChapters : chapters.map((c, i) => ({ title: c.title, index: i }));
+  const tocChapters: Array<{ title: string; index: number }> = isPdf
+    ? pdfTocChapters
+    : chapters.map((c, i) => ({ title: c.title, index: i }));
   const totalChapters = isPdf ? pdfTotalPages : chapters.length;
 
   if (!book) {
@@ -1335,7 +1577,23 @@ export default function Reader() {
   }
 
   return (
-    <div className="fixed inset-0 bg-white dark:bg-gray-900">
+    <div
+      className="fixed inset-0"
+      style={{
+        backgroundColor:
+          mode === "dark"
+            ? "#1a1a1a"
+            : mode === "sepia"
+              ? "#f5ebe0"
+              : "#ffffff",
+        color:
+          mode === "dark"
+            ? "#e0e0e0"
+            : mode === "sepia"
+              ? "#5c4b37"
+              : "#333333",
+      }}
+    >
       {/* PDF Viewer */}
       {isPdf && pdfUrl ? (
         <PdfViewer
@@ -1347,7 +1605,9 @@ export default function Reader() {
         <div className="fixed inset-0 flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto"></div>
-            <p className="mt-4 text-gray-600 dark:text-gray-400">加载 PDF 中...</p>
+            <p className="mt-4 text-gray-600 dark:text-gray-400">
+              加载 PDF 中...
+            </p>
           </div>
         </div>
       ) : (
@@ -1356,11 +1616,23 @@ export default function Reader() {
           className={`reading-container ${mode} pt-20 pb-20 overflow-auto`}
           style={{
             padding: `${margin + 80}px ${margin}px ${margin + 80}px`,
-            height: '100vh',
-            boxSizing: 'border-box',
+            height: "100vh",
+            boxSizing: "border-box",
             fontFamily,
             fontSize: `${fontSize}px`,
             lineHeight,
+            backgroundColor:
+              mode === "dark"
+                ? "#1a1a1a"
+                : mode === "sepia"
+                  ? "#f5ebe0"
+                  : "#ffffff",
+            color:
+              mode === "dark"
+                ? "#e0e0e0"
+                : mode === "sepia"
+                  ? "#5c4b37"
+                  : "#333333",
           }}
         >
           {isChapterLoading && (
@@ -1389,7 +1661,9 @@ export default function Reader() {
         book={book}
         currentChapter={currentChapter}
         totalChapters={totalChapters}
-        chapterTitle={isPdf ? book.title : chapters[currentChapter]?.title || ''}
+        chapterTitle={
+          isPdf ? book.title : chapters[currentChapter]?.title || ""
+        }
         mode={mode}
         onPrevPage={prevPage}
         onNextPage={nextPage}
@@ -1464,8 +1738,8 @@ export default function Reader() {
         selectedText={noteSelectedText || selectedText}
         onClose={() => {
           setShowNoteModal(false);
-          setSelectedText('');
-          setNoteSelectedText('');
+          setSelectedText("");
+          setNoteSelectedText("");
           window.getSelection()?.removeAllRanges();
         }}
         onSave={handleSaveNote}
