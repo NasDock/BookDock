@@ -379,20 +379,21 @@ export function ProfileScreen() {
               <Ionicons name="folder-open-outline" size={18} color={theme.colors.text} />
               <Text style={{ fontSize: fontSizes.md, color: theme.colors.text }}>新建书单</Text>
             </TouchableOpacity>
+            <View style={{ height: 1, backgroundColor: theme.colors.border, marginHorizontal: spacing.md }} />
+            <TouchableOpacity style={styles.menuItem} onPress={() => handleSync('incremental')} disabled={!!syncing}>
+              <Ionicons name="add-circle-outline" size={18} color={theme.colors.text} />
+              <Text style={{ fontSize: fontSizes.md, color: theme.colors.text }}>增量更新</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.menuItem} onPress={() => handleSync('full')} disabled={!!syncing}>
+              <Ionicons name="refresh-circle-outline" size={18} color={theme.colors.text} />
+              <Text style={{ fontSize: fontSizes.md, color: theme.colors.text }}>全量更新</Text>
+            </TouchableOpacity>
             {user?.role === 'admin' && (
               <>
                 <View style={{ height: 1, backgroundColor: theme.colors.border, marginHorizontal: spacing.md }} />
                 <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuVisible(false); navigation.navigate('AdminUsers'); }}>
                   <Ionicons name="people-outline" size={18} color={theme.colors.text} />
                   <Text style={{ fontSize: fontSizes.md, color: theme.colors.text }}>用户管理</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.menuItem} onPress={() => handleSync('incremental')} disabled={!!syncing}>
-                  <Ionicons name="add-circle-outline" size={18} color={theme.colors.text} />
-                  <Text style={{ fontSize: fontSizes.md, color: theme.colors.text }}>增量更新</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.menuItem} onPress={() => handleSync('full')} disabled={!!syncing}>
-                  <Ionicons name="refresh-circle-outline" size={18} color={theme.colors.text} />
-                  <Text style={{ fontSize: fontSizes.md, color: theme.colors.text }}>全量更新</Text>
                 </TouchableOpacity>
               </>
             )}

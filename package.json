@@ -4,7 +4,7 @@
   "private": true,
   "packageManager": "pnpm@10.33.4",
   "scripts": {
-    "dev": "pnpm -r dev",
+    "dev": "concurrently \"pnpm --filter @bookdock/server run dev\" \"pnpm --filter @bookdock/desktop run dev\"",
     "dev:desktop": "pnpm --filter @bookdock/desktop dev:desktop",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
@@ -15,6 +15,7 @@
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.19",
     "babel-plugin-module-resolver": "^5.0.3",
+    "concurrently": "^10.0.3",
     "vite-plugin-pwa": "^1.2.0",
     "workbox-window": "^7.4.0"
   },
