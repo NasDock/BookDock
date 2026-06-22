@@ -40,6 +40,7 @@ import BookDetail from "./pages/BookDetail";
 import AuthorDetail from "./pages/AuthorDetail";
 import Settings from "./pages/Settings";
 import Notes from "./pages/Notes";
+import Stats from "./pages/Stats";
 
 // Stores
 import { useAuthStore, useThemeStore } from "./stores/authStore";
@@ -530,6 +531,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <Settings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/stats"
+          element={
+            <ProtectedRoute>
+              <Stats />
             </ProtectedRoute>
           }
         />

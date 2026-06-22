@@ -22,6 +22,7 @@ import {
   RefreshCw,
   Shield,
   LogOut,
+  BarChart3,
 } from "lucide-react";
 
 function formatDate(dateStr: string): string {
@@ -75,6 +76,29 @@ export default function Profile() {
   const [showDropdown, setShowDropdown] = useState(false);
   const [syncing, setSyncing] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [readingSummary, setReadingSummary] = useState<{
+    todaySecs: number;
+    weekSecs: number;
+    monthSecs: number;
+    yearSecs: number;
+    totalSecs: number;
+  } | null>(null);
+
+  // Fetch reading time summary
+  useEffect(() => {
+    const fetchSummary = async () => {
+      try {
+        const api = getApiClient();
+        const res = await api.getReadingTimeSummary();
+        if (res.success && res.data) {
+          setReadingSummary(res.data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch reading summary:", err);
+      }
+    };
+    fetchSummary();
+  }, []);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -570,6 +594,51 @@ export default function Profile() {
           </button>
         </div>
       </div>
+
+      {/* Reading Time Card */}
+      {readingSummary && (
+        <Link
+          to="/stats"
+          className="block bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl p-4 text-white hover:from-blue-600 hover:to-indigo-700 transition-all shadow-md"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-white/20 rounded-lg">
+                <Clock className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-sm text-blue-100">阅读时长</p>
+                <p className="text-lg font-bold">
+                  {(() => {
+                    const format = (secs: number) => {
+                      if (secs < 60) return `${secs}秒`;
+                      if (secs < 3600) return `${Math.floor(secs / 60)}分钟`;
+                      const h = Math.floor(secs / 3600);
+                      const m = Math.floor((secs % 3600) / 60);
+                      return m > 0 ? `${h}小时${m}分钟` : `${h}小时`;
+                    };
+                    // Show shortest non-zero period
+                    if (readingSummary.todaySecs > 0) {
+                      return `今日阅读 ${format(readingSummary.todaySecs)}`;
+                    }
+                    if (readingSummary.weekSecs > 0) {
+                      return `本周阅读 ${format(readingSummary.weekSecs)}`;
+                    }
+                    if (readingSummary.monthSecs > 0) {
+                      return `本月阅读 ${format(readingSummary.monthSecs)}`;
+                    }
+                    if (readingSummary.yearSecs > 0) {
+                      return `今年阅读 ${format(readingSummary.yearSecs)}`;
+                    }
+                    return "今日还没有阅读";
+                  })()}
+                </p>
+              </div>
+            </div>
+            <BarChart3 className="w-5 h-5 text-blue-200" />
+          </div>
+        </Link>
+      )}
 
       {/* Profile Card */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-6">

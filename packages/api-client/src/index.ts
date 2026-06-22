@@ -81,6 +81,33 @@ export interface ReadingSession {
   endedAt?: string;
 }
 
+export interface ReadingTimeSummary {
+  todaySecs: number;
+  weekSecs: number;
+  monthSecs: number;
+  yearSecs: number;
+  totalSecs: number;
+}
+
+export interface PeriodReadingStats {
+  period: 'day' | 'week' | 'month' | 'year';
+  totalDurationSecs: number;
+  bookCount: number;
+  breakdown: Array<{
+    label: string;
+    durationSecs: number;
+    date: string;
+  }>;
+}
+
+export interface DailyHourStats {
+  date: string;
+  hours: Array<{
+    hour: number;
+    durationSecs: number;
+  }>;
+}
+
 export interface TTSVoice {
   id: string;
   name: string;
@@ -366,11 +393,12 @@ class ApiClient {
   }
 
   // Reading progress
-  async updateReadingProgress(bookId: string, progressPct: number, currentChapter?: number, scrollOffset?: number): Promise<ApiResponse> {
+  async updateReadingProgress(bookId: string, progressPct: number, currentChapter?: number, scrollOffset?: number, durationSecs?: number): Promise<ApiResponse> {
     const { data } = await this.client.post(`/reading-progress/books/${bookId}`, {
       progressPct,
       currentChapter,
       scrollOffset,
+      durationSecs,
     });
     return data;
   }
@@ -382,6 +410,28 @@ class ApiClient {
 
   async syncReadingSessions(sessions: ReadingSession[]): Promise<ApiResponse> {
     const { data } = await this.client.post('/reading/sync', { sessions });
+    return data;
+  }
+
+  // ── Reading Time Tracking ───────────────────────────────────────────
+
+  async recordReadingSession(bookId: string, durationSecs: number, hour?: number): Promise<ApiResponse> {
+    const { data } = await this.client.post('/reading-progress/session', { bookId, durationSecs, hour });
+    return data;
+  }
+
+  async getReadingTimeSummary(): Promise<ApiResponse<ReadingTimeSummary>> {
+    const { data } = await this.client.get('/reading-progress/time-summary');
+    return data;
+  }
+
+  async getPeriodReadingStats(period: 'day' | 'week' | 'month' | 'year', date?: string): Promise<ApiResponse<PeriodReadingStats>> {
+    const { data } = await this.client.get('/reading-progress/period-stats', { params: { period, date } });
+    return data;
+  }
+
+  async getDailyReadingHours(date?: string): Promise<ApiResponse<DailyHourStats>> {
+    const { data } = await this.client.get('/reading-progress/daily-hours', { params: { date } });
     return data;
   }
 

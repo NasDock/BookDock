@@ -1188,6 +1188,67 @@ export function ReaderScreen() {
     showBarsRef.current = showBars;
   }, [showBars]);
 
+  // ── Reading Timer ─────────────────────────────────────────────────────
+  const readingStartTimeRef = useRef<number>(0);
+  const accumulatedReadingTimeRef = useRef<number>(0);
+  const isReadingActiveRef = useRef<boolean>(false);
+
+  const startReadingTimer = useCallback(() => {
+    if (!isReadingActiveRef.current) {
+      isReadingActiveRef.current = true;
+      readingStartTimeRef.current = Date.now();
+    }
+  }, []);
+
+  const pauseReadingTimer = useCallback(() => {
+    if (isReadingActiveRef.current && readingStartTimeRef.current > 0) {
+      const elapsed = Math.floor((Date.now() - readingStartTimeRef.current) / 1000);
+      accumulatedReadingTimeRef.current += elapsed;
+      isReadingActiveRef.current = false;
+      readingStartTimeRef.current = 0;
+    }
+  }, []);
+
+  const flushReadingTimer = useCallback(async () => {
+    pauseReadingTimer();
+    const total = accumulatedReadingTimeRef.current;
+    if (total >= 10) { // Minimum 10 seconds to report
+      try {
+        const hour = new Date().getHours();
+        await getApiClient().recordReadingSession(book.id, total, hour);
+      } catch (err) {
+        console.warn('Failed to report reading session:', err);
+      }
+    }
+    accumulatedReadingTimeRef.current = 0;
+  }, [pauseReadingTimer, book.id]);
+
+  // Handle AppState changes for reading timer
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === 'active') {
+        startReadingTimer();
+      } else {
+        pauseReadingTimer();
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => {
+      subscription.remove();
+    };
+  }, [startReadingTimer, pauseReadingTimer]);
+
+  // Start timer when screen is focused, flush when unfocused
+  useFocusEffect(
+    useCallback(() => {
+      startReadingTimer();
+      return () => {
+        flushReadingTimer();
+      };
+    }, [startReadingTimer, flushReadingTimer])
+  );
+
   // Stable WebView source object. The scroll-mode WebView re-renders
   // frequently as scroll progress updates; without this memo the inline
   // `source={{ html: htmlContent }}` object would be a new reference on

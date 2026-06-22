@@ -20,6 +20,7 @@ export type RootStackParamList = {
   AdminUsers: undefined;
   CollectionDetail: { collectionId: string };
   Notes: { bookId?: string; author?: string };
+  Stats: undefined;
 };
 
 // Tab navigator param list

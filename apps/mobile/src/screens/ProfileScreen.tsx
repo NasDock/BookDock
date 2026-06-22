@@ -62,6 +62,29 @@ export function ProfileScreen() {
   const [syncing, setSyncing] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
+  const [readingSummary, setReadingSummary] = useState<{
+    todaySecs: number;
+    weekSecs: number;
+    monthSecs: number;
+    yearSecs: number;
+    totalSecs: number;
+  } | null>(null);
+
+  // Fetch reading time summary
+  useEffect(() => {
+    const fetchSummary = async () => {
+      try {
+        const api = getApiClient();
+        const res = await api.getReadingTimeSummary();
+        if (res.success && res.data) {
+          setReadingSummary(res.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch reading summary:', err);
+      }
+    };
+    fetchSummary();
+  }, []);
 
   const {
     checkUpdate,
@@ -349,6 +372,46 @@ export function ProfileScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Reading Time Card */}
+        {readingSummary && (
+          <TouchableOpacity
+            style={[styles.readingTimeCard, { backgroundColor: theme.colors.primary }]}
+            onPress={() => navigation.navigate('Stats')}
+          >
+            <View style={styles.readingTimeContent}>
+              <Ionicons name="time-outline" size={24} color="#fff" />
+              <View style={styles.readingTimeTextContainer}>
+                <Text style={styles.readingTimeLabel}>阅读时长</Text>
+                <Text style={styles.readingTimeValue}>
+                  {(() => {
+                    const format = (secs: number) => {
+                      if (secs < 60) return `${secs}秒`;
+                      if (secs < 3600) return `${Math.floor(secs / 60)}分钟`;
+                      const h = Math.floor(secs / 3600);
+                      const m = Math.floor((secs % 3600) / 60);
+                      return m > 0 ? `${h}小时${m}分钟` : `${h}小时`;
+                    };
+                    if (readingSummary.todaySecs > 0) {
+                      return `今日阅读 ${format(readingSummary.todaySecs)}`;
+                    }
+                    if (readingSummary.weekSecs > 0) {
+                      return `本周阅读 ${format(readingSummary.weekSecs)}`;
+                    }
+                    if (readingSummary.monthSecs > 0) {
+                      return `本月阅读 ${format(readingSummary.monthSecs)}`;
+                    }
+                    if (readingSummary.yearSecs > 0) {
+                      return `今年阅读 ${format(readingSummary.yearSecs)}`;
+                    }
+                    return '今日还没有阅读';
+                  })()}
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#fff" />
+          </TouchableOpacity>
+        )}
 
         {/* Tabs */}
         <View style={[styles.tabBar, { backgroundColor: theme.colors.surface }]}>
@@ -656,6 +719,33 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     noteDate: {
       fontSize: fontSizes.xs,
       marginTop: spacing.xs,
+    },
+    readingTimeCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginHorizontal: spacing.md,
+      marginTop: spacing.md,
+      padding: spacing.lg,
+      borderRadius: borderRadius.lg,
+    },
+    readingTimeContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    readingTimeTextContainer: {
+      gap: spacing.xs,
+    },
+    readingTimeLabel: {
+      fontSize: fontSizes.sm,
+      color: '#fff',
+      opacity: 0.8,
+    },
+    readingTimeValue: {
+      fontSize: fontSizes.md,
+      color: '#fff',
+      fontWeight: '600',
     },
   });
 }

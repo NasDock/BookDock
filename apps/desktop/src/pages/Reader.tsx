@@ -9,6 +9,7 @@ import { ArrowLeft, Settings, BookOpen, Bookmark, ChevronLeft, ChevronRight, Vol
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { getCachedChapters, setCachedChapters, getCachedChapterContent, setCachedChapterContent, getCachedFile, setCachedFile } from '../utils/bookCache';
+import { useReadingTimer } from '../hooks/useReadingTimer';
 
 // 设置 PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -709,6 +710,9 @@ export default function Reader() {
   const [pdfOutline, setPdfOutline] = useState<Array<{ title: string; page: number }>>([]);
   const isPdf = book ? (book.fileType || book.format) === 'pdf' : false;
 
+  // ── Reading Timer ───────────────────────────────────────────────────────
+  const { flushTimer } = useReadingTimer(id);
+
   // ── Note & Highlight state ────────────────────────────────────────────
   const [showNoteModalState, setShowNoteModalState] = useState(false);
   const [noteSelectedTextState, setNoteSelectedTextState] = useState('');
@@ -1104,8 +1108,9 @@ export default function Reader() {
 
   const handleGoBack = useCallback(() => {
     saveReadingPosition(getCurrentScrollTop(), 'exit');
+    flushTimer();
     navigate(-1);
-  }, [navigate, saveReadingPosition, getCurrentScrollTop]);
+  }, [navigate, saveReadingPosition, getCurrentScrollTop, flushTimer]);
 
   const handlePdfLoaded = useCallback(({ totalPages, outline }: { totalPages: number; outline: Array<{ title: string; page: number }> }) => {
     setPdfTotalPages(totalPages);
