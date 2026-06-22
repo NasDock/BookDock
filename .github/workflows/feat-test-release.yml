@@ -154,6 +154,18 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Set lowercase image name
+        id: image_name
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          NAME_LOWER=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          DOCKERHUB_USER_LOWER=$(echo "${{ secrets.DOCKERHUB_USERNAME }}" | tr '[:upper:]' '[:lower:]')
+          echo "ghcr=${REGISTRY}/${REPO_LOWER}" >> $GITHUB_OUTPUT
+          echo "dockerhub=${DOCKERHUB_USER_LOWER}/${NAME_LOWER}" >> $GITHUB_OUTPUT
+        env:
+          REGISTRY: ghcr.io
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -163,5 +175,5 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:feat-test
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ github.event.repository.name }}:feat-test
+            ${{ steps.image_name.outputs.ghcr }}:feat-test
+            ${{ steps.image_name.outputs.dockerhub }}:feat-test
