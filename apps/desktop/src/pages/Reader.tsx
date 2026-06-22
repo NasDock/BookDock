@@ -8,6 +8,7 @@ import type { ReaderMode } from '@bookdock/ebook-reader';
 import { ArrowLeft, Settings, BookOpen, Bookmark, ChevronLeft, ChevronRight, Volume2, Timer, X, Sun, Moon, ScrollText, Plus, Highlighter, MessageSquare, MessageSquarePlus } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { getCachedChapters, setCachedChapters, getCachedChapterContent, setCachedChapterContent, getCachedFile, setCachedFile } from '../utils/bookCache';
 
 // 设置 PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -805,15 +806,28 @@ export default function Reader() {
         const apiClient = getApiClient();
         const token = localStorage.getItem('bookdock_auth_token') || '';
         const baseUrl = `${apiClient.baseURL}/books/${id}/download`;
+        
+        // Try cache first
+        const cachedBlob = await getCachedFile(id);
+        if (cachedBlob) {
+          const pdfBlob = new Blob([cachedBlob], { type: 'application/pdf' });
+          const blobUrl = URL.createObjectURL(pdfBlob);
+          setPdfUrl(blobUrl);
+          return;
+        }
+        
+        // Fetch from server and cache
         fetch(`${baseUrl}?token=${encodeURIComponent(token)}`)
           .then((res) => {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return res.blob();
           })
-          .then((blob) => {
+          .then(async (blob) => {
             const pdfBlob = new Blob([blob], { type: 'application/pdf' });
             const blobUrl = URL.createObjectURL(pdfBlob);
             setPdfUrl(blobUrl);
+            // Cache the blob for next time
+            await setCachedFile(id, blob, 'application/pdf');
           })
           .catch((err) => {
             console.error('Failed to load PDF:', err);
@@ -824,6 +838,30 @@ export default function Reader() {
 
       try {
         const apiClient = getApiClient();
+        
+        // Try cache first
+        const cachedChapters = await getCachedChapters(id);
+        if (cachedChapters && cachedChapters.length > 0) {
+          const progressRes = await apiClient.getReadingProgress(id);
+          const progressData = progressRes?.success ? progressRes.data : null;
+          const savedChapter = progressData?.currentChapter ?? 0;
+          const savedScroll = progressData?.scrollOffset ?? 0;
+          if (savedChapter >= 0 && savedChapter < cachedChapters.length) {
+            setChapters(cachedChapters);
+            setCurrentChapter(savedChapter);
+            setPendingScrollTop(savedScroll);
+          } else {
+            setChapters(cachedChapters);
+          }
+          // Still fetch fresh chapters in background to update cache
+          apiClient.getChapters(id).then((res) => {
+            if (res.success && res.data && res.data.length > 0) {
+              setCachedChapters(id, res.data);
+            }
+          }).catch(() => { /* ignore background refresh error */ });
+          return;
+        }
+        
         const [chaptersRes, progressRes] = await Promise.allSettled([
           apiClient.getChapters(id),
           apiClient.getReadingProgress(id),
@@ -839,6 +877,9 @@ export default function Reader() {
             : null;
 
         if (chaptersData && chaptersData.length > 0) {
+          // Cache chapters
+          await setCachedChapters(id, chaptersData);
+          
           const savedChapter = progressData?.currentChapter ?? 0;
           const savedScroll = progressData?.scrollOffset ?? 0;
           if (savedChapter >= 0 && savedChapter < chaptersData.length) {
@@ -865,11 +906,32 @@ export default function Reader() {
       setIsChapterLoading(true);
       setReaderError(null);
       try {
+        // Try cache first
+        const cachedContent = await getCachedChapterContent(id, currentChapter);
+        if (cachedContent) {
+          if (!cancelled) {
+            setChapterContent(cachedContent);
+            setIsChapterLoading(false);
+          }
+          // Still fetch fresh content in background to update cache
+          const apiClient = getApiClient();
+          apiClient.getChapterContent(id, currentChapter)
+            .then((response) => {
+              if (response.success && response.data && response.data.content) {
+                setCachedChapterContent(id, currentChapter, response.data.content);
+              }
+            })
+            .catch(() => { /* ignore background refresh error */ });
+          return;
+        }
+        
         const apiClient = getApiClient();
         const response = await apiClient.getChapterContent(id, currentChapter);
         if (cancelled) return;
         if (response.success && response.data) {
           setChapterContent(response.data.content);
+          // Cache the content
+          await setCachedChapterContent(id, currentChapter, response.data.content);
         } else {
           setReaderError(response.error || '加载章节失败');
         }
