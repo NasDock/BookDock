@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { Book } from "@bookdock/api-client";
-import { BookOpen, Clock, RefreshCw, Sparkles, ThumbsUp } from "lucide-react";
+import { BookOpen, Clock, RefreshCw, Sparkles, ThumbsUp, ArrowLeft } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -112,7 +112,12 @@ export default function Recommend() {
 
   return (
     <div className="space-y-10">
-      {/* Header */}
+      {/* Mobile Header */}
+      <div className="flex md:hidden items-center gap-3">
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white">推荐</h1>
+      </div>
+
+      {/* Desktop Header */}
       <div className="hidden md:flex items-center gap-3">
         <Sparkles className="w-6 h-6 text-amber-500" />
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">

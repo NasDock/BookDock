@@ -15,6 +15,7 @@ import {
   CardTitle,
 } from "@bookdock/ui";
 import {
+  ArrowLeft,
   BookOpen,
   Hand,
   HardDrive,
@@ -29,6 +30,7 @@ import {
   Volume2,
 } from "lucide-react";
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuthStore, useThemeStore } from "../stores/authStore";
 import { useReaderStore as useReaderStore2 } from "../stores/themeStore";
 
@@ -470,8 +472,22 @@ export default function Settings() {
     alert("会员升级功能即将上线，敬请期待！");
   };
 
+  const navigate = useNavigate();
+
   return (
     <div className="max-w-3xl mx-auto space-y-6">
+      {/* Mobile Header */}
+      <div className="flex md:hidden items-center gap-3">
+        <button
+          onClick={() => navigate(-1)}
+          className="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+        </button>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white">设置</h1>
+      </div>
+
+      {/* Desktop Title */}
       <h1 className="hidden md:block text-3xl font-bold text-gray-900 dark:text-white">设置</h1>
 
       {/* Profile Section */}

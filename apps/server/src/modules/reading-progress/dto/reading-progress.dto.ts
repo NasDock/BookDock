@@ -66,6 +66,13 @@ export class UpdateReadingProgressDto {
   @Min(0)
   @IsOptional()
   scrollOffset?: number;
+
+  @ApiPropertyOptional({ description: 'Reading duration in seconds to add' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @IsOptional()
+  durationSecs?: number;
 }
 
 export class ReadingProgressQueryDto {
@@ -243,4 +250,84 @@ export class ReadingStatsDto {
 
   @ApiProperty()
   averageProgressPct: number;
+}
+
+// ── Reading Session DTOs ─────────────────────────────────────────────────────
+
+export class RecordReadingSessionDto {
+  @ApiProperty({ description: 'Book ID' })
+  @IsUUID()
+  bookId: string;
+
+  @ApiProperty({ description: 'Reading duration in seconds' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  durationSecs: number;
+
+  @ApiPropertyOptional({ description: 'Hour of day (0-23) for daily distribution' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(23)
+  @IsOptional()
+  hour?: number;
+}
+
+export class ReadingStatsQueryDto {
+  @ApiPropertyOptional({ enum: ['day', 'week', 'month', 'year'] })
+  @IsEnum(['day', 'week', 'month', 'year'])
+  @IsOptional()
+  period?: 'day' | 'week' | 'month' | 'year' = 'week';
+
+  @ApiPropertyOptional({ description: 'Reference date (YYYY-MM-DD), defaults to today' })
+  @IsString()
+  @IsOptional()
+  date?: string;
+}
+
+export class PeriodReadingStatsDto {
+  @ApiProperty()
+  period: string;
+
+  @ApiProperty()
+  totalDurationSecs: number;
+
+  @ApiProperty()
+  bookCount: number;
+
+  @ApiProperty({ type: [Object] })
+  breakdown: Array<{
+    label: string;
+    durationSecs: number;
+    date: string;
+  }>;
+}
+
+export class DailyHourStatsDto {
+  @ApiProperty()
+  date: string;
+
+  @ApiProperty({ type: [Object] })
+  hours: Array<{
+    hour: number;
+    durationSecs: number;
+  }>;
+}
+
+export class ReadingTimeSummaryDto {
+  @ApiProperty()
+  todaySecs: number;
+
+  @ApiProperty()
+  weekSecs: number;
+
+  @ApiProperty()
+  monthSecs: number;
+
+  @ApiProperty()
+  yearSecs: number;
+
+  @ApiProperty()
+  totalSecs: number;
 }

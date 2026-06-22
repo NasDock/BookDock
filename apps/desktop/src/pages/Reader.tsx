@@ -9,6 +9,7 @@ import { ArrowLeft, Settings, BookOpen, Bookmark, ChevronLeft, ChevronRight, Vol
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { getCachedChapters, setCachedChapters, getCachedChapterContent, setCachedChapterContent, getCachedFile, setCachedFile } from '../utils/bookCache';
+import { useReadingTimer } from '../hooks/useReadingTimer';
 
 // 设置 PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -535,6 +536,11 @@ interface ReaderControlsProps {
   onNavigateTts: () => void;
   scrollContainerRef?: React.RefObject<HTMLDivElement>;
   isPdf?: boolean;
+  hidden?: boolean;
+  onMouseEnterTop?: () => void;
+  onMouseLeaveTop?: () => void;
+  onMouseEnterBottom?: () => void;
+  onMouseLeaveBottom?: () => void;
 }
 
 function ReaderControls({
@@ -556,110 +562,136 @@ function ReaderControls({
   showSettings,
   onNavigateTts,
   isPdf = false,
+  hidden = false,
+  onMouseEnterTop,
+  onMouseLeaveTop,
+  onMouseEnterBottom,
+  onMouseLeaveBottom,
 }: ReaderControlsProps) {
   const progress = totalChapters > 0 ? Math.round(((currentChapter + 1) / totalChapters) * 100) : 0;
+  const barTransition = 'transform 0.3s ease-in-out';
 
   return (
     <>
       {/* Top bar */}
-      <div className="fixed top-0 left-0 right-0 h-14 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 flex items-center justify-between px-4 z-30">
-        <button
-          onClick={onGoBack}
-          className="flex items-center gap-1 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+      <div
+        className="fixed top-0 left-0 right-0 z-30"
+        onMouseEnter={onMouseEnterTop}
+        onMouseLeave={onMouseLeaveTop}
+      >
+        <div
+          className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700"
+          style={{ transform: hidden ? 'translateY(-100%)' : 'translateY(0)', transition: barTransition }}
         >
-          <ArrowLeft className="w-5 h-5" />
-          <span className="text-sm">返回</span>
-        </button>
-        <div className="flex-1 mx-4 text-center">
-          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-            {book?.title || '阅读中'}
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {isPdf ? `${book?.title || ''} · 第 ${currentChapter + 1} / ${totalChapters} 页` : chapterTitle}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onToggleSettings}
-            className={`p-2 rounded-lg transition-colors ${showSettings ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-          >
-            <Settings className="w-5 h-5" />
-          </button>
+          <div className="flex items-center justify-between px-4 h-14">
+            <button
+              onClick={onGoBack}
+              className="flex items-center gap-1 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span className="text-sm">返回</span>
+            </button>
+            <div className="flex-1 mx-4 text-center">
+              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                {book?.title || '阅读中'}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {isPdf ? `${book?.title || ''} · 第 ${currentChapter + 1} / ${totalChapters} 页` : chapterTitle}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onToggleSettings}
+                className={`p-2 rounded-lg transition-colors ${showSettings ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+              >
+                <Settings className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Bottom bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700 z-30">
-        {/* Progress bar */}
-        <div className="px-4 pt-2">
-          <input
-            type="range"
-            min="0"
-            max={totalChapters - 1}
-            value={currentChapter}
-            onChange={(e) => onGoToPage(Number(e.target.value))}
-            className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
-          />
-          <div className="flex justify-between text-xs text-gray-400 mt-1">
-            <span>{progress}%</span>
-            <span>{currentChapter + 1} / {totalChapters}</span>
-            <span>100%</span>
-          </div>
-        </div>
-
-        {/* Controls */}
-        <div className="flex items-center justify-between px-4 py-2">
-          <div className="flex items-center gap-1">
-            <button
-              onClick={onToggleToc}
-              className={`p-2 rounded-lg transition-colors ${showToc ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-              title="目录"
-            >
-              <BookOpen className="w-5 h-5" />
-            </button>
-            <button
-              onClick={onAddBookmark}
-              className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-              title="添加书签"
-            >
-              <Bookmark className="w-5 h-5" />
-            </button>
+      <div
+        className="fixed bottom-0 left-0 right-0 z-30"
+        onMouseEnter={onMouseEnterBottom}
+        onMouseLeave={onMouseLeaveBottom}
+      >
+        <div
+          className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700"
+          style={{ transform: hidden ? 'translateY(100%)' : 'translateY(0)', transition: barTransition }}
+        >
+          {/* Progress bar */}
+          <div className="px-4 pt-2">
+            <input
+              type="range"
+              min="0"
+              max={totalChapters - 1}
+              value={currentChapter}
+              onChange={(e) => onGoToPage(Number(e.target.value))}
+              className="w-full h-1 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer"
+            />
+            <div className="flex justify-between text-xs text-gray-400 mt-1">
+              <span>{progress}%</span>
+              <span>{currentChapter + 1} / {totalChapters}</span>
+              <span>100%</span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={onPrevPage}
-              disabled={currentChapter <= 0}
-              className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              title={isPdf ? '上一页' : '上一章'}
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-            <button
-              onClick={onNextPage}
-              disabled={currentChapter >= totalChapters - 1}
-              className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              title={isPdf ? '下一页 (→)' : '下一章 (→)'}
-            >
-              <ChevronRight className="w-5 h-5" />
-            </button>
-          </div>
+          {/* Controls */}
+          <div className="flex items-center justify-between px-4 py-2">
+            <div className="flex items-center gap-1">
+              <button
+                onClick={onToggleToc}
+                className={`p-2 rounded-lg transition-colors ${showToc ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                title="目录"
+              >
+                <BookOpen className="w-5 h-5" />
+              </button>
+              <button
+                onClick={onAddBookmark}
+                className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                title="添加书签"
+              >
+                <Bookmark className="w-5 h-5" />
+              </button>
+            </div>
 
-          <div className="flex items-center gap-1">
-            <button
-              onClick={onNavigateTts}
-              className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-              title="语音朗读"
-            >
-              <Volume2 className="w-5 h-5" />
-            </button>
-            <button
-              onClick={onToggleAutoScroll}
-              className={`p-2 rounded-lg transition-colors ${isAutoScroll ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-              title="自动滚动"
-            >
-              <Timer className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onPrevPage}
+                disabled={currentChapter <= 0}
+                className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title={isPdf ? '上一页' : '上一章'}
+              >
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button
+                onClick={onNextPage}
+                disabled={currentChapter >= totalChapters - 1}
+                className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                title={isPdf ? '下一页 (→)' : '下一章 (→)'}
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                onClick={onNavigateTts}
+                className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                title="语音朗读"
+              >
+                <Volume2 className="w-5 h-5" />
+              </button>
+              <button
+                onClick={onToggleAutoScroll}
+                className={`p-2 rounded-lg transition-colors ${isAutoScroll ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                title="自动滚动"
+              >
+                <Timer className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -691,6 +723,10 @@ export default function Reader() {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [highlights, setHighlights] = useState<Highlight[]>([]);
+  const [hidden, setHidden] = useState(false);
+
+  const lastScrollY = useRef(0);
+  const hideTimer = useRef<NodeJS.Timeout | null>(null);
 
   const [selectedText, setSelectedText] = useState('');
   const [selectionMenuPos, setSelectionMenuPos] = useState({ x: 0, y: 0 });
@@ -708,6 +744,9 @@ export default function Reader() {
   const [pdfTotalPages, setPdfTotalPages] = useState(0);
   const [pdfOutline, setPdfOutline] = useState<Array<{ title: string; page: number }>>([]);
   const isPdf = book ? (book.fileType || book.format) === 'pdf' : false;
+
+  // ── Reading Timer ───────────────────────────────────────────────────────
+  const { flushTimer } = useReadingTimer(id);
 
   // ── Note & Highlight state ────────────────────────────────────────────
   const [showNoteModalState, setShowNoteModalState] = useState(false);
@@ -967,6 +1006,70 @@ export default function Reader() {
     }
   }, [currentChapter, resetScroll]);
 
+  // ── Auto hide toolbar on scroll ──────────────────────────────────────
+  const scrollHandlerRef = useRef<(() => void) | null>(null);
+  
+  useEffect(() => {
+    if (isPdf) return;
+    if (scrollHandlerRef.current) return;
+
+    const handleScroll = () => {
+      const container = contentRef.current;
+      if (!container) return;
+      const currentY = container.scrollTop;
+      if (currentY > lastScrollY.current && currentY > 60) {
+        setHidden(true);
+      } else if (currentY < lastScrollY.current) {
+        setHidden(false);
+      }
+      lastScrollY.current = currentY;
+    };
+
+    scrollHandlerRef.current = handleScroll;
+    
+    // Try to bind to content container
+    const tryBind = () => {
+      const container = contentRef.current;
+      if (container) {
+        container.addEventListener('scroll', handleScroll, { passive: true });
+        return true;
+      }
+      return false;
+    };
+    
+    // Try immediately and retry after a short delay if not ready
+    if (!tryBind()) {
+      setTimeout(tryBind, 100);
+      setTimeout(tryBind, 500);
+    }
+    
+    return () => {
+      const container = contentRef.current;
+      if (container && scrollHandlerRef.current) {
+        container.removeEventListener('scroll', scrollHandlerRef.current);
+      }
+      scrollHandlerRef.current = null;
+    };
+  }, [isPdf, chapterContent]);
+
+  const handleMouseEnterTop = useCallback(() => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    setHidden(false);
+  }, []);
+
+  const handleMouseLeaveTop = useCallback(() => {
+    hideTimer.current = setTimeout(() => setHidden(true), 2000);
+  }, []);
+
+  const handleMouseEnterBottom = useCallback(() => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    setHidden(false);
+  }, []);
+
+  const handleMouseLeaveBottom = useCallback(() => {
+    hideTimer.current = setTimeout(() => setHidden(true), 2000);
+  }, []);
+
   // ── Keyboard shortcuts ───────────────────────────────────────────────
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1104,8 +1207,9 @@ export default function Reader() {
 
   const handleGoBack = useCallback(() => {
     saveReadingPosition(getCurrentScrollTop(), 'exit');
+    flushTimer();
     navigate(-1);
-  }, [navigate, saveReadingPosition, getCurrentScrollTop]);
+  }, [navigate, saveReadingPosition, getCurrentScrollTop, flushTimer]);
 
   const handlePdfLoaded = useCallback(({ totalPages, outline }: { totalPages: number; outline: Array<{ title: string; page: number }> }) => {
     setPdfTotalPages(totalPages);
@@ -1301,6 +1405,11 @@ export default function Reader() {
         onNavigateTts={() => navigate(`/reader/${id}/tts`)}
         scrollContainerRef={contentRef}
         isPdf={isPdf}
+        hidden={hidden}
+        onMouseEnterTop={handleMouseEnterTop}
+        onMouseLeaveTop={handleMouseLeaveTop}
+        onMouseEnterBottom={handleMouseEnterBottom}
+        onMouseLeaveBottom={handleMouseLeaveBottom}
       />
 
       {/* TOC Panel */}

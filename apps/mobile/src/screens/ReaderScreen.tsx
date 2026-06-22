@@ -1188,6 +1188,99 @@ export function ReaderScreen() {
     showBarsRef.current = showBars;
   }, [showBars]);
 
+  // ── Reading Timer ─────────────────────────────────────────────────────
+  const readingStartTimeRef = useRef<number>(0);
+  const accumulatedReadingTimeRef = useRef<number>(0);
+  const isReadingActiveRef = useRef<boolean>(false);
+  const readingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const REPORT_INTERVAL = 3; // Report every 3 seconds
+
+  const startReadingTimer = useCallback(() => {
+    if (!isReadingActiveRef.current) {
+      isReadingActiveRef.current = true;
+      readingStartTimeRef.current = Date.now();
+    }
+  }, []);
+
+  const pauseReadingTimer = useCallback(() => {
+    if (isReadingActiveRef.current && readingStartTimeRef.current > 0) {
+      const elapsed = Math.floor((Date.now() - readingStartTimeRef.current) / 1000);
+      accumulatedReadingTimeRef.current += elapsed;
+      isReadingActiveRef.current = false;
+      readingStartTimeRef.current = 0;
+    }
+  }, []);
+
+  const flushReadingTimer = useCallback(async () => {
+    pauseReadingTimer();
+    const total = accumulatedReadingTimeRef.current;
+    if (total >= 10) { // Minimum 10 seconds to report
+      try {
+        const hour = new Date().getHours();
+        await getApiClient().recordReadingSession(book.id, total, hour);
+      } catch (err) {
+        console.warn('Failed to report reading session:', err);
+      }
+    }
+    accumulatedReadingTimeRef.current = 0;
+  }, [pauseReadingTimer, book.id]);
+
+  const startPeriodicReport = useCallback(() => {
+    if (readingIntervalRef.current) return;
+    readingIntervalRef.current = setInterval(() => {
+      if (isReadingActiveRef.current && readingStartTimeRef.current > 0) {
+        const elapsed = Math.floor((Date.now() - readingStartTimeRef.current) / 1000);
+        accumulatedReadingTimeRef.current += elapsed;
+        readingStartTimeRef.current = Date.now();
+
+        // Report accumulated time every interval
+        const total = accumulatedReadingTimeRef.current;
+        accumulatedReadingTimeRef.current = 0;
+        if (total >= 1) {
+          getApiClient().recordReadingSession(book.id, total, new Date().getHours())
+            .catch((err) => console.warn('Failed to report reading session:', err));
+        }
+      }
+    }, REPORT_INTERVAL * 1000);
+  }, [book.id]);
+
+  const stopPeriodicReport = useCallback(() => {
+    if (readingIntervalRef.current) {
+      clearInterval(readingIntervalRef.current);
+      readingIntervalRef.current = null;
+    }
+  }, []);
+
+  // Handle AppState changes for reading timer
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === 'active') {
+        startReadingTimer();
+        startPeriodicReport();
+      } else {
+        pauseReadingTimer();
+        stopPeriodicReport();
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => {
+      subscription.remove();
+    };
+  }, [startReadingTimer, pauseReadingTimer, startPeriodicReport, stopPeriodicReport]);
+
+  // Start timer when screen is focused, flush when unfocused
+  useFocusEffect(
+    useCallback(() => {
+      startReadingTimer();
+      startPeriodicReport();
+      return () => {
+        stopPeriodicReport();
+        flushReadingTimer();
+      };
+    }, [startReadingTimer, flushReadingTimer, startPeriodicReport, stopPeriodicReport])
+  );
+
   // Stable WebView source object. The scroll-mode WebView re-renders
   // frequently as scroll progress updates; without this memo the inline
   // `source={{ html: htmlContent }}` object would be a new reference on

@@ -152,6 +152,20 @@ CREATE INDEX idx_reading_progress_user ON reading_progress(user_id);
 CREATE INDEX idx_reading_progress_book ON reading_progress(book_id);
 CREATE INDEX idx_reading_progress_last_read ON reading_progress(last_read_at DESC);
 
+-- ── Reading Sessions ──────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS reading_sessions (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    book_id         UUID NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    duration_secs   INTEGER NOT NULL DEFAULT 0,
+    date            DATE NOT NULL,
+    hour            INTEGER,  -- 0-23 for daily distribution
+    created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_reading_sessions_user_date ON reading_sessions(user_id, date);
+CREATE INDEX idx_reading_sessions_user_book_date ON reading_sessions(user_id, book_id, date);
+
 -- ── Bookmarks ─────────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS bookmarks (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
