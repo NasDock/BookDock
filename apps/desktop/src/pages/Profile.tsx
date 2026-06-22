@@ -73,6 +73,7 @@ export default function Profile() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
+  const [syncing, setSyncing] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown on click outside
@@ -172,6 +173,31 @@ export default function Profile() {
   );
 
   const downloadedBooks: Book[] = [];
+
+  const handleSync = async (type: "full" | "incremental") => {
+    const title = type === "full" ? "全量更新" : "增量更新";
+    const message =
+      type === "full"
+        ? "扫描所有本地书籍，新增数据库不存在的，标记已删除的，重新抓取所有现有书籍的元数据。"
+        : "仅扫描新数据，现有数据不做处理。";
+
+    if (!window.confirm(`${title}\n\n${message}\n\n确认开始更新吗？`)) {
+      return;
+    }
+
+    setSyncing(type);
+    try {
+      const { getApiClient } = await import("@bookdock/api-client");
+      const api = getApiClient();
+      const res = await api.syncBooks(type);
+      alert(res.data?.message || `${type === "full" ? "全量" : "增量"}更新成功`);
+    } catch (e: any) {
+      alert(e?.response?.data?.message || "同步失败");
+    } finally {
+      setSyncing(null);
+      setShowDropdown(false);
+    }
+  };
 
   const handleCreateCollection = useCallback(async () => {
     if (!newCollectionName.trim()) return;
@@ -478,6 +504,22 @@ export default function Profile() {
                 >
                   <Plus className="w-4 h-4" />
                   <span>新建书单</span>
+                </button>
+                <button
+                  onClick={() => { handleSync("incremental"); setShowDropdown(false); }}
+                  disabled={!!syncing}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>增量更新</span>
+                </button>
+                <button
+                  onClick={() => { handleSync("full"); setShowDropdown(false); }}
+                  disabled={!!syncing}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>全量更新</span>
                 </button>
                 <Link
                   to="/membership"
