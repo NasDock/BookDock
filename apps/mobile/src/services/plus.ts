@@ -70,13 +70,15 @@ const handlePlusUnauthorized = async () => {
 
 plusRequest.interceptors.response.use(
   async (response) => {
+    // 直接返回响应数据，统一与 fetch API 的行为
+    const data = response.data;
     if (
       hasPlusAuthHeader(response.config?.headers) &&
-      isPlusUnauthorizedPayload(response.data)
+      isPlusUnauthorizedPayload(data)
     ) {
       await handlePlusUnauthorized();
     }
-    return response;
+    return data;
   },
   async (error) => {
     const status = error?.response?.status;
