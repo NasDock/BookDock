@@ -1,6 +1,6 @@
 {
   "name": "@bookdock/mobile",
-  "version": "0.0.69",
+  "version": "0.0.70",
   "private": true,
   "main": "index.js",
   "scripts": {
