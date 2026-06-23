@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-export const PLUS_API_BASE_URL = 'https://www.bookdock.cn/api';
+export const PLUS_API_BASE_URL = 'https://www.audiodock.cn/api';
 
 export const plusRequest = axios.create({
   baseURL: PLUS_API_BASE_URL,

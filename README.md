@@ -1,10 +1,19 @@
+## License
+
+This project is licensed under a **Personal-Use Only License**.
+
+- 个人免费、可修改、可分发
+- 商业使用需获得作者授权
+
+查看完整协议请见：**[LICENSE](./LICENSE)**。
+
 # BookDock 📖
 
-> BookDock（书仓） - 专为 NAS 用户打造的电子书阅读器，支持 TTS 语音朗读
+<p align="center">
+<img src="./apps/desktop/public/logo.png" width="200" />
+</p>
 
 BookDock（书仓）是一款专为 NAS 用户设计的电子书管理 & 阅读平台，支持多格式电子书阅读、TTS 语音朗读、多端同步，并提供强大的书源管理和 NAS 存储集成能力。
-
-> 声仓会员可直接使用所有功能
 
 ## ✨ 功能特点
 

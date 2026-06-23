@@ -154,6 +154,13 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Log in to Harbor
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.HARBOR_REGISTRY }}
+          username: ${{ secrets.HARBOR_USERNAME }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+
       - name: Set lowercase image name
         id: image_name
         run: |
@@ -163,6 +170,7 @@ jobs:
           DOCKERHUB_USER_LOWER=$(echo "${{ secrets.DOCKERHUB_USERNAME }}" | tr '[:upper:]' '[:lower:]')
           echo "ghcr=${REGISTRY}/${REPO_LOWER}" >> $GITHUB_OUTPUT
           echo "dockerhub=${DOCKERHUB_USER_LOWER}/${NAME_LOWER}" >> $GITHUB_OUTPUT
+          echo "harbor=${{ secrets.HARBOR_REGISTRY }}/audiodock/${NAME_LOWER}" >> $GITHUB_OUTPUT
         env:
           REGISTRY: ghcr.io
 
@@ -177,3 +185,4 @@ jobs:
           tags: |
             ${{ steps.image_name.outputs.ghcr }}:feat-test
             ${{ steps.image_name.outputs.dockerhub }}:feat-test
+            ${{ steps.image_name.outputs.harbor }}:feat-test
