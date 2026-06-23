@@ -17,11 +17,19 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getCoverImageUrl } from "../utils/network";
 
-function BookCover({ book, className = "" }: { book: Book; className?: string }) {
+function BookCover({
+  book,
+  className = "",
+}: {
+  book: Book;
+  className?: string;
+}) {
   const [coverError, setCoverError] = useState(false);
   const coverSrc = getCoverImageUrl(book.coverUrl);
   return (
-    <div className={`aspect-[2/3] rounded-xl overflow-hidden shadow-lg ${className}`}>
+    <div
+      className={`aspect-[2/3] rounded-xl overflow-hidden shadow-lg ${className}`}
+    >
       {coverSrc && !coverError ? (
         <img
           src={coverSrc}
@@ -30,7 +38,9 @@ function BookCover({ book, className = "" }: { book: Book; className?: string })
           onError={() => setCoverError(true)}
         />
       ) : (
-        <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}>
+        <div
+          className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}
+        >
           <span className="text-6xl text-white font-bold">
             {book.title.charAt(0)}
           </span>
@@ -139,15 +149,15 @@ export default function BookDetail() {
     try {
       const api = getApiClient();
       const res = await api.getBookLastRead(book.id);
-      console.log('[BookDetail] getBookLastRead res:', res);
+      console.log("[BookDetail] getBookLastRead res:", res);
       const ci =
         res.success && res.data && Number.isFinite(res.data.chapterIndex)
           ? Math.max(0, res.data.chapterIndex)
           : 0;
-      console.log('[BookDetail] navigating to ci:', ci);
+      console.log("[BookDetail] navigating to ci:", ci);
       navigate(`/book/${book.id}/tts?ci=${ci}`);
     } catch (e) {
-      console.error('[BookDetail] getBookLastRead error:', e);
+      console.error("[BookDetail] getBookLastRead error:", e);
       navigate(`/book/${book.id}/tts?ci=0`);
     }
   }, [navigate, book]);
@@ -341,7 +351,7 @@ export default function BookDetail() {
           </div>
 
           {/* 信息 */}
-          <div className="min-w-0 flex-1 space-y-4">
+          <div className="w-full min-w-0 sm:flex-1 space-y-4">
             {/* 书籍信息 */}
             <div className="space-y-2 pt-1">
               {/* 作者 - 优先使用 authors 数组 */}
@@ -524,10 +534,10 @@ export default function BookDetail() {
             </div>
 
             {/* 操作按钮 */}
-            <div className="flex gap-3 pt-2">
+            <div className="flex flex-row gap-3 pt-2">
               <button
                 onClick={handleRead}
-                className="flex-1 sm:flex-none sm:w-[200px] flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
+                className="flex-1 sm:flex-none sm:w-[300px] flex items-center justify-center gap-2 px-6 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
               >
                 <BookOpen className="w-4 h-4" />
                 阅读
