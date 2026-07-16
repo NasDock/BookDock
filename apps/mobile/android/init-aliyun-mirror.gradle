@@ -1,0 +1,65 @@
+// Gradle init script: 国内 Maven 仓库镜像
+// 作用：替换海外 Maven 仓库为阿里云镜像，避免 oss.sonatype.org 等节点超时（504）
+// 对所有项目生效（Gradle 会自动加载 ~/.gradle/init.d/ 下所有 .gradle 文件）
+//
+// 涉及替换的远端仓库：
+//   - https://oss.sonatype.org/content/repositories/snapshots/  (RN gradle-plugin 内置)
+//   - https://repo1.maven.org/maven2/                          (Maven Central)
+//   - https://repo.maven.apache.org/maven2/                    (Maven Central 旧地址)
+//   - https://jcenter.bintray.com/                             (JCenter 已停用)
+//
+// 用法：无需额外配置。Gradle 会自动加载 init.d/ 下的脚本。
+
+def aliyunMirrors = { repos ->
+    repos.maven { url 'https://maven.aliyun.com/repository/public' }
+    repos.maven { url 'https://maven.aliyun.com/repository/google' }
+    repos.maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+    repos.maven { url 'https://maven.aliyun.com/repository/jcenter' }
+    repos.maven { url 'https://maven.aliyun.com/repository/central' }
+}
+
+def shouldReplace = { String url ->
+    return url.startsWith('https://oss.sonatype.org') ||
+           url.startsWith('https://repo1.maven.org') ||
+           url.startsWith('https://repo.maven.apache.org') ||
+           url.startsWith('https://jcenter.bintray.com') ||
+           url.startsWith('http://oss.sonatype.org') ||
+           url.startsWith('http://repo1.maven.org') ||
+           url.startsWith('http://repo.maven.apache.org')
+}
+
+// 拦截 project-level repositories
+allprojects {
+    buildscript {
+        repositories {
+            all { ArtifactRepository repo ->
+                if (repo instanceof MavenArtifactRepository && shouldReplace(repo.url.toString())) {
+                    remove repo
+                }
+            }
+            aliyunMirrors(repositories)
+        }
+    }
+    repositories {
+        all { ArtifactRepository repo ->
+            if (repo instanceof MavenArtifactRepository && shouldReplace(repo.url.toString())) {
+                remove repo
+            }
+        }
+        aliyunMirrors(repositories)
+    }
+}
+
+// 拦截 settings-level repositories
+settingsEvaluated { settings ->
+    settings.pluginManagement {
+        repositories {
+            all { ArtifactRepository repo ->
+                if (repo instanceof MavenArtifactRepository && shouldReplace(repo.url.toString())) {
+                    remove repo
+                }
+            }
+            aliyunMirrors(repositories)
+        }
+    }
+}
