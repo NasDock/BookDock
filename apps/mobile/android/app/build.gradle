@@ -93,6 +93,11 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "0.0.70"
+        // 瘦身：手动锁定 NDK ABI 只打包 arm 架构，旧架构（newArchEnabled=false）RN gradle-plugin
+        // 默认不会配置 abiFilters，必须显式声明才能过滤掉 x86/x86_64
+        ndk {
+            abiFilters "armeabi-v7a", "arm64-v8a"
+        }
     }
     signingConfigs {
         debug {
