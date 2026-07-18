@@ -216,6 +216,19 @@ function generatePdfViewerHtml(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
   <title>PDF Viewer</title>
+  <script>
+    // Polyfill for Promise.withResolvers (missing on older WebView JS engines)
+    if (typeof Promise.withResolvers !== 'function') {
+      Promise.withResolvers = function () {
+        var resolve, reject;
+        var promise = new Promise(function (res, rej) {
+          resolve = res;
+          reject = rej;
+        });
+        return { promise: promise, resolve: resolve, reject: reject };
+      };
+    }
+  </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs" type="module"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -285,7 +298,18 @@ function generatePdfViewerHtml(
 
   <script type="module">
     import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs';
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+    async function loadWorkerWithPolyfill() {
+      var WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+      var polyfill = 'if(typeof Promise.withResolvers!=="function"){Promise.withResolvers=function(){var r,e,t=new Promise(function(n,o){r=n,e=o});return{promise:t,resolve:r,reject:e}};}';
+      try {
+        var workerCode = await (await fetch(WORKER_URL)).text();
+        var blob = new Blob([polyfill + '\n' + workerCode], { type: 'application/javascript' });
+        return URL.createObjectURL(blob);
+      } catch (e) {
+        console.warn('Failed to patch worker, falling back to direct URL', e);
+        return WORKER_URL;
+      }
+    }
 
     const pdfDataUrl = ${JSON.stringify(pdfDataUrl)};
     const initialPage = ${initialPage};
@@ -336,6 +360,7 @@ function generatePdfViewerHtml(
     async function loadPdf() {
       try {
         // Fetch the data URL and convert to ArrayBuffer for PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = await loadWorkerWithPolyfill();
         const response = await fetch(pdfDataUrl);
         const pdfData = new Uint8Array(await response.arrayBuffer());
         pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;

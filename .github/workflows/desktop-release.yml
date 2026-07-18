@@ -115,3 +115,17 @@ jobs:
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts to Minio
+        shell: bash
+        env:
+          MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+          MINIO_BUCKET: ${{ secrets.MINIO_BUCKET }}
+          MINIO_ACCESS: ${{ secrets.MINIO_ACCESS }}
+          MINIO_SECRET: ${{ secrets.MINIO_SECRET }}
+          MINIO_REGION: ${{ secrets.MINIO_REGION || 'us-east-1' }}
+        run: |
+          export AWS_ACCESS_KEY_ID="${MINIO_ACCESS}"
+          export AWS_SECRET_ACCESS_KEY="${MINIO_SECRET}"
+          export AWS_DEFAULT_REGION="${MINIO_REGION}"
+          aws s3 sync apps/desktop/release/ "s3://${MINIO_BUCKET}/desktop/${{ matrix.platform }}/" --endpoint-url "${MINIO_ENDPOINT}"
