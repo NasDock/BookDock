@@ -116,6 +116,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set version
+        id: version
+        run: echo "version=$(node -p "require('./apps/desktop/package.json').version")" >> $GITHUB_OUTPUT
+
       - name: Upload artifacts to Minio
         shell: bash
         env:
@@ -128,4 +132,4 @@ jobs:
           export AWS_ACCESS_KEY_ID="${MINIO_ACCESS}"
           export AWS_SECRET_ACCESS_KEY="${MINIO_SECRET}"
           export AWS_DEFAULT_REGION="${MINIO_REGION}"
-          aws s3 sync apps/desktop/release/ "s3://${MINIO_BUCKET}/desktop/${{ matrix.platform }}/" --endpoint-url "${MINIO_ENDPOINT}"
+          aws s3 sync apps/desktop/release/ "s3://${MINIO_BUCKET}/bookdock/releases/${{ steps.version.outputs.version }}/" --endpoint-url "${MINIO_ENDPOINT}"

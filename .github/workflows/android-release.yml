@@ -58,6 +58,7 @@ jobs:
           mv "$OLD_PATH" "$NEW_PATH"
           echo "apk_path=$NEW_PATH" >> $GITHUB_OUTPUT
           echo "apk_name=$NEW_NAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
@@ -81,4 +82,4 @@ jobs:
           export AWS_ACCESS_KEY_ID="${MINIO_ACCESS}"
           export AWS_SECRET_ACCESS_KEY="${MINIO_SECRET}"
           export AWS_DEFAULT_REGION="${MINIO_REGION}"
-          aws s3 cp "${{ steps.prepare_apk.outputs.apk_path }}" "s3://${MINIO_BUCKET}/android/${{ steps.prepare_apk.outputs.apk_name }}" --endpoint-url "${MINIO_ENDPOINT}"
+          aws s3 cp "${{ steps.prepare_apk.outputs.apk_path }}" "s3://${MINIO_BUCKET}/bookdock/releases/${{ steps.prepare_apk.outputs.version }}/${{ steps.prepare_apk.outputs.apk_name }}" --endpoint-url "${MINIO_ENDPOINT}"
