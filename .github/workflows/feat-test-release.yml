@@ -69,6 +69,7 @@ jobs:
 
       - name: Set version
         id: version
+        shell: bash
         run: echo "version=$(node -p "require('./apps/desktop/package.json').version")" >> $GITHUB_OUTPUT
 
       - name: Upload artifacts to Minio
