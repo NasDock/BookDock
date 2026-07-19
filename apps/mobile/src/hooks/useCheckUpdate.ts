@@ -6,7 +6,24 @@ import { checkLocalApkExists, compareVersions, downloadWithSystemManager, getLoc
 // 配置常量
 const GITHUB_USER = 'mmdctjj';
 const GITHUB_REPO = 'BookDock';
-const USE_GHPROXY = false; // 开启加速
+const DOWNLOAD_API_URL = 'https://www.audiodock.cn/api/download/latest?product=bookdock';
+
+interface DownloadFile {
+  platform: string;
+  label: string;
+  filename: string;
+  size: number;
+  url: string;
+}
+
+interface DownloadApiResponse {
+  code: number;
+  message: string;
+  data: {
+    version: string;
+    files: DownloadFile[];
+  };
+}
 
 export interface UpdateInfo {
   version: string;
@@ -24,16 +41,38 @@ export const useCheckUpdate = () => {
     if (Platform.OS !== 'android') return;
 
     try {
-      // 1. 请求 GitHub API
-      const apiUrl = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases/latest`;
-      const response = await fetch(apiUrl);
-      console.log(response);
-      const data = await response.json();
+      // 1. 从 audiodock 接口获取最新版本和实际下载地址
+      const downloadRes = await fetch(DOWNLOAD_API_URL);
+      const downloadData: DownloadApiResponse = await downloadRes.json();
+      if (downloadData.code !== 200 || !downloadData.data) {
+        console.error('audiodock 下载接口返回异常:', downloadData.message);
+        return;
+      }
 
-      // 2. 解析版本 (Tag: v1.0.59 -> 1.0.59)
-      const tagName = data.tag_name;
-      if (!tagName) return;
-      const remoteVersion = tagName.replace(/^v/, '');
+      const remoteVersion = downloadData.data.version;
+      const androidFile = downloadData.data.files.find((f) => f.platform === 'android');
+      if (!androidFile || !androidFile.url) {
+        console.log(`Version ${remoteVersion} found but no Android download URL.`);
+        return;
+      }
+
+      const downloadUrl = androidFile.url;
+      console.log(`Found APK from audiodock: ${downloadUrl}`);
+
+      // 2. 保留从 GitHub 获取更新内容（release notes）
+      let body = '建议立即更新体验新功能';
+      try {
+        const tagName = `v${remoteVersion}`;
+        const githubApiUrl = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases/tags/${tagName}`;
+        const githubRes = await fetch(githubApiUrl);
+        const githubData = await githubRes.json();
+        if (githubData.body) {
+          body = githubData.body;
+        }
+      } catch (e) {
+        console.warn('从 GitHub 获取 release 说明失败，使用默认文案', e);
+      }
+
       const localVersion = getLocalVersion();
 
       console.log(`本地: ${localVersion}, 线上: ${remoteVersion}`);
@@ -45,32 +84,15 @@ export const useCheckUpdate = () => {
         return;
       }
 
-      // 3. 比对版本
+      // 3. 比对版本并展示更新
       if (compareVersions(remoteVersion, localVersion) === 1) {
-
-        // 寻找 APK 资源
-        const apkAsset = data.assets?.find((a: any) => a.name.endsWith('.apk'));
-        
-        if (!apkAsset) {
-          console.log(`Version ${remoteVersion} found but no APK asset found in release.`);
-          return;
-        }
-
-        let downloadUrl = apkAsset.browser_download_url;
-        console.log(`Found APK: ${downloadUrl}`);
-
-        if (USE_GHPROXY) {
-          downloadUrl = `https://mirror.ghproxy.com/${downloadUrl}`;
-        }
-
-        // 4. 设置更新信息，不再弹出 Alert
         setUpdateInfo({
           version: remoteVersion,
-          body: data.body || '建议立即更新体验新功能',
+          body,
           downloadUrl: downloadUrl
         });
 
-        // 5. 检查本地是否已经下载过
+        // 检查本地是否已经下载过
         const exists = await checkLocalApkExists(downloadUrl);
         if (exists) {
           setProgress(1); // 如果已存在，直接标记进度为完成
