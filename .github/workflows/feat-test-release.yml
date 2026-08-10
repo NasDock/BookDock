@@ -18,12 +18,22 @@ jobs:
           - os: macos-latest
             platform: mac
             command: build:mac
+            files: |
+              apps/desktop/release/*.dmg
+            exts: dmg
           - os: windows-latest
             platform: win
             command: build:win
+            files: |
+              apps/desktop/release/*.exe
+            exts: exe
           - os: ubuntu-latest
             platform: linux
             command: build:linux
+            files: |
+              apps/desktop/release/*.AppImage
+              apps/desktop/release/*.deb
+            exts: AppImage deb
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -56,16 +66,32 @@ jobs:
           tag_name: test-build
           name: Test Build (feat/test)
           draft: true
-          files: |
-            apps/desktop/release/*.dmg
-            apps/desktop/release/*.zip
-            apps/desktop/release/*.exe
-            apps/desktop/release/*.AppImage
-            apps/desktop/release/*.deb
-            apps/desktop/release/*.blockmap
-            apps/desktop/release/latest*.yml
+          files: ${{ matrix.files }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set version
+        id: version
+        shell: bash
+        run: echo "version=$(node -p "require('./apps/desktop/package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Upload artifacts to Minio
+        shell: bash
+        env:
+          MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+          MINIO_BUCKET: ${{ secrets.MINIO_BUCKET }}
+          MINIO_ACCESS: ${{ secrets.MINIO_ACCESS }}
+          MINIO_SECRET: ${{ secrets.MINIO_SECRET }}
+          MINIO_REGION: ${{ secrets.MINIO_REGION || 'us-east-1' }}
+        run: |
+          export AWS_ACCESS_KEY_ID="${MINIO_ACCESS}"
+          export AWS_SECRET_ACCESS_KEY="${MINIO_SECRET}"
+          export AWS_DEFAULT_REGION="${MINIO_REGION}"
+          mkdir -p release-upload
+          for ext in ${{ matrix.exts }}; do
+            cp apps/desktop/release/*.$ext release-upload/ 2>/dev/null || true
+          done
+          aws s3 sync release-upload/ "s3://${MINIO_BUCKET}/bookdock/releases/${{ steps.version.outputs.version }}/" --endpoint-url "${MINIO_ENDPOINT}"
 
   build-android:
     name: Build Android
@@ -114,6 +140,8 @@ jobs:
           NEW_PATH="apps/mobile/android/app/build/outputs/apk/release/${NEW_NAME}"
           mv "$OLD_PATH" "$NEW_PATH"
           echo "apk_path=$NEW_PATH" >> $GITHUB_OUTPUT
+          echo "apk_name=$NEW_NAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Upload Release Assets (Draft)
         uses: softprops/action-gh-release@v2
@@ -124,6 +152,19 @@ jobs:
           files: |
             ${{ steps.prepare_apk.outputs.apk_path }}
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload APK to Minio
+        env:
+          MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+          MINIO_BUCKET: ${{ secrets.MINIO_BUCKET }}
+          MINIO_ACCESS: ${{ secrets.MINIO_ACCESS }}
+          MINIO_SECRET: ${{ secrets.MINIO_SECRET }}
+          MINIO_REGION: ${{ secrets.MINIO_REGION || 'us-east-1' }}
+        run: |
+          export AWS_ACCESS_KEY_ID="${MINIO_ACCESS}"
+          export AWS_SECRET_ACCESS_KEY="${MINIO_SECRET}"
+          export AWS_DEFAULT_REGION="${MINIO_REGION}"
+          aws s3 cp "${{ steps.prepare_apk.outputs.apk_path }}" "s3://${MINIO_BUCKET}/bookdock/releases/${{ steps.prepare_apk.outputs.version }}/${{ steps.prepare_apk.outputs.apk_name }}" --endpoint-url "${MINIO_ENDPOINT}"
 
   build-server-docker:
     name: Build & Push Server Docker (feat-test)

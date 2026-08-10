@@ -397,26 +397,36 @@ export class BooksService implements OnModuleInit {
 
     // Patterns for chapter detection (Chinese novels)
     const chapterPatterns = [
-      /^\s*前言\s*$/i,
-      /^\s*引子\s*$/i,
-      /^\s*楔子\s*$/i,
-      /^\s*序[章言]?\s*$/i,
+      // Front/back matter as a standalone short line. Matches bare "序" / "前言"
+      // and titled variants like "金庸作品集“三联版”序". Rejects lines with
+      // sentence punctuation so a prose sentence ending in e.g. "…的序。" won't match.
+      /^\s*[^\s。，！？、；：,.!?;:]{0,15}(序[言章]?|前言|引子|楔子|后记|跋|尾声|终章)\s*$/,
       /^\s*第[一二三四五六七八九十百千万零\d]+[章回节卷部集]\s*.*/,
       /^\s*第\d+[章回节卷部集]\s*.*/,
+      // Bare Chinese-numeral chapter title, e.g. "二十二 群雄归心约三章" (no "第…回").
+      // Requires the numeral be followed by a separator (space) and a title,
+      // so prose like "二十二岁他离开了家乡" won't match.
+      /^\s*[一二三四五六七八九十]{1,3}\s+\S.{0,25}$/,
       /^\s*[\d零一二三四五六七八九十百千万]+\s*[、.．]\s*.*/,
       /^\s*附录[一二三四五六七八九十]?\s*$/i,
-      /^\s*后记\s*$/i,
-      /^\s*尾声\s*$/i,
     ];
 
-    const chapters: { title: string; startLine: number }[] = [];
+    const raw: { title: string; startLine: number }[] = [];
     lines.forEach((line, index) => {
       for (const pattern of chapterPatterns) {
         if (pattern.test(line)) {
-          chapters.push({ title: line.trim(), startLine: index });
+          raw.push({ title: line.trim(), startLine: index });
           break;
         }
       }
+    });
+
+    // Drop chapters whose body (until the next chapter / EOF) is empty.
+    // This removes stray title-only lines and duplicate/blank headers.
+    const chapters = raw.filter((chapter, i) => {
+      const endLine = i + 1 < raw.length ? raw[i + 1].startLine : lines.length;
+      const body = lines.slice(chapter.startLine + 1, endLine).join('\n').trim();
+      return body.length > 0;
     });
 
     // If no chapters found, treat whole file as one chapter

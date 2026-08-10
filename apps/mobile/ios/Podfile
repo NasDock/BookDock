@@ -65,6 +65,9 @@ target 'BookDock' do
         if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 12.0
           config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '12.0'
         end
+
+        # 瘦身：强制关闭 Bitcode（Apple 已弃用，启用会拖慢构建并增加中间产物体积）
+        config.build_settings['ENABLE_BITCODE'] = 'NO'
       end
     end
 
