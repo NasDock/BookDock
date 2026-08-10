@@ -2,14 +2,14 @@
   "expo": {
     "name": "BookDock",
     "slug": "bookdock",
-    "version": "0.0.71",
+    "version": "0.0.73",
     "orientation": "default",
-    "icon": "./assets/logo.webp",
+    "icon": "./assets/logo.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": false,
     "scheme": "bookdock",
     "splash": {
-      "image": "./assets/logo.webp",
+      "image": "./assets/logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -33,7 +33,7 @@
       ]
     },
     "web": {
-      "favicon": "./assets/logo.webp",
+      "favicon": "./assets/logo.png",
       "bundler": "metro"
     },
     "plugins": [
