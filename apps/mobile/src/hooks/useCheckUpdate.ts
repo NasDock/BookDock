@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import { checkLocalApkExists, compareVersions, downloadWithSystemManager, getLocalApkUri, getLocalVersion, installApk } from '../utils/updateUtils';
 
@@ -31,14 +31,40 @@ export interface UpdateInfo {
   downloadUrl: string;
 }
 
+/**
+ * 一次手动检查更新的结果,供 UI 层做反馈
+ * - hasUpdate: 有新版本(同时会通过 updateInfo 暴露详情,弹窗会自动展示)
+ * - upToDate: 已是最新版本
+ * - ignored: 该版本被用户主动忽略
+ * - error: 检查过程出错(网络/接口异常)
+ * - unsupported: 当前平台不支持(非 Android)
+ */
+export type UpdateCheckResult =
+  | { status: 'hasUpdate' }
+  | { status: 'upToDate' }
+  | { status: 'ignored'; version: string }
+  | { status: 'error'; message: string }
+  | { status: 'unsupported' };
+
 export const useCheckUpdate = () => {
   // UI 状态
   const [progress, setProgress] = useState(0);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  // 手动检查专用状态
+  const [isChecking, setIsChecking] = useState(false);
+  const [checkResult, setCheckResult] = useState<UpdateCheckResult | null>(null);
+
+  const clearCheckResult = useCallback(() => setCheckResult(null), []);
 
   const checkUpdate = async () => {
-    if (Platform.OS !== 'android') return;
+    if (Platform.OS !== 'android') {
+      setCheckResult({ status: 'unsupported' });
+      return;
+    }
+
+    setIsChecking(true);
+    setCheckResult(null);
 
     try {
       // 1. 从 audiodock 接口获取最新版本和实际下载地址
@@ -46,6 +72,7 @@ export const useCheckUpdate = () => {
       const downloadData: DownloadApiResponse = await downloadRes.json();
       if (downloadData.code !== 200 || !downloadData.data) {
         console.error('audiodock 下载接口返回异常:', downloadData.message);
+        setCheckResult({ status: 'error', message: downloadData.message || '获取最新版本失败' });
         return;
       }
 
@@ -53,6 +80,7 @@ export const useCheckUpdate = () => {
       const androidFile = downloadData.data.files.find((f) => f.platform === 'android');
       if (!androidFile || !androidFile.url) {
         console.log(`Version ${remoteVersion} found but no Android download URL.`);
+        setCheckResult({ status: 'error', message: '未找到 Android 安装包' });
         return;
       }
 
@@ -81,6 +109,7 @@ export const useCheckUpdate = () => {
       const ignoredVersion = await AsyncStorage.getItem("ignored_version");
       if (remoteVersion === ignoredVersion) {
         console.log(`Version ${remoteVersion} is ignored.`);
+        setCheckResult({ status: 'ignored', version: remoteVersion });
         return;
       }
 
@@ -91,6 +120,7 @@ export const useCheckUpdate = () => {
           body,
           downloadUrl: downloadUrl
         });
+        setCheckResult({ status: 'hasUpdate' });
 
         // 检查本地是否已经下载过
         const exists = await checkLocalApkExists(downloadUrl);
@@ -99,9 +129,15 @@ export const useCheckUpdate = () => {
         } else {
           setProgress(0);
         }
+      } else {
+        // 本地版本不低于线上版本 → 已是最新
+        setCheckResult({ status: 'upToDate' });
       }
     } catch (error) {
       console.error('检查更新失败', error);
+      setCheckResult({ status: 'error', message: '网络错误,请稍后重试' });
+    } finally {
+      setIsChecking(false);
     }
   };
 
@@ -148,11 +184,11 @@ export const useCheckUpdate = () => {
     try {
       // 使用系统下载管理器
       await downloadWithSystemManager(url);
-      
+
       // 系统下载管理器调起后，标记为已开始
       // 注意：系统下载是后台进行的，应用无法直接获取进度
       setProgress(0.1); // 标记为已开始
-      
+
       // 提示用户
       Alert.alert(
         '已开始下载',
@@ -178,6 +214,10 @@ export const useCheckUpdate = () => {
     startUpdate,
     ignoreUpdate,
     cancelUpdate,
-    installLocalUpdate
+    installLocalUpdate,
+    // 手动触发专用
+    isChecking,
+    checkResult,
+    clearCheckResult,
   };
 };

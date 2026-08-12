@@ -6,7 +6,7 @@ import {
 } from "@bookdock/api-client";
 import { AntDesign, Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useNavigation } from "@react-navigation/native";
+import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -36,6 +36,7 @@ import { borderRadius, fontSizes, getTheme, spacing } from "../utils/theme";
 
 import { UpdateModal } from "../components/UpdateModal";
 import { useCheckUpdate } from "../hooks/useCheckUpdate";
+import { alertMembershipPurchaseUnavailable, isMembershipPurchaseAvailable } from "../utils/membershipGate";
 
 function getBookGradient(title: string): string[] {
   const gradients = [
@@ -97,6 +98,14 @@ export function ProfileScreen() {
     };
     fetchSummary();
   }, []);
+
+  // Refresh VIP status whenever this screen gains focus so that
+  // membership changes (login/logout) are reflected immediately
+  useFocusEffect(
+    useCallback(() => {
+      useAuthStore.getState().refreshVipStatus();
+    }, [])
+  );
 
   const {
     checkUpdate,
@@ -513,12 +522,7 @@ export function ProfileScreen() {
     >
       <ScrollView contentContainerStyle={styles.content}>
         {/* Profile Header */}
-        <View
-          style={[
-            styles.profileHeader,
-            { backgroundColor: theme.colors.surface },
-          ]}
-        >
+        <View style={styles.profileHeader}>
           <View
             style={[styles.avatar, { backgroundColor: theme.colors.primary }]}
           >
@@ -530,6 +534,11 @@ export function ProfileScreen() {
             <Text style={styles.username}>{user?.username || "用户"}</Text>
             <TouchableOpacity
               onPress={async () => {
+                // iOS 不开放会员购买:iOS 用户即便未登录/未开通,点了钻石图标也弹友好提示而不是走开通链路
+                if (!isMembershipPurchaseAvailable() && !isVip) {
+                  await alertMembershipPurchaseUnavailable();
+                  return;
+                }
                 const plusToken = await AsyncStorage.getItem(
                   "bookdock_plus_token",
                 );
@@ -598,7 +607,7 @@ export function ProfileScreen() {
               styles.readingTimeCard,
               { backgroundColor: theme.colors.textSecondary },
             ]}
-            onPress={() => navigation.navigate("MemberBenefits")}
+            onPress={() => navigation.navigate(isMembershipPurchaseAvailable() ? "MemberBenefits" : "Stats")}
           >
             <View style={styles.readingTimeContent}>
               <Ionicons name="diamond-outline" size={24} color="#fff" />
@@ -847,7 +856,8 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     },
     profileHeader: {
       alignItems: "center",
-      padding: spacing.lg,
+      paddingVertical: 4,
+      paddingHorizontal: spacing.sm,
       borderRadius: borderRadius.lg,
     },
     avatar: {
@@ -865,7 +875,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     usernameRow: {
       flexDirection: "row",
       alignItems: "center",
-      marginTop: spacing.md,
+      marginTop: 2,
       gap: spacing.xs,
     },
     username: {
@@ -1047,7 +1057,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      marginTop: spacing.md,
+      marginTop: 0,
       padding: spacing.lg,
       borderRadius: borderRadius.lg,
     },

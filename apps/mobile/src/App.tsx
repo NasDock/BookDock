@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useColorScheme } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Font from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +12,7 @@ import { notificationService } from './services';
 import { initApiClient } from '@bookdock/api-client';
 import { autoSelectServer, getSavedApiBaseUrl, toApiBaseUrl } from './utils/network';
 import { setApiBaseUrl } from './services/api';
+import { setPlusToken } from './services/plus';
 import { setNavigationBarAuto } from './utils/navigationBar';
 import { getTheme } from './utils/theme';
 
@@ -55,6 +57,17 @@ export default function App() {
 
         // Restore auth from storage
         await restoreAuth();
+
+        // Rehydrate Plus API token into the axios `Authorization` header.
+        // Fix 2026-08-12: 之前 `08ce0a6` 重写 plus.ts 后没有这个步骤，导致
+        // 冷启动 / 应用重启后 `bookdock_plus_token` 还存在 AsyncStorage 中，
+        // 但 axios header 没回灌，触发 plusCreateVipPayment 时后端直接 401。
+        // 注意：token 可能已过期，第一次请求失败时 interceptor 会自动清理 +
+        // 跳登录页（plusUnauthorizedHandler）。
+        const storedPlusToken = await AsyncStorage.getItem('bookdock_plus_token');
+        if (storedPlusToken) {
+          setPlusToken(storedPlusToken);
+        }
 
         // Request notification permissions
         await notificationService.requestPermissions();

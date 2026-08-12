@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -21,6 +21,9 @@ import { getApiClient } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { participateInternalTest } from '../services/plus';
+import { UpdateModal } from '../components/UpdateModal';
+import { useCheckUpdate } from '../hooks/useCheckUpdate';
+import { alertMembershipPurchaseUnavailable, isMembershipPurchaseAvailable } from '../utils/membershipGate';
 
 export function SettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -36,6 +39,21 @@ export function SettingsScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [themeModalVisible, setThemeModalVisible] = useState(false);
   const [redeemingInternalTest, setRedeemingInternalTest] = useState(false);
+  const [isUpdateModalVisible, setIsUpdateModalVisible] = useState(false);
+
+  // 检查更新
+  const {
+    checkUpdate,
+    progress,
+    isUpdating,
+    updateInfo,
+    startUpdate,
+    ignoreUpdate,
+    cancelUpdate,
+    isChecking,
+    checkResult,
+    clearCheckResult,
+  } = useCheckUpdate();
 
   const theme = getTheme(actualTheme === 'dark');
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -208,6 +226,11 @@ export function SettingsScreen() {
   );
 
   const handleMembershipPress = useCallback(async () => {
+    // iOS 不开放会员购买:直接弹提示,不走登录/开通链路
+    if (!isMembershipPurchaseAvailable() && !isVip) {
+      await alertMembershipPurchaseUnavailable();
+      return;
+    }
     const plusToken = await AsyncStorage.getItem('bookdock_plus_token');
     if (!plusToken) {
       navigation.navigate('MemberLogin');
@@ -219,6 +242,49 @@ export function SettingsScreen() {
     }
     navigation.navigate('MemberBenefits');
   }, [isVip, navigation]);
+
+  // 手动触发检查更新:有 updateInfo 时弹模态
+  useEffect(() => {
+    if (updateInfo) {
+      setIsUpdateModalVisible(true);
+    }
+  }, [updateInfo]);
+
+  // 检查结果反馈:有 updateInfo 时走模态(已在上面 useEffect 处理),其它情况弹 Alert
+  useEffect(() => {
+    if (!checkResult) return;
+    if (checkResult.status === 'hasUpdate') {
+      // 让模态去展示,这里只清理
+      clearCheckResult();
+      return;
+    }
+    let title = '检查更新';
+    let message = '';
+    switch (checkResult.status) {
+      case 'upToDate':
+        title = '已是最新版本';
+        message = '当前已是最新版本,无需更新';
+        break;
+      case 'ignored':
+        title = '已忽略该版本';
+        message = `当前版本 ${checkResult.version} 已被忽略`;
+        break;
+      case 'error':
+        title = '检查失败';
+        message = checkResult.message;
+        break;
+      case 'unsupported':
+        title = '暂不支持';
+        message = '当前平台暂不支持检查更新';
+        break;
+    }
+    Alert.alert(title, message, [{ text: '好的', onPress: clearCheckResult }]);
+  }, [checkResult, clearCheckResult]);
+
+  const handleCheckUpdatePress = useCallback(() => {
+    if (isChecking) return;
+    checkUpdate();
+  }, [isChecking, checkUpdate]);
 
   return (
     <ScrollView
@@ -305,6 +371,15 @@ export function SettingsScreen() {
             <Text style={styles.rowValueText}>0 GB</Text>
           )}
           <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+          {renderRow('cloud-download-outline', '检查更新',
+            isChecking ? (
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+            ) : (
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+            ),
+            handleCheckUpdatePress
+          )}
+          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
           {renderRow('information-circle-outline', '关于 BookDock',
             <Text style={styles.rowValueText}>{require('../../package.json').version}</Text>
           )}
@@ -334,6 +409,24 @@ export function SettingsScreen() {
           </View>
         </Pressable>
       </Modal>
+
+      {/* Update Modal */}
+      <UpdateModal
+        visible={isUpdateModalVisible}
+        progress={progress}
+        isUpdating={isUpdating}
+        updateInfo={updateInfo}
+        onBackground={() => setIsUpdateModalVisible(false)}
+        onUpdate={startUpdate}
+        onIgnore={() => {
+          ignoreUpdate();
+          setIsUpdateModalVisible(false);
+        }}
+        onCancel={() => {
+          cancelUpdate();
+          setIsUpdateModalVisible(false);
+        }}
+      />
 
 
       {/* Action Buttons */}

@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, Platform, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useThemeStore } from '../stores';
+import { useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
+import { removePlusToken } from '../services/plus';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { isMembershipPurchaseAvailable } from '../utils/membershipGate';
 
 export function MemberDetailScreen({ navigation }: any) {
   const actualTheme = useThemeStore((state) => state.actualTheme);
@@ -19,7 +21,11 @@ export function MemberDetailScreen({ navigation }: any) {
       const stored = await AsyncStorage.getItem('bookdock_plus_user');
       if (!stored) { navigation.replace('MemberLogin'); return; }
       const user = JSON.parse(stored);
-      if (!user.isVip) { navigation.replace('MemberBenefits'); return; }
+      if (!user.isVip) {
+        // iOS 不开放会员购买:非 VIP 用户进到此屏时,直接回到设置页而不是开通页
+        navigation.replace(isMembershipPurchaseAvailable() ? 'MemberBenefits' : 'Settings');
+        return;
+      }
       setVipUser(user);
     } catch {
       navigation.replace('MemberLogin');
@@ -27,9 +33,8 @@ export function MemberDetailScreen({ navigation }: any) {
   };
 
   const handleLogout = async () => {
-    await AsyncStorage.removeItem('bookdock_plus_token');
-    await AsyncStorage.removeItem('bookdock_plus_user');
-    await AsyncStorage.removeItem('bookdock_plus_user_id');
+    await removePlusToken();
+    useAuthStore.getState().clearPlusAuth();
     navigation.replace('MemberLogin');
   };
 
@@ -70,8 +75,8 @@ export function MemberDetailScreen({ navigation }: any) {
           </View>
         </View>
 
-        {/* Renew/Upgrade */}
-        {!isLifetime && (
+        {/* Renew/Upgrade - iOS 不开放支付,整块隐藏 */}
+        {!isLifetime && isMembershipPurchaseAvailable() && (
           <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
             <View style={styles.renewRow}>
               <View>

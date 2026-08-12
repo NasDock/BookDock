@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { User } from '@bookdock/api-client';
 import { getApiClient, initApiClient } from '@bookdock/api-client';
-import { plusGetMe } from '../services/plus';
+import { plusGetMe, removePlusToken } from '../services/plus';
 
 interface AuthState {
   user: User | null;
@@ -63,9 +63,17 @@ export const useAuthStore = create<AuthState>()(
           token: null,
           isAuthenticated: false,
           error: null,
+          // Also clear Plus membership state so VIP UI doesn't linger after logout
+          plusUser: null,
+          isVip: false,
+          vipTier: null,
+          vipExpiresAt: null,
         });
         // Clear AsyncStorage auth data
         AsyncStorage.removeItem('bookdock-auth');
+        AsyncStorage.removeItem('bookdock_plus_token');
+        AsyncStorage.removeItem('bookdock_plus_user');
+        AsyncStorage.removeItem('bookdock_plus_user_id');
       },
 
       setLoading: (isLoading) => set({ isLoading }),
@@ -78,6 +86,8 @@ export const useAuthStore = create<AuthState>()(
 
           if (!token) {
             set({ isLoading: false });
+            // No main account — any persisted Plus membership is stale
+            get().clearPlusAuth();
             return;
           }
 
@@ -100,6 +110,7 @@ export const useAuthStore = create<AuthState>()(
                 isAuthenticated: false,
                 isLoading: false,
               });
+              get().clearPlusAuth();
             }
           } catch {
             // Server unreachable, use cached data if available
@@ -152,7 +163,7 @@ export const useAuthStore = create<AuthState>()(
             }
           }
           if (!parsed || !parsed.id) {
-            set({ isVip: false, vipTier: null, vipExpiresAt: null, plusUser: null });
+            get().clearPlusAuth();
             return false;
           }
           const res = await plusGetMe(parsed.id);
@@ -171,7 +182,15 @@ export const useAuthStore = create<AuthState>()(
             set({ isVip: isVipNow, vipTier: currentTier || null, vipExpiresAt: me?.vipExpiresAt ?? null, plusUser: updatedUser });
             return isVipNow;
           }
+          // API failed — fall back to local cache. Only trust the cache
+          // if it actually carries membership fields; a bare { id } shell
+          // (written right after login) has no VIP info, so keep the
+          // existing in-memory plusUser instead of clobbering it.
           const tier = parsed.vipTier || (parsed.level === 'lifetime' ? 'LIFETIME' : parsed.level === 'year' ? 'BASIC' : null);
+          const hasMembershipInfo = !!tier || parsed.isVip === true || !!parsed.expiredAt || !!parsed.vipExpiresAt;
+          if (!hasMembershipInfo) {
+            return get().isVip;
+          }
           const isVipNow = tier === 'BASIC' || tier === 'LIFETIME' || parsed.isVip === true;
           set({ isVip: isVipNow, vipTier: tier || null, vipExpiresAt: parsed.expiredAt ?? parsed.vipExpiresAt ?? null, plusUser: parsed });
           return isVipNow;
@@ -198,6 +217,7 @@ export const useAuthStore = create<AuthState>()(
         AsyncStorage.removeItem('bookdock_plus_token');
         AsyncStorage.removeItem('bookdock_plus_user');
         AsyncStorage.removeItem('bookdock_plus_user_id');
+        removePlusToken();
         set({ plusUser: null, isVip: false, vipTier: null, vipExpiresAt: null });
       },
     }),

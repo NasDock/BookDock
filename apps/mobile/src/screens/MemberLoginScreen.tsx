@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeStore } from '../stores';
+import { useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import {
   plusLogin,
@@ -85,6 +85,9 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
         await AsyncStorage.setItem('bookdock_plus_user_id', JSON.stringify(userId));
         await AsyncStorage.setItem('bookdock_plus_user', JSON.stringify({ id: userId }));
         await setPlusToken(plusToken);
+        // Sync VIP state into the store immediately so the profile screen
+        // reflects membership without requiring an app restart
+        await useAuthStore.getState().refreshVipStatus();
         Alert.alert('登录成功', '会员登录成功');
         navigation.goBack();
       } else {

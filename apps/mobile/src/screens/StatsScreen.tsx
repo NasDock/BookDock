@@ -15,6 +15,7 @@ import { getApiClient, type PeriodReadingStats, type DailyHourStats } from '@boo
 import { useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import type { RootStackParamList } from '../navigation/types';
+import { isMembershipPurchaseAvailable } from '../utils/membershipGate';
 
 type Period = 'day' | 'week' | 'month' | 'year';
 
@@ -51,14 +52,14 @@ export default function StatsScreen() {
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
-  // Redirect non-vip users
+  // Redirect non-vip users - iOS 不开放会员购买,不做重定向,允许非 VIP 查看阅读统计
   useEffect(() => {
-    if (!isVip) {
+    if (!isVip && isMembershipPurchaseAvailable()) {
       navigation.navigate('MemberBenefits');
     }
   }, [isVip, navigation]);
 
-  if (!isVip) {
+  if (!isVip && isMembershipPurchaseAvailable()) {
     return null;
   }
 
