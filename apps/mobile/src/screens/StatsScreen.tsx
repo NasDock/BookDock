@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -44,6 +45,9 @@ export default function StatsScreen() {
   const [dailyHours, setDailyHours] = useState<DailyHourStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [totalTime, setTotalTime] = useState(0);
+  const { width: windowWidth } = useWindowDimensions();
+  const chartScrollRef = useRef<ScrollView | null>(null);
+  const hasAutoScrolledRef = useRef(false);
 
   const styles = useMemo(() => createStyles(theme), [theme]);
 
@@ -130,6 +134,70 @@ export default function StatsScreen() {
     return Math.max(...chartData.map((d) => d.durationSecs), 1);
   }, [chartData]);
 
+  // Width of a single bar column. Week view splits the available chart width
+  // evenly between the 7 columns (so 7 columns always fill the screen), while
+  // other periods keep a fixed 28pt column and rely on horizontal scrolling.
+  const chartViewportWidth = windowWidth - spacing.md * 2 - spacing.lg * 2;
+  const weekColumnWidth = useMemo(() => {
+    if (chartViewportWidth <= 0 || 7 === 0) return 0;
+    return (chartViewportWidth - spacing.xs * 2 - 6 * 6) / 7;
+  }, [chartViewportWidth]);
+
+  const barColumnWidth = period === 'week' ? weekColumnWidth : 28;
+
+  // Auto-scroll to the bar that represents "now" once data is ready so the
+  // user lands on the most relevant column instead of staring at the start
+  // of the period. Day view focuses the current hour; month view focuses
+  // today's column; other periods still land on the last column.
+  const focusIndex = useMemo(() => {
+    if (chartData.length === 0) return -1;
+    if (period === 'day') {
+      const currentHour = new Date().getHours();
+      const idx = chartData.findIndex((d) => d.label === `${currentHour}时`);
+      return idx >= 0 ? idx : Math.min(currentHour, chartData.length - 1);
+    }
+    if (period === 'month') {
+      const today = new Date();
+      const day = today.getDate();
+      const idx = chartData.findIndex((d) => d.label === `${day}日`);
+      if (idx >= 0) return idx;
+      const numeric = chartData.findIndex((d) => {
+        const m = String(d.label).match(/^(\d+)/);
+        return m ? Number(m[1]) === day : false;
+      });
+      return numeric >= 0 ? numeric : chartData.length - 1;
+    }
+    return chartData.length - 1;
+  }, [period, chartData]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (chartData.length === 0) return;
+    if (focusIndex < 0) return;
+    if (hasAutoScrolledRef.current) return;
+
+    const columnWidth = barColumnWidth;
+    if (!columnWidth || columnWidth <= 0) return;
+
+    const timer = setTimeout(() => {
+      const gap = 6;
+      const targetX = focusIndex * (columnWidth + gap);
+      chartScrollRef.current?.scrollTo({
+        x: Math.max(0, targetX),
+        y: 0,
+        animated: false,
+      });
+      hasAutoScrolledRef.current = true;
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [loading, chartData.length, focusIndex, barColumnWidth]);
+
+  // Reset the auto-scroll flag whenever the user switches period, so switching
+  // back to day/month/year still lands on the "now" column.
+  useEffect(() => {
+    hasAutoScrolledRef.current = false;
+  }, [period]);
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       {/* Header */}
@@ -190,28 +258,41 @@ export default function StatsScreen() {
                 {period === 'day' ? '24小时分布' : `${PERIOD_LABELS[period]}阅读分布`}
               </Text>
               {stats && stats.totalDurationSecs > 0 ? (
-                <View style={styles.chartContainer}>
-                  {chartData.map((item, i) => {
-                    const height = maxValue > 0 ? (item.durationSecs / maxValue) * 100 : 0;
-                    return (
-                      <View key={i} style={styles.barContainer}>
-                        <View style={styles.barWrapper}>
-                          <View
-                            style={[
-                              styles.bar,
-                              {
-                                height: `${Math.max(height, 2)}%`,
-                                backgroundColor: theme.colors.primary,
-                              },
-                            ]}
-                          />
+                <View style={styles.chartContainerViewport}>
+                  <ScrollView
+                    ref={chartScrollRef}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.chartContainer}
+                  >
+                    {chartData.map((item, i) => {
+                      const height = maxValue > 0 ? (item.durationSecs / maxValue) * 100 : 0;
+                      return (
+                        <View
+                          key={i}
+                          style={[styles.barContainer, { width: barColumnWidth }]}
+                        >
+                          <View style={styles.barWrapper}>
+                            <View
+                              style={[
+                                styles.bar,
+                                {
+                                  height: `${Math.max(height, 2)}%`,
+                                  backgroundColor: theme.colors.primary,
+                                },
+                              ]}
+                            />
+                          </View>
+                          <Text
+                            numberOfLines={1}
+                            style={[styles.barLabel, { color: theme.colors.textSecondary }]}
+                          >
+                            {item.label}
+                          </Text>
                         </View>
-                        <Text style={[styles.barLabel, { color: theme.colors.textSecondary }]}>
-                          {item.label}
-                        </Text>
-                      </View>
-                    );
-                  })}
+                      );
+                    })}
+                  </ScrollView>
                 </View>
               ) : (
                 <View style={styles.emptyContainer}>
@@ -318,15 +399,17 @@ const createStyles = (theme: any) =>
       fontWeight: '600',
       marginBottom: spacing.lg,
     },
+    chartContainerViewport: {
+      height: 220,
+    },
     chartContainer: {
       flexDirection: 'row',
       alignItems: 'flex-end',
-      justifyContent: 'space-between',
+      paddingHorizontal: spacing.xs,
+      gap: 6,
       height: 200,
-      gap: 2,
     },
     barContainer: {
-      flex: 1,
       alignItems: 'center',
       gap: spacing.xs,
     },
