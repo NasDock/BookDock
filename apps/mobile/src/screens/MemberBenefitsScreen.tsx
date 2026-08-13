@@ -48,8 +48,8 @@ const STATIC_PRODUCTS: Array<{
   fallbackPrice: number;
   features: string[];
 }> = [
-  { id: 'year', name: '年卡', description: '1 年内畅享全部会员特权', badge: '1 年', fallbackPrice: 20, features: ['无限书籍阅读', '语音朗读', '去除广告', '优先客服'] },
-  { id: 'lifetime', name: '永久卡', description: '一次购买，永久有效', badge: '永久', fallbackPrice: 60, features: ['全部年卡特权', '永久会员身份', '新功能抢先体验', '专属客服'] },
+  { id: 'year', name: '年卡', description: '1 年内畅享全部会员特权', badge: '1 年', fallbackPrice: 20, features: ['扫码登录', '桌面小组件', '优先客服', '声仓会员'] },
+  { id: 'lifetime', name: '永久卡', description: '一次购买，永久有效', badge: '永久', fallbackPrice: 60, features: ['扫码登录', '桌面小组件', '优先客服', '声仓会员'] },
 ];
 
 // ============ 类型 ============
@@ -455,13 +455,14 @@ export function MemberBenefitsScreen({ navigation }: any) {
 
   // 对比表数据
   const comparisonData = [
-    { feature: '基础阅读 / 本地导入', free: true, member: true },
-    { feature: '云端同步 / 设备中继', free: true, member: true },
-    { feature: '无限书库 / 高级阅读', free: false, member: true },
-    { feature: '语音朗读 / TTS', free: false, member: true },
-    { feature: '去除广告 / 优先客服', free: false, member: true },
-    { feature: '桌面小组件 / 多端', free: false, member: true },
-    { feature: '扫描登录 / 跨端续读', free: false, member: true },
+    { feature: '基础功能', free: true, member: true },
+    { feature: '云端同步', free: true, member: true },
+    { feature: '云端朗读', free: true, member: true },
+    { feature: '免广告', free: true, member: true },
+    { feature: '扫码登录', free: false, member: true },
+    { feature: '桌面小组件', free: false, member: true },
+    { feature: '优先客服', free: false, member: true },
+    { feature: '声仓会员', free: false, member: true },
   ];
 
   const formatPrice = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
@@ -480,7 +481,10 @@ export function MemberBenefitsScreen({ navigation }: any) {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    // React Navigation native-stack header 已经处理顶部安全区,ScrollView 的
+    // paddingBottom: 40 处理底部 home indicator —— 这里只保留水平方向 edge,
+    // 避免 SafeAreaView 再加一次 top inset 导致 header 下面出现一大块空白。
+    <SafeAreaView edges={['left', 'right']} style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={pricingLoading} onRefresh={loadData} />}
@@ -679,11 +683,10 @@ export function MemberBenefitsScreen({ navigation }: any) {
           支付即视为同意会员服务协议，虚拟商品一经售出概不退换。
         </Text>
 
-        <View style={[styles.paymentMethods, styles.paymentMethodsCenter]}>
+        <View style={styles.paymentMethods}>
           <TouchableOpacity
             style={[
               styles.paymentItem,
-              styles.paymentItemSingle,
               { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, opacity: isLoading ? 0.6 : 1 },
             ]}
             onPress={() => handlePayment('WECHAT')}
@@ -693,21 +696,14 @@ export function MemberBenefitsScreen({ navigation }: any) {
             <Text style={[styles.paymentText, { color: theme.colors.text }]}>微信支付</Text>
           </TouchableOpacity>
 
-          {/*
-           * 暂时隐藏支付宝支付按钮 (2026-08-12)
-           * 支付宝相关逻辑保留在 handlePayment 中以便恢复。
-           * 恢复时取消下面这块注释,并删掉 paymentMethodsCenter / paymentItemSingle 两个样式。
-           */}
-          {false ? (
-            <TouchableOpacity
-              style={[styles.paymentItem, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, opacity: isLoading ? 0.6 : 1 }]}
-              onPress={() => handlePayment('ALIPAY')}
-              disabled={isLoading || basePrice == null}
-            >
-              <AntDesign name="alipay-circle" size={24} color="#02A9F1" />
-              <Text style={[styles.paymentText, { color: theme.colors.text }]}>支付宝</Text>
-            </TouchableOpacity>
-          ) : null}
+          <TouchableOpacity
+            style={[styles.paymentItem, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border, opacity: isLoading ? 0.6 : 1 }]}
+            onPress={() => handlePayment('ALIPAY')}
+            disabled={isLoading || basePrice == null}
+          >
+            <AntDesign name="alipay-circle" size={24} color="#02A9F1" />
+            <Text style={[styles.paymentText, { color: theme.colors.text }]}>支付宝</Text>
+          </TouchableOpacity>
         </View>
 
         {/* ============ 已开通入口 / 退出登录 ============ */}
@@ -793,9 +789,7 @@ const styles = StyleSheet.create({
   // 支付方式
   paymentHintText: { fontSize: 12, marginTop: -spacing.sm, marginBottom: spacing.sm + 2 },
   paymentMethods: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md + 3 },
-  paymentMethodsCenter: { justifyContent: 'center' },
   paymentItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm + 4, paddingVertical: spacing.md - 2, paddingHorizontal: spacing.lg + 4, borderRadius: 16, borderWidth: 1, flex: 1, justifyContent: 'center' },
-  paymentItemSingle: { flex: 0, alignSelf: 'center', paddingHorizontal: spacing.lg + 8 },
   paymentText: { fontSize: 14, fontWeight: '600' },
   // 退出
   logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, width: '100%', padding: spacing.md + 3, borderRadius: 12, borderWidth: 1, marginTop: spacing.lg + 10 },

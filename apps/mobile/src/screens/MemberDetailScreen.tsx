@@ -5,6 +5,7 @@ import { useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { removePlusToken } from '../services/plus';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Ionicons } from '@expo/vector-icons';
 import { isMembershipPurchaseAvailable } from '../utils/membershipGate';
 
 export function MemberDetailScreen({ navigation }: any) {
@@ -48,7 +49,7 @@ export function MemberDetailScreen({ navigation }: any) {
   const levelGradient = isLifetime ? ['#a855f7', '#ec4899'] : isYear ? ['#f59e0b', '#ea580c'] : ['#9ca3af', '#6b7280'];
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView edges={['left', 'right']} style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Member Card */}
         <View style={[styles.memberCard, { backgroundColor: levelGradient[0] }]}>
@@ -67,7 +68,7 @@ export function MemberDetailScreen({ navigation }: any) {
         <View style={[styles.section, { backgroundColor: theme.colors.surface }]}>
           <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>🎁 会员特权</Text>
           <View style={styles.privilegeGrid}>
-            {['📚 无限书籍阅读', '🎧 语音朗读', '⭐ 抢先体验', '🚫 去除广告', '💬 优先客服', '📖 高级阅读'].map((item) => (
+            {['📷 扫码登录', '🪟 桌面小组件', '💬 优先客服', '🎧 声仓会员'].map((item) => (
               <View key={item} style={[styles.privilegeItem, { backgroundColor: theme.colors.background }]}>
                 <Text style={[styles.privilegeText, { color: theme.colors.text }]}>{item}</Text>
               </View>
@@ -107,8 +108,9 @@ export function MemberDetailScreen({ navigation }: any) {
           </View>
         </View>
 
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-          <Text style={[styles.logoutBtnText, { color: theme.colors.textSecondary }]}>退出登录</Text>
+        <TouchableOpacity style={[styles.logoutBtn, { backgroundColor: '#ef4444' }]} onPress={handleLogout}>
+          <Ionicons name="log-out-outline" size={18} color="#fff" />
+          <Text style={styles.logoutBtnText}>退出会员账号</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -137,6 +139,6 @@ const styles = StyleSheet.create({
   renewBtnText: { color: '#fff', fontWeight: '600', fontSize: fontSizes.sm },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(0,0,0,0.1)' },
   infoLabel: { fontSize: fontSizes.sm },
-  logoutBtn: { alignItems: 'center', padding: spacing.md },
-  logoutBtnText: { fontSize: fontSizes.md },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderRadius: borderRadius.lg, marginTop: spacing.sm, gap: spacing.sm },
+  logoutBtnText: { color: '#fff', fontSize: fontSizes.md, fontWeight: '600' },
 });

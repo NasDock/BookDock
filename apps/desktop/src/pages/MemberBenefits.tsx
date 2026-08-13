@@ -2,17 +2,15 @@
 import { Button, Card, CardContent, CardHeader, CardTitle } from "@bookdock/ui";
 import {
   ArrowLeft,
-  Ban,
-  BookMarked,
-  BookOpen,
   Check,
   ClipboardList,
   Crown,
   Headphones,
+  Layout,
   Loader2,
   MessageCircle,
+  QrCode,
   Sparkles,
-  Star,
   X,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
@@ -45,7 +43,7 @@ const STATIC_PRODUCTS: VipProduct[] = [
     description: "1年会员特权",
     price: 20,
     badge: "1年",
-    features: ["无限书籍阅读", "优先客服支持", "新功能抢先体验", "去除广告"],
+    features: ["扫码登录", "桌面小组件", "优先客服", "声仓会员"],
   },
   {
     id: "lifetime",
@@ -53,13 +51,7 @@ const STATIC_PRODUCTS: VipProduct[] = [
     description: "一次购买，永久有效",
     price: 60,
     badge: "永久",
-    features: [
-      "永久会员特权",
-      "无限书籍阅读",
-      "优先客服支持",
-      "新功能抢先体验",
-      "去除广告",
-    ],
+    features: ["扫码登录", "桌面小组件", "优先客服", "声仓会员"],
   },
 ];
 
@@ -297,21 +289,13 @@ export default function MemberBenefits() {
           </h2>
           <div className="grid grid-cols-2 gap-3">
             {[
-              { icon: <BookOpen className="w-4 h-4" />, text: "无限书籍阅读" },
-              {
-                icon: <Headphones className="w-4 h-4" />,
-                text: "智能语音朗读",
-              },
-              { icon: <Star className="w-4 h-4" />, text: "抢先体验新功能" },
-              { icon: <Ban className="w-4 h-4" />, text: "去除全部广告" },
+              { icon: <QrCode className="w-4 h-4" />, text: "扫码登录" },
+              { icon: <Layout className="w-4 h-4" />, text: "桌面小组件" },
               {
                 icon: <MessageCircle className="w-4 h-4" />,
-                text: "优先客服支持",
+                text: "优先客服",
               },
-              {
-                icon: <BookMarked className="w-4 h-4" />,
-                text: "高级阅读功能",
-              },
+              { icon: <Headphones className="w-4 h-4" />, text: "声仓会员" },
             ].map((benefit) => (
               <div
                 key={benefit.text}

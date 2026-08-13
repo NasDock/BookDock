@@ -50,3 +50,54 @@ BookDock server 里**没有 payment 模块**。改 DTO / 加新接口前，**先
 - **代码先于 UI**：需求涉及「接口 + 组件」时，第一步永远在 service 层加类型 / API，
   确认接口落点正确，再做 UI。绝不能先画 UI 设计稿。
 - 接到需求如果不确定先后，先用一句话确认优先级。
+
+## SafeAreaView + React Navigation native-stack：header 下面避免重复顶部 inset
+
+凡是用了 React Navigation `Stack.Screen` 默认 header（`headerShown: true`，包括
+title/back 自动渲染）的页面，**`<SafeAreaView>` 必须 `edges={['left', 'right']}`**
+（或干脆换成 `<View>`），**不能用默认 edges**。
+
+原因：App.tsx 的 `SafeAreaProvider` 没传 `initialMetrics`，默认从 native module 拿
+设备级 insets（status bar 高度）；React Navigation native-stack 的 Screen frame 已经
+从 header bottom 开始（header 自带 status bar），但 SafeAreaProvider 不知道 Screen
+frame，会把设备级 top inset 加到 Screen 内部 → header 下面多 ≈ 44px 空白。
+
+判定：
+- `headerShown: false`（自绘 header）→ SafeAreaView 用默认 edges 是对的
+  （参考 `SearchScreen.tsx:165`）。
+- `headerShown: true`（用 RN header）→ SafeAreaView 必须 `edges={['left', 'right']}`，
+  顶交给 RN header，底交给 scrollContent 的 `paddingBottom`（≥ 40 覆盖 home indicator）。
+
+BookDock mobile 已确认有此问题的页面（4 个有 RN header 的）：
+- `SettingsScreen` / `MemberDetailScreen` / `AdminUsersScreen` / `MemberBenefitsScreen`
+- 第一个元素是大色卡（MemberDetail 紫卡 / Settings 列表第一行）的不明显；
+  第一个元素是浅色卡片（MemberBenefits 对比表）就会被用户感知成"很大一块空白"。
+- 修复状态：✅ `MemberBenefitsScreen`（2026-08-13）✅ `MemberDetailScreen`（2026-08-13）。
+  待修：`SettingsScreen` / `AdminUsersScreen`（等用户报修再改）。
+
+## 会员权益文案的维护约定（**重要**）
+
+会员权益文案分布在 **7 个文件、10+ 处**，是**强一致性**内容（"4 免 4 会"）：
+
+| 位置 | 角色 |
+|---|---|
+| `apps/mobile/src/screens/MemberBenefitsScreen.tsx` | mobile 对比表（**唯一** mobile 端"免费 + 会员"两列对比）+ STATIC_PRODUCTS features (dead field, 但保持一致) |
+| `apps/mobile/src/screens/MemberDetailScreen.tsx` | mobile 会员详情特权 grid（emoji 前缀） |
+| `apps/desktop/src/pages/MemberBenefits.tsx` | web 购买页 banner + 套餐 features (active) |
+| `apps/desktop/src/pages/MemberDetail.tsx` | web 会员详情特权 grid |
+| `apps/desktop/src/pages/Membership.tsx` | web **另一个** 购买页（3 档方案：免费版+年卡+永久卡），含免费版 features |
+| `apps/desktop/src/components/NoVipBlock.tsx` | web VIP 拦截弹窗（次级弹窗里的权益列表） |
+| `apps/server/src/modules/vip/vip.service.ts` | server `GET /vip/products` 返回值 |
+| `apps/server/src/modules/vip/dto/vip.dto.ts` | swagger `@ApiProperty` example |
+
+修改权益文案**必须全改**：grep 验证 `扫码登录|桌面小组件|优先客服|声仓会员` 和 `基础功能|云端同步|云端朗读|免广告` 各处都命中。
+
+图标约定（web 端 lucide-react）：
+- 扫码登录 → `QrCode`
+- 桌面小组件 → `Layout`
+- 优先客服 → `MessageCircle`
+- 声仓会员 → `Headphones`
+
+Mobile 端 emoji 前缀：📷 🪟 💬 🎧
+
+**不要加"全部年卡特权"前缀**：永久卡 features 直接 4 条平铺（mobile 端 2 列 grid 加 5 条会换行不平衡）。

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@bookdock/ui';
-import { Crown, Gift, BookOpen, Headphones, Star, Ban, MessageCircle, Smartphone, ArrowLeft } from 'lucide-react';
+import { Crown, Gift, Headphones, Layout, MessageCircle, QrCode, Smartphone, ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 
 export default function MemberDetail() {
@@ -79,12 +79,10 @@ export default function MemberDetail() {
             </h3>
             <div className="grid grid-cols-2 gap-3">
               {[
-                { icon: <BookOpen className="w-4 h-4" />, text: '无限书籍阅读' },
-                { icon: <Headphones className="w-4 h-4" />, text: '智能语音朗读' },
-                { icon: <Star className="w-4 h-4" />, text: '抢先体验新功能' },
-                { icon: <Ban className="w-4 h-4" />, text: '去除全部广告' },
-                { icon: <MessageCircle className="w-4 h-4" />, text: '优先客服支持' },
-                { icon: <BookOpen className="w-4 h-4" />, text: '高级阅读功能' },
+                { icon: <QrCode className="w-4 h-4" />, text: '扫码登录' },
+                { icon: <Layout className="w-4 h-4" />, text: '桌面小组件' },
+                { icon: <MessageCircle className="w-4 h-4" />, text: '优先客服' },
+                { icon: <Headphones className="w-4 h-4" />, text: '声仓会员' },
               ].map((item) => (
                 <div key={item.text} className="flex items-center gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                   <span className="text-gray-500 dark:text-gray-400">{item.icon}</span>

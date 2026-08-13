@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@bookdock/ui';
 import {
   Crown,
-  BookOpen,
   Headphones,
-  Star,
-  Ban,
+  Layout,
+  MessageCircle,
+  QrCode,
   Check,
 } from 'lucide-react';
 
@@ -20,10 +20,10 @@ export default function NoVipBlock({
   const navigate = useNavigate();
 
   const benefits = [
-    { icon: BookOpen, text: '无限书籍阅读' },
-    { icon: Headphones, text: '智能语音朗读' },
-    { icon: Star, text: '抢先体验新功能' },
-    { icon: Ban, text: '去除全部广告' },
+    { icon: QrCode, text: '扫码登录' },
+    { icon: Layout, text: '桌面小组件' },
+    { icon: MessageCircle, text: '优先客服' },
+    { icon: Headphones, text: '声仓会员' },
   ];
 
   return (

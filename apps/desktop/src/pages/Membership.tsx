@@ -3,7 +3,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth, PremiumBadge } from '@bookdock/auth';
 import { Button, Card, CardHeader, CardTitle, CardContent } from '@bookdock/ui';
-import { Crown, Volume2, BookOpen, Bookmark, Zap, Check, PartyPopper, X, Loader2, MessageCircle, Wallet } from 'lucide-react';
+import { Crown, Layout, Headphones, QrCode, Check, PartyPopper, X, Loader2, MessageCircle, Wallet } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { plusCreateVipPayment, plusGetMe, plusGetCurrentLowestPrice, plusQueryPaymentStatus, plusCancelOrder } from '../services/plus';
 import { useAuthStore } from '../stores/authStore';
@@ -61,9 +61,9 @@ const PLAN_LABELS: Record<string, string> = {
 };
 
 const STATIC_PRODUCTS: VipProduct[] = [
-  { id: 'free', name: '免费版', description: '基础功能、数据同步', price: 0, badge: '', features: ['基础功能', '数据同步'] },
-  { id: 'year', name: '年卡', description: '1年会员特权', price: 20, badge: '1年', features: ['无限书籍阅读', '优先客服支持', '新功能抢先体验', '去除广告'] },
-  { id: 'lifetime', name: '永久卡', description: '一次购买，永久有效', price: 60, badge: '永久', features: ['永久会员特权', '无限书籍阅读', '优先客服支持', '新功能抢先体验', '去除广告'] },
+  { id: 'free', name: '免费版', description: '基础功能、云端同步、云端朗读、免广告', price: 0, badge: '', features: ['基础功能', '云端同步', '云端朗读', '免广告'] },
+  { id: 'year', name: '年卡', description: '1年会员特权', price: 20, badge: '1年', features: ['扫码登录', '桌面小组件', '优先客服', '声仓会员'] },
+  { id: 'lifetime', name: '永久卡', description: '一次购买，永久有效', price: 60, badge: '永久', features: ['扫码登录', '桌面小组件', '优先客服', '声仓会员'] },
 ];
 
 function formatDate(dateStr: string | null): string {
@@ -453,10 +453,10 @@ export default function Membership() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
         {[
-          { icon: <Volume2 className="w-8 h-8" />, title: '无限朗读', desc: 'TTS 无限时长' },
-          { icon: <BookOpen className="w-8 h-8" />, title: '无限藏书', desc: '无上传限制' },
-          { icon: <Bookmark className="w-8 h-8" />, title: '无限书签', desc: '每本书无限书签' },
-          { icon: <Zap className="w-8 h-8" />, title: '专属客服', desc: '优先响应' },
+          { icon: <QrCode className="w-8 h-8" />, title: '扫码登录', desc: '移动端一键扫码' },
+          { icon: <Layout className="w-8 h-8" />, title: '桌面小组件', desc: '常用功能直达' },
+          { icon: <MessageCircle className="w-8 h-8" />, title: '优先客服', desc: '会员专属通道' },
+          { icon: <Headphones className="w-8 h-8" />, title: '声仓会员', desc: '声仓音频特权' },
         ].map((benefit) => (
           <div key={benefit.title} className="text-center p-4 bg-gray-50 dark:bg-gray-800 rounded-xl">
             <div className="text-3xl mb-2 text-gray-600 dark:text-gray-400">{benefit.icon}</div>
