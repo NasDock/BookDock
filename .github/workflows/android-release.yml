@@ -51,7 +51,7 @@ jobs:
       - name: Rename and Prepare APK
         id: prepare_apk
         run: |
-          VERSION=$(node -p "require('./apps/mobile/app.json').expo.version")
+          VERSION=$(node -p "require('./package.json').version")
           OLD_PATH="apps/mobile/android/app/build/outputs/apk/release/app-release.apk"
           NEW_NAME="BookDock-${VERSION}.apk"
           NEW_PATH="apps/mobile/android/app/build/outputs/apk/release/${NEW_NAME}"

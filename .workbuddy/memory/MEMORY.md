@@ -1,10 +1,13 @@
 # BookDock 项目长期约定
 
-## mobile2（apps/mobile2）—— 纯 RN 复刻 mobile
+## mobile2（apps/mobile）—— 纯 RN 复刻 mobile ✅ 已完成改名
 
-### 定位与硬约束
-- mobile2 = 纯 RN 版（RN 0.81.5 + React 19.1.0 + Fabric）；mobile（Expo 52 + RN 0.76.9）仅存 git 作对照（`git show HEAD:apps/mobile/...`）。
-- **不引任何 expo-* 模块；不要跑 `npx expo prebuild`**（会破坏 android/ios 原生工程）。
+### 定位与硬约束（**已改名**，2026-08-14 17:50）
+- `apps/mobile` = **纯 RN 版**（RN 0.81.5 + React 19.1.0 + Fabric），原"mobile2"已重命名为 mobile
+- 原 mobile（Expo 52 + RN 0.76.9）已彻底废弃，仅存 git 历史作对照（`git show <commit>:apps/mobile/...`）
+- **不引任何 expo-* 模块；不要跑 `npx expo prebuild`**（会破坏 android/ios 原生工程）
+- **app.json 已删（2026-08-14 18:38）**：mobile 不再需要 expo 配置；CI 和 release.js 取版本号统一用**根 `package.json.version`**（与 release.js source of truth 对齐）
+- mobile2 → mobile 改名铁律见 2026-08-14.md "apps/mobile2 → apps/mobile 改名后清缓存铁律"段（CMake `.cxx/` + 3 个 gradle 缓存）
 - **safe-area-context 包必须保留，但组件不用**（2026-08-14 校正 08-13 的"卸载"决定）：react-native-screens 内部硬依赖它（NativeStackView 直接 import），卸载会红屏 `Can't find ViewManager 'RNCSafeAreaProvider'`。做法：package.json 保留依赖，代码里不用 SafeAreaView/SafeAreaProvider（SafeAreaProvider 在 RN 0.81 上偶发 native bridge throw → navigationRef undefined）。布局替代：App.tsx 顶层全屏 View 铺主题背景 + RN 内置 StatusBar + styles.xml 透明栏（statusBarColor/navigationBarColor=transparent + windowDrawsSystemBarBackgrounds=true）。加/删 native 包后必须 native rebuild 一次。
 - Metro：`@react-native/metro-config` + watchFolders + disableHierarchicalLookup。Babel：worklets plugin 放最后。
 - iOS 无 Gemfile，直接 `pod install`，不走 bundle。

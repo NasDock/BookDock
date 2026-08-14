@@ -9,6 +9,17 @@ project.ext.vectoricons = [
 apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")
 
 /**
+ * 从根 package.json 读取版本号（source of truth = release.js），注入 APK manifest。
+ * - versionName 直接用 npm version 字符串（如 "0.0.73"）
+ * - versionCode 用 semver 三段映射成递增整数：major*10000 + minor*100 + patch
+ * - 本地 + CI 共用同一 source；本地 build 不需要 GITHUB_RUN_NUMBER
+ * - 限制：0.0.99 → 0.1.0 会反向（99 < 100），遇到这种 release 时手动 bump
+ */
+def rootPkg = new groovy.json.JsonSlurper().parse(file("../../package.json").text)
+def (major, minor, patch) = rootPkg.version.tokenize('.').collect { it as int }
+def computedVersionCode = major * 10000 + minor * 100 + patch
+
+/**
  * This is the configuration block to customize your React Native Android app.
  * By default you don't need to apply any configuration, just uncomment the lines you need.
  */

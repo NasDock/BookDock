@@ -1,13 +1,11 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const readline = require('readline');
-const path = require('path');
 
 const PACKAGES = [
   'package.json',
   'apps/desktop/package.json',
   'apps/mobile/package.json',
-  'apps/mobile/app.json',
   'apps/server/package.json',
   'packages/api-client/package.json',
   'packages/auth/package.json',
@@ -105,11 +103,7 @@ function updateVersions(newVersion) {
   PACKAGES.forEach(pkgPath => {
     if (fs.existsSync(pkgPath)) {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-      if (pkgPath.endsWith('app.json') && pkg.expo) {
-        pkg.expo.version = newVersion;
-      } else {
-        pkg.version = newVersion;
-      }
+      pkg.version = newVersion;
       fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
       console.log(`Updated ${pkgPath} to ${newVersion}`);
     } else {
@@ -133,19 +127,7 @@ function runRelease(newVersion) {
   // 1. Update files
   updateVersions(newVersion);
 
-  // 2. Regenerate native projects after app.json version changes
-  try {
-    console.log('\n📱 Running expo prebuild in apps/mobile...');
-    execSync('npx expo prebuild', {
-      cwd: path.resolve('apps/mobile'),
-      stdio: 'inherit',
-    });
-  } catch (error) {
-    console.error('❌ expo prebuild failed:', error.message);
-    process.exit(1);
-  }
-
-  // 3. Commit and Tag
+  // 2. Commit and Tag
   try {
     console.log('\n📦 Committing changes...');
     execSync('git add .');
