@@ -3,7 +3,7 @@
  *
  * 适配点（mobile → mobile2）:
  *   1. @expo/vector-icons → react-native-vector-icons/Ionicons
- *   2. expo-linear-gradient → react-native-linear-gradient（API 几乎一致）
+ *   2. expo-linear-gradient → 纯色 View + getBookGradient(title)[0]（对齐 BookDetailScreen 降级方案，暂不引 native 依赖）
  *   3. default export → named export（对齐 mobile2 screens/index.ts 现有导出口径）
  */
 import { useState, useCallback, useMemo, useEffect } from 'react';
@@ -20,7 +20,6 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import LinearGradient from 'react-native-linear-gradient';
 import { useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { getCoverImageUrl } from '../services/api';
@@ -162,12 +161,14 @@ export function CollectionDetailScreen() {
                       resizeMode="cover"
                     />
                   ) : (
-                    <LinearGradient
-                      colors={getBookGradient(book.title)}
-                      style={styles.coverImage}
+                    <View
+                      style={[
+                        styles.coverImage,
+                        { backgroundColor: getBookGradient(book.title)[0] },
+                      ]}
                     >
                       <Text style={styles.coverLetter}>{book.title.charAt(0)}</Text>
-                    </LinearGradient>
+                    </View>
                   )}
                 </View>
                 <View style={styles.bookInfo}>
