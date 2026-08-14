@@ -1,0 +1,12 @@
+--- a/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
++++ b/android/src/main/java/com/reactnativecommunity/webview/RNCWebViewManagerImpl.kt
+@@ -345,7 +345,8 @@
+             throw RuntimeException("Arguments for loading an url are null!")
+           }
+           webView.progressChangedFilter.setWaitingForCommandLoadUrl(false)
+-          webView.loadUrl(args.getString(0))
++          val url = args.getString(0) ?: throw RuntimeException("URL for loadUrl is null!")
++          webView.loadUrl(url)
+         }
+         "requestFocus" -> webView.requestFocus()
+         "clearFormData" -> webView.clearFormData()

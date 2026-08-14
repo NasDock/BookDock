@@ -1,20 +1,26 @@
 /**
- * MemberBenefitsScreen
+ * MemberBenefitsScreen — mobile2 版
  *
- * 重写于 2026-08-12：
- * 1. 对齐 AudioDock mobile 视觉（对比表 + 套餐卡 + 优惠券 Modal + 微信/支付宝横排）
- * 2. 底层 plus.ts 之前被 08ce0a6 重写时把 6 个支付 API 全删了（详见 .workbuddy/memory/2026-08-12.md），
- *    现在已补回，本屏按新签名调用。
- * 3. 保留旧的支付 overlay + 轮询 + AppState 监听逻辑（这套轮询是 BookDock 自己的，
- *    不依赖 AudioDock 的 expo-web-browser openBrowserAsync + raceVipActivation 那一套）。
+ * 1:1 复刻 mobile 旧版（94e4cf0），关键替换：
+ * - @expo/vector-icons → react-native-vector-icons (Ionicons / AntDesign)
+ * - SafeAreaView → View（mobile2 不用 react-native-safe-area-context，参见 MEMORY.md）
+ * - expo-web-browser → react-native-inappbrowser-reborn（mobile2 已装）
+ * - 其他 RN 内置 API 不变
+ *
+ * 保留 mobile 的关键行为：
+ * 1. iOS 不开放会员购买：useEffect 里 Platform.OS === 'ios' 直接 replace('Settings')
+ * 2. STATIC_PRODUCTS fallback：网络失败时显示 20/60 元兜底价（注释里的 "dead field" 保持一致）
+ * 3. 4 免 4 会文案的 4 项 features：扫码登录 / 桌面小组件 / 优先客服 / 声仓会员（MEMORY.md 7 处对齐）
+ * 4. 支付 overlay + 轮询 + AppState 监听：BookDock 自己的轮询逻辑，不依赖 AudioDock
+ * 5. 拦住 hook usePlusAuthGuard：返回 'is-vip' / 'need-login' 时导航
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, Platform, StyleSheet, ScrollView, TouchableOpacity,
   ActivityIndicator, Alert, Linking, AppState, Modal, RefreshControl,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { AntDesign, Ionicons, MaterialIcons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import AntDesign from 'react-native-vector-icons/AntDesign';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
@@ -373,8 +379,9 @@ export function MemberBenefitsScreen({ navigation }: any) {
           const paymentUrl = result.paymentUrl;
           if (paymentUrl) {
             try {
-              const WebBrowser = require('expo-web-browser');
-              await WebBrowser.openBrowserAsync(paymentUrl);
+              // mobile2 替换 expo-web-browser → react-native-inappbrowser-reborn
+              const InAppBrowser = require('react-native-inappbrowser-reborn').default;
+              await InAppBrowser.open(paymentUrl);
             } catch (browserErr) {
               const canOpen = await Linking.canOpenURL(paymentUrl);
               if (canOpen) await Linking.openURL(paymentUrl);
@@ -481,10 +488,9 @@ export function MemberBenefitsScreen({ navigation }: any) {
   };
 
   return (
-    // React Navigation native-stack header 已经处理顶部安全区,ScrollView 的
-    // paddingBottom: 40 处理底部 home indicator —— 这里只保留水平方向 edge,
-    // 避免 SafeAreaView 再加一次 top inset 导致 header 下面出现一大块空白。
-    <SafeAreaView edges={['left', 'right']} style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    // mobile2 不用 SafeAreaView — React Navigation native-stack header 处理顶部 inset,
+    // 这里用普通 <View>;ScrollView 的 paddingBottom: 40 覆盖底部 home indicator。
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={pricingLoading} onRefresh={loadData} />}
@@ -748,7 +754,7 @@ export function MemberBenefitsScreen({ navigation }: any) {
           </View>
         </View>
       ) : null}
-    </SafeAreaView>
+    </View>
   );
 }
 

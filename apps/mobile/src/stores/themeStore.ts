@@ -31,20 +31,20 @@ export const useThemeStore = create<ThemeState>()(
       setTheme: (theme) => {
         const systemTheme = getSystemTheme();
         const actualTheme = getEffectiveTheme(theme, systemTheme);
-        set({ 
-          theme, 
-          actualTheme, 
-          isDark: actualTheme === 'dark' 
+        set({
+          theme,
+          actualTheme,
+          isDark: actualTheme === 'dark',
         });
       },
 
       toggleTheme: () => {
         const { actualTheme } = get();
         const newTheme = actualTheme === 'dark' ? 'light' : 'dark';
-        set({ 
-          theme: newTheme, 
-          actualTheme: newTheme, 
-          isDark: newTheme === 'dark' 
+        set({
+          theme: newTheme,
+          actualTheme: newTheme,
+          isDark: newTheme === 'dark',
         });
       },
     }),

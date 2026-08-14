@@ -1,3 +1,22 @@
+/**
+ * ScanLoginScreen — mobile2 (1:1 移植自 mobile ScanLoginScreen.tsx)
+ *
+ * 适配点（mobile → mobile2）:
+ *   1. expo-camera (CameraView + useCameraPermissions) → react-native-vision-camera v4
+ *      (Camera + useCameraDevice + useCameraPermission + useCodeScanner)
+ *   2. plus 接口签名对齐 mobile2:
+ *      - createScanLoginSession()        无参数
+ *      - getScanLoginSession(sessionId)  无 secret
+ *      - claimScanLoginSession(sessionId, payload)    无 secret
+ *      - consumeScanLoginSession(sessionId)            无 secret
+ *      - subscribeScanLoginSession(sessionId, cb)     2 参数
+ *      - reportScanLoginResult(sessionId, result)     无 secret
+ *   3. status 大写枚举: 'PENDING' | 'CLAIMED' | 'CONFIRMED' | 'CONSUMED' | 'EXPIRED'
+ *   4. mobile 的 status 是对象 { status: 'waiting_scan' | ... }; mobile2 直接用 session.status
+ *   5. mobile2 utils/scanLogin.ts 的 applyMobileScanLoginResult 已放宽签名接受任意带 plusAuth 的对象
+ *   6. navigation 用 typed useNavigation (与 MemberLoginScreen 对齐)
+ */
+
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -7,8 +26,16 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import {
+  Camera,
+  useCameraDevice,
+  useCameraPermission,
+  useCodeScanner,
+  type Code,
+} from 'react-native-vision-camera';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import {
@@ -20,77 +47,54 @@ import {
   reportScanLoginResult,
   reportScanLoginResultViaSocket,
   type ScanLoginSession,
-  type ScanLoginSessionStatus,
 } from '../services/plus';
-import { applyMobileScanLoginResult, collectMobileScanLoginPayload } from '../utils/scanLogin';
+import {
+  applyMobileScanLoginResult,
+  collectMobileScanLoginPayload,
+} from '../utils/scanLogin';
+import type { RootStackParamList } from '../navigation/types';
 
-interface ScanLoginScreenProps {
-  navigation: any;
-}
-
-export function ScanLoginScreen({ navigation }: ScanLoginScreenProps) {
+export function ScanLoginScreen() {
   const actualTheme = useThemeStore((s) => s.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
-  const [permission, requestPermission] = useCameraPermissions();
-  const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
+  const { hasPermission, requestPermission } = useCameraPermission();
+  const device = useCameraDevice('back');
+
+  const [hasCameraPermission, setHasCameraPermission] = useState<
+    boolean | null
+  >(null);
   const [scanBusy, setScanBusy] = useState(false);
-  const [scanSession, setScanSession] = useState<ScanLoginSession | null>(null);
-  const [scanStatus, setScanStatus] = useState<ScanLoginSessionStatus | null>(null);
+  const [scanSession, setScanSession] = useState<ScanLoginSession | null>(
+    null,
+  );
 
   // Request camera permission on mount
   useEffect(() => {
     const requestCameraPermission = async () => {
-      let currentPermission = permission;
-      if (!currentPermission) {
-        currentPermission = await requestPermission();
-      }
-      if (!currentPermission.granted) {
-        const result = await requestPermission();
-        setHasCameraPermission(result.granted);
-        if (!result.granted) {
-          Alert.alert('需要相机权限', '请在设置中开启相机权限以使用扫码登录', [
-            { text: '确定', onPress: () => navigation.goBack() },
-          ]);
+      if (!hasPermission) {
+        const granted = await requestPermission();
+        setHasCameraPermission(granted);
+        if (!granted) {
+          Alert.alert(
+            '需要相机权限',
+            '请在设置中开启相机权限以使用扫码登录',
+            [{ text: '确定', onPress: () => navigation.goBack() }],
+          );
         }
       } else {
         setHasCameraPermission(true);
       }
     };
     requestCameraPermission();
-  }, [permission, requestPermission, navigation]);
+  }, [hasPermission, requestPermission, navigation]);
 
-  const handleBarCodeScanned = async ({ data }: { data: string }) => {
-    try {
-      const parsed = JSON.parse(data);
-      if (parsed.kind !== 'bookdock-scan-login' && parsed.kind !== 'soundx-scan-login') {
-        Alert.alert('无效的二维码');
-        return;
-      }
-
-      const { sessionId, secret, role } = parsed;
-      if (role === 'target') {
-        const payload = await collectMobileScanLoginPayload();
-        setScanBusy(true);
-
-        const claimRes = await claimScanLoginSession(sessionId, { secret, payload });
-        if (claimRes.code === 200 || claimRes.code === 201) {
-          Alert.alert('已发送', '请在目标设备上确认登录');
-        } else {
-          Alert.alert('扫码失败', claimRes.message || '无法认领会话');
-        }
-      }
-    } catch (e: any) {
-      Alert.alert('扫码失败', e.message || '二维码格式错误');
-    } finally {
-      setScanBusy(false);
-    }
-  };
-
-  // For mobile as target (show QR code for desktop to scan)
+  // For mobile as target: create a session so desktop can scan our QR
   const createTargetSession = useCallback(async () => {
     try {
-      const res = await createScanLoginSession({ role: 'target', deviceKind: 'mobile' });
+      const res = await createScanLoginSession();
       if (res.data) {
         setScanSession(res.data);
       }
@@ -105,40 +109,38 @@ export function ScanLoginScreen({ navigation }: ScanLoginScreenProps) {
 
   useEffect(() => {
     if (!scanSession) return;
-    getScanLoginSession(scanSession.sessionId, scanSession.secret).catch(console.error);
-    const unsubscribe = subscribeScanLoginSession(
-      scanSession.sessionId,
-      scanSession.secret,
-      (status) => setScanStatus(status),
-    );
+    getScanLoginSession(scanSession.id).catch(console.error);
+    const unsubscribe = subscribeScanLoginSession(scanSession.id, (session) => {
+      setScanSession(session);
+    });
     return () => unsubscribe();
-  }, [scanSession]);
+  }, [scanSession?.id]);
 
+  // When desktop confirms the scan login, consume the session to receive the token
   useEffect(() => {
-    if (!scanSession || scanStatus?.status !== 'confirmed') return;
+    if (!scanSession || scanSession.status !== 'CONFIRMED') return;
     const consumeConfirmedScan = async () => {
       try {
         setScanBusy(true);
-        const res = await consumeScanLoginSession(scanSession.sessionId, {
-          secret: scanSession.secret,
-        });
+        const res = await consumeScanLoginSession(scanSession.id);
         try {
           if (!res.data) throw new Error('No data returned');
-          await applyMobileScanLoginResult(res.data);
+          await applyMobileScanLoginResult(res.data as any);
         } catch (applyErr: any) {
-          await reportScanLoginResult(scanSession.sessionId, {
-            secret: scanSession.secret,
+          await reportScanLoginResult(scanSession.id, {
             success: false,
             error: applyErr.message,
           }).catch(console.error);
-          reportScanLoginResultViaSocket(scanSession.sessionId, scanSession.secret, false, applyErr.message);
+          reportScanLoginResultViaSocket(scanSession.id, {
+            success: false,
+            error: applyErr.message,
+          });
           throw applyErr;
         }
-        await reportScanLoginResult(scanSession.sessionId, {
-          secret: scanSession.secret,
+        await reportScanLoginResult(scanSession.id, {
           success: true,
         }).catch(console.error);
-        reportScanLoginResultViaSocket(scanSession.sessionId, scanSession.secret, true);
+        reportScanLoginResultViaSocket(scanSession.id, { success: true });
         Alert.alert('扫码登录成功');
         navigation.goBack();
       } catch (error: any) {
@@ -149,24 +151,74 @@ export function ScanLoginScreen({ navigation }: ScanLoginScreenProps) {
       }
     };
     consumeConfirmedScan();
-  }, [scanSession?.sessionId, scanStatus?.status, navigation, createTargetSession]);
+  }, [scanSession?.id, scanSession?.status, navigation, createTargetSession]);
+
+  // QR code handler — when mobile scans a desktop-side QR (role === 'target'),
+  // claim the session and send our plusAuth payload to desktop.
+  const handleBarCodeScanned = useCallback(
+    async (codes: Code[]) => {
+      const data = codes[0]?.value;
+      if (!data) return;
+      try {
+        const parsed = JSON.parse(data);
+        if (
+          parsed.kind !== 'bookdock-scan-login' &&
+          parsed.kind !== 'soundx-scan-login'
+        ) {
+          Alert.alert('无效的二维码');
+          return;
+        }
+
+        const { sessionId, role } = parsed;
+        if (role === 'target') {
+          const payload = await collectMobileScanLoginPayload();
+          setScanBusy(true);
+
+          const claimRes = await claimScanLoginSession(sessionId, payload);
+          if (claimRes.code === 200 || claimRes.code === 201) {
+            Alert.alert('已发送', '请在目标设备上确认登录');
+          } else {
+            Alert.alert('扫码失败', claimRes.message || '无法认领会话');
+          }
+        }
+      } catch (e: any) {
+        Alert.alert('扫码失败', e.message || '二维码格式错误');
+      } finally {
+        setScanBusy(false);
+      }
+    },
+    [],
+  );
+
+  const codeScanner = useCodeScanner({
+    codeTypes: ['qr'],
+    onCodeScanned: scanBusy ? () => {} : handleBarCodeScanned,
+  });
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <View
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    >
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backBtn}
+        >
           <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>扫码登录</Text>
+        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
+          扫码登录
+        </Text>
         <View style={{ width: 40 }} />
       </View>
 
-      {hasCameraPermission === true ? (
+      {hasCameraPermission === true && device ? (
         <>
-          <CameraView
-            onBarcodeScanned={scanBusy ? undefined : handleBarCodeScanned}
+          <Camera
             style={StyleSheet.absoluteFillObject}
-            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+            device={device}
+            isActive={hasCameraPermission}
+            codeScanner={codeScanner}
           />
           <View style={styles.overlay}>
             <View style={styles.frame} />
@@ -177,7 +229,9 @@ export function ScanLoginScreen({ navigation }: ScanLoginScreenProps) {
         </>
       ) : hasCameraPermission === false ? (
         <View style={styles.noPermission}>
-          <Text style={{ color: theme.colors.textSecondary }}>需要相机权限</Text>
+          <Text style={{ color: theme.colors.textSecondary }}>
+            需要相机权限
+          </Text>
         </View>
       ) : (
         <View style={styles.loading}>

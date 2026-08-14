@@ -13,7 +13,6 @@
     "ios": "expo run:ios"
   },
   "devDependencies": {
-    "@tailwindcss/typography": "^0.5.19",
     "babel-plugin-module-resolver": "^5.0.3",
     "concurrently": "^10.0.3",
     "vite-plugin-pwa": "^1.2.0",

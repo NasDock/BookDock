@@ -72,7 +72,7 @@ const handlePlusUnauthorized = async () => {
 
 plusRequest.interceptors.response.use(
   async (response) => {
-    // 直接返回响应数据，统一与 fetch API 的行为
+    // 直接返回响应数据,统一与 fetch API 的行为
     const data = response.data;
     if (
       hasPlusAuthHeader(response.config?.headers) &&
@@ -109,10 +109,8 @@ export interface LoginDto {
 }
 
 // --- Payment DTO Types ---
-// 补回于 2026-08-12：这些类型在 08ce0a6 重写 plus.ts 时被误删，导致
-// MemberBenefitsScreen / MemberDetailScreen 引用的 plus* 支付接口全部报
-// "is not a function"。后端仍是 AudioDock 共享 Plus 服务
-// (https://www.audiodock.cn/api)。
+// 这些接口由 AudioDock 共享 Plus 服务提供;BookDock server 没有 payment 模块。
+// 与 AudioDock packages/services/src/plus.ts 保持一致。
 
 export interface CreatePaymentDto {
   userId: string;
@@ -165,10 +163,8 @@ export interface VipCurrentLowestPricePlan {
 }
 
 /**
- * 后端 /vip/current-lowest-price 返回结构：每个套餐是嵌套的 plan 对象，
- * 不是平铺的数字。Fix 2026-08-12：之前误写成平铺 number，导致前端拿到
- * 后运算 basePrice = [object Object] → finalPrice = NaN → 创建订单失败。
- * 与 AudioDock packages/services/src/plus.ts:189 对齐。
+ * 后端 /vip/current-lowest-price 返回结构:每个套餐是嵌套的 plan 对象,
+ * 不是平铺的数字。
  */
 export interface VipCurrentLowestPriceData {
   activityId: string | null;
@@ -198,12 +194,20 @@ export type ScanLoginSessionStatus = 'PENDING' | 'CLAIMED' | 'CONFIRMED' | 'CONS
 export interface ScanLoginClaimPayload {
   deviceName: string;
   deviceType: string;
+  /** 兼容 mobile 版本 */
+  nativeAuth?: any | null;
+  /** 兼容 mobile 版本 */
+  plusAuth?: { token: string; userId: string | number } | null;
+  /** 兼容 mobile 版本 */
+  sourceBundles?: any[];
 }
 
 export interface ScanLoginConfirmResult {
   success: boolean;
   token?: string;
   userId?: string;
+  /** 兼容 mobile 版本 */
+  plusAuth?: { token: string; userId: string | number };
 }
 
 export interface VipStatusResponse {
@@ -247,40 +251,40 @@ export interface ISuccessResponse<T> {
 /**
  * AuthController_sendCode: Send login code to phone
  */
-export const plusSendCode = async (data: SendCodeDto) => {
-  return plusRequest.post<ISuccessResponse<any>>('/auth/send-code', data);
+export const plusSendCode = async (data: SendCodeDto): Promise<ISuccessResponse<any>> => {
+  const res = await plusRequest.post<ISuccessResponse<any>>('/auth/send-code', data);
+  return res as unknown as ISuccessResponse<any>;
 };
 
 /**
  * AuthController_login: Login with phone and code
  */
-export const plusLogin = async (data: LoginDto) => {
-  return plusRequest.post<ISuccessResponse<{ token: string; userId: string }>>('/auth/login', data);
+export const plusLogin = async (data: LoginDto): Promise<ISuccessResponse<{ token: string; userId: string }>> => {
+  const res = await plusRequest.post<ISuccessResponse<{ token: string; userId: string }>>('/auth/login', data);
+  return res as unknown as ISuccessResponse<{ token: string; userId: string }>;
 };
 
 /**
  * UserController_getMe: Get current user profile
  */
-export const plusGetMe = async (userId: string) => {
-  return plusRequest.get<ISuccessResponse<any>>('/users/me', { params: { userId } });
+export const plusGetMe = async (userId: string): Promise<ISuccessResponse<any>> => {
+  const res = await plusRequest.get<ISuccessResponse<any>>('/users/me', { params: { userId } });
+  return res as unknown as ISuccessResponse<any>;
 };
 
 /**
  * VipController_status: Get VIP status
  */
-export const plusGetVipStatus = async (userId: string) => {
-  return plusRequest.get<ISuccessResponse<VipStatusResponse>>('/vip/status', { params: { userId } });
+export const plusGetVipStatus = async (userId: string): Promise<ISuccessResponse<VipStatusResponse>> => {
+  const res = await plusRequest.get<ISuccessResponse<VipStatusResponse>>('/vip/status', { params: { userId } });
+  return res as unknown as ISuccessResponse<VipStatusResponse>;
 };
 
 // --- VIP Payment / Coupon API ---
-// 补回于 2026-08-12：见上文 DTO Types 注释。这些接口是 AudioDock 共享 Plus
-// 服务提供的；BookDock server 没有 payment 模块。
-//
-// 注意：上面 plusRequest 的 response interceptor 已经 `return data`
-// （unwrapping AxiosResponse），所以这里必须显式 `await` 后取 `.data`，
-// 否则会被 axios 类型欺骗返回 AxiosResponse。返回类型直接写 envelope 内层
-// 类型，调用方按 `{code, message, data: T}` 使用（与本文件 sendCode / login
-// 等保持一致）。
+// 注意:上面 plusRequest 的 response interceptor 已经 `return data`
+// (unwrapping AxiosResponse),所以这里必须显式 `await` 后取 `.data`,
+// 否则会被 axios 类型欺骗返回 AxiosResponse。
+// 正确做法:直接返回 res(已经是 envelope),让调用方按 `{code, message, data: T}` 使用。
 
 /**
  * 创建会员 / 积分 支付订单
@@ -288,13 +292,11 @@ export const plusGetVipStatus = async (userId: string) => {
  */
 export const plusCreateVipPayment = async (data: CreatePaymentDto): Promise<ISuccessResponse<CreatePaymentResult>> => {
   const res = await plusRequest.post('/payment/create', data);
-  // res 已经是 envelope（plusRequest.interceptors.response 已 unwrap AxiosResponse.data），
-  // 不能再多取一层 .data — 那是 envelope 内层的 data 字段，会让 priceRes.code 这种直接读到 undefined。
   return res as unknown as ISuccessResponse<CreatePaymentResult>;
 };
 
 /**
- * 查询订单状态（轮询支付回调落地）
+ * 查询订单状态(轮询支付回调落地)
  * 后端: GET /payment/status?orderId=xxx
  */
 export const plusQueryPaymentStatus = async (orderId: string): Promise<ISuccessResponse<PaymentStatusResult>> => {
@@ -312,7 +314,7 @@ export const plusCancelOrder = async (orderId: string): Promise<ISuccessResponse
 };
 
 /**
- * 获取当前会员最低价（活动价 / 限时优惠）
+ * 获取当前会员最低价(活动价 / 限时优惠)
  * 后端: GET /vip/current-lowest-price
  */
 export const plusGetCurrentLowestPrice = async (): Promise<ISuccessResponse<VipCurrentLowestPriceData>> => {
@@ -340,28 +342,34 @@ export const plusVerifyCoupon = async (code: string, userId: string): Promise<IS
 
 // --- Scan Login API ---
 
-export const createScanLoginSession = async () => {
-  return plusRequest.post<ISuccessResponse<ScanLoginSession>>('/auth/scan-login');
+export const createScanLoginSession = async (): Promise<ISuccessResponse<ScanLoginSession>> => {
+  const res = await plusRequest.post<ISuccessResponse<ScanLoginSession>>('/auth/scan-login');
+  return res as unknown as ISuccessResponse<ScanLoginSession>;
 };
 
-export const getScanLoginSession = async (sessionId: string) => {
-  return plusRequest.get<ISuccessResponse<ScanLoginSession>>(`/auth/scan-login/${sessionId}`);
+export const getScanLoginSession = async (sessionId: string): Promise<ISuccessResponse<ScanLoginSession>> => {
+  const res = await plusRequest.get<ISuccessResponse<ScanLoginSession>>(`/auth/scan-login/${sessionId}`);
+  return res as unknown as ISuccessResponse<ScanLoginSession>;
 };
 
-export const claimScanLoginSession = async (sessionId: string, payload: ScanLoginClaimPayload) => {
-  return plusRequest.post<ISuccessResponse<ScanLoginSession>>(`/auth/scan-login/${sessionId}/claim`, payload);
+export const claimScanLoginSession = async (sessionId: string, payload: ScanLoginClaimPayload): Promise<ISuccessResponse<ScanLoginSession>> => {
+  const res = await plusRequest.post<ISuccessResponse<ScanLoginSession>>(`/auth/scan-login/${sessionId}/claim`, payload);
+  return res as unknown as ISuccessResponse<ScanLoginSession>;
 };
 
-export const confirmScanLoginSession = async (sessionId: string) => {
-  return plusRequest.post<ISuccessResponse<ScanLoginConfirmResult>>(`/auth/scan-login/${sessionId}/confirm`);
+export const confirmScanLoginSession = async (sessionId: string): Promise<ISuccessResponse<ScanLoginConfirmResult>> => {
+  const res = await plusRequest.post<ISuccessResponse<ScanLoginConfirmResult>>(`/auth/scan-login/${sessionId}/confirm`);
+  return res as unknown as ISuccessResponse<ScanLoginConfirmResult>;
 };
 
-export const consumeScanLoginSession = async (sessionId: string) => {
-  return plusRequest.post<ISuccessResponse<ScanLoginSession>>(`/auth/scan-login/${sessionId}/consume`);
+export const consumeScanLoginSession = async (sessionId: string): Promise<ISuccessResponse<ScanLoginSession>> => {
+  const res = await plusRequest.post<ISuccessResponse<ScanLoginSession>>(`/auth/scan-login/${sessionId}/consume`);
+  return res as unknown as ISuccessResponse<ScanLoginSession>;
 };
 
-export const reportScanLoginResult = async (sessionId: string, result: { success: boolean; token?: string; userId?: string }) => {
-  return plusRequest.post<ISuccessResponse<any>>(`/auth/scan-login/${sessionId}/result`, result);
+export const reportScanLoginResult = async (sessionId: string, result: { success: boolean; token?: string; userId?: string; error?: string }): Promise<ISuccessResponse<any>> => {
+  const res = await plusRequest.post<ISuccessResponse<any>>(`/auth/scan-login/${sessionId}/result`, result);
+  return res as unknown as ISuccessResponse<any>;
 };
 
 export const subscribeScanLoginSession = (sessionId: string, onUpdate: (session: ScanLoginSession) => void) => {
@@ -369,9 +377,9 @@ export const subscribeScanLoginSession = (sessionId: string, onUpdate: (session:
   const interval = setInterval(async () => {
     try {
       const res = await getScanLoginSession(sessionId);
-      if (res.data?.data) {
-        onUpdate(res.data.data);
-        if (['CONSUMED', 'EXPIRED'].includes(res.data.data.status)) {
+      if (res.data) {
+        onUpdate(res.data);
+        if (['CONSUMED', 'EXPIRED'].includes(res.data.status)) {
           clearInterval(interval);
         }
       }
@@ -383,8 +391,9 @@ export const subscribeScanLoginSession = (sessionId: string, onUpdate: (session:
   return () => clearInterval(interval);
 };
 
-export const reportScanLoginResultViaSocket = async (sessionId: string, result: { success: boolean; token?: string; userId?: string }) => {
-  return plusRequest.post<ISuccessResponse<any>>(`/auth/scan-login/${sessionId}/result`, result);
+export const reportScanLoginResultViaSocket = async (sessionId: string, result: { success: boolean; token?: string; userId?: string; error?: string }): Promise<ISuccessResponse<any>> => {
+  const res = await plusRequest.post<ISuccessResponse<any>>(`/auth/scan-login/${sessionId}/result`, result);
+  return res as unknown as ISuccessResponse<any>;
 };
 
 /**
@@ -392,16 +401,18 @@ export const reportScanLoginResultViaSocket = async (sessionId: string, result: 
  */
 export const participateInternalTest = async (
   data: ParticipateInternalTestDto,
-) => {
-  return plusRequest.post<ISuccessResponse<ParticipateInternalTestResponse>>(
+): Promise<ISuccessResponse<ParticipateInternalTestResponse>> => {
+  const res = await plusRequest.post<ISuccessResponse<ParticipateInternalTestResponse>>(
     '/users/internal-test-codes/participate',
     data,
   );
+  return res as unknown as ISuccessResponse<ParticipateInternalTestResponse>;
 };
 
 /**
  * 删除当前会员账户
  */
-export const deletePlusMe = async () => {
-  return plusRequest.delete<ISuccessResponse<DeletePlusMeResponse>>('/users/me');
+export const deletePlusMe = async (): Promise<ISuccessResponse<DeletePlusMeResponse>> => {
+  const res = await plusRequest.delete<ISuccessResponse<DeletePlusMeResponse>>('/users/me');
+  return res as unknown as ISuccessResponse<DeletePlusMeResponse>;
 };

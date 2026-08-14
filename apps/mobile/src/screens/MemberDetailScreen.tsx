@@ -1,11 +1,23 @@
+/**
+ * MemberDetailScreen — mobile2 版
+ *
+ * 1:1 复刻 mobile 旧版，替换：
+ * - @expo/vector-icons/Ionicons → react-native-vector-icons/Ionicons
+ * - SafeAreaView → View（mobile2 不用 react-native-safe-area-context）
+ *
+ * 行为：
+ * - 显示会员等级 / 到期时间 / 4 项特权 grid
+ * - iOS 不开放支付（isMembershipPurchaseAvailable() === false）时整块续费/升级区隐藏
+ * - 非 VIP 用户进入这里时跳 MemberBenefits（Android）或 Settings（iOS）
+ * - 退出会员账号 → clearPlusAuth + 跳 MemberLogin
+ */
 import React, { useEffect, useState } from 'react';
 import { View, Text, Platform, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { removePlusToken } from '../services/plus';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons } from '@expo/vector-icons';
 import { isMembershipPurchaseAvailable } from '../utils/membershipGate';
 
 export function MemberDetailScreen({ navigation }: any) {
@@ -49,7 +61,7 @@ export function MemberDetailScreen({ navigation }: any) {
   const levelGradient = isLifetime ? ['#a855f7', '#ec4899'] : isYear ? ['#f59e0b', '#ea580c'] : ['#9ca3af', '#6b7280'];
 
   return (
-    <SafeAreaView edges={['left', 'right']} style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Member Card */}
         <View style={[styles.memberCard, { backgroundColor: levelGradient[0] }]}>
@@ -113,7 +125,7 @@ export function MemberDetailScreen({ navigation }: any) {
           <Text style={styles.logoutBtnText}>退出会员账号</Text>
         </TouchableOpacity>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 

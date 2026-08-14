@@ -1,9 +1,10 @@
 /**
  * TTSMiniPlayer — Bottom-fixed mini player for TTS audiobook.
  * Shows when user minimizes the TTSScreen or navigates away while playing.
+ * mobile2 版本：去掉 @expo/vector-icons,改用 react-native-vector-icons。
  */
 
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useCallback, useEffect, useMemo, useState } from 'react';

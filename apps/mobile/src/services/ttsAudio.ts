@@ -1,8 +1,9 @@
 /**
  * TTS Audio Service — Shared audio synthesis logic for TTSScreen and MiniPlayer.
+ * 直接复制自 mobile/src/services/ttsAudio.ts,无 expo 依赖。
  */
 
-import { getApiClient, Paragraph } from "@bookdock/api-client";
+import { getApiClient, type Paragraph } from "@bookdock/api-client";
 import TrackPlayer from "react-native-track-player";
 
 const TTS_CHUNK_MAX = 2500;

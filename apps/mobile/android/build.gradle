@@ -1,56 +1,21 @@
-// Top-level build file where you can add configuration options common to all sub-projects/modules.
-
 buildscript {
     ext {
-        buildToolsVersion = findProperty('android.buildToolsVersion') ?: '35.0.0'
-        minSdkVersion = Integer.parseInt(findProperty('android.minSdkVersion') ?: '24')
-        compileSdkVersion = Integer.parseInt(findProperty('android.compileSdkVersion') ?: '35')
-        targetSdkVersion = Integer.parseInt(findProperty('android.targetSdkVersion') ?: '33')
-        kotlinVersion = findProperty('android.kotlinVersion') ?: '1.9.25'
-
-        ndkVersion = "26.1.10909125"
+        buildToolsVersion = "36.0.0"
+        minSdkVersion = 24
+        compileSdkVersion = 36
+        targetSdkVersion = 36
+        ndkVersion = "27.1.12297006"
+        kotlinVersion = "2.1.20"
     }
     repositories {
         google()
         mavenCentral()
     }
     dependencies {
-        classpath('com.android.tools.build:gradle')
-        classpath('com.facebook.react:react-native-gradle-plugin')
-        classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
+        classpath("com.android.tools.build:gradle")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
     }
 }
 
 apply plugin: "com.facebook.react.rootproject"
-
-allprojects {
-    repositories {
-        maven {
-            // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
-            url(new File(['node', '--print', "require.resolve('react-native/package.json')"].execute(null, rootDir).text.trim(), '../android'))
-        }
-        maven {
-            // Android JSC is installed from npm
-            url(new File(['node', '--print', "require.resolve('jsc-android/package.json', { paths: [require.resolve('react-native/package.json')] })"].execute(null, rootDir).text.trim(), '../dist'))
-        }
-
-        google()
-        mavenCentral()
-        maven { url 'https://www.jitpack.io' }
-
-        // 移除 @react-native/gradle-plugin 等程序化注入的 oss.sonatype.org 快照仓库与已停用的 jcenter。
-        // oss.sonatype.org 已下线、HEAD 返回 504；Gradle 8 遇到 5xx 会对该仓库硬失败且不回退到
-        // mavenCentral/google，导致 kotlin-stdlib 等依赖解析失败、整包构建中断。
-        // `all { }` 对当前已存在及后续（插件运行时）新增的仓库均生效，故能拦截注入式仓库。
-        // 注意：不得移除 repo1.maven.org / repo.maven.apache.org —— 那是 mavenCentral() 本体。
-        all { ArtifactRepository repo ->
-            if (repo instanceof MavenArtifactRepository) {
-                def u = repo.url.toString()
-                if (u.startsWith('https://oss.sonatype.org') || u.startsWith('http://oss.sonatype.org') ||
-                    u.startsWith('https://jcenter.bintray.com') || u.startsWith('http://jcenter.bintray.com')) {
-                    remove repo
-                }
-            }
-        }
-    }
-}

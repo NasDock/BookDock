@@ -1,3 +1,11 @@
+/**
+ * CollectionDetailScreen — mobile2 (1:1 移植自 mobile CollectionDetailScreen.tsx)
+ *
+ * 适配点（mobile → mobile2）:
+ *   1. @expo/vector-icons → react-native-vector-icons/Ionicons
+ *   2. expo-linear-gradient → react-native-linear-gradient（API 几乎一致）
+ *   3. default export → named export（对齐 mobile2 screens/index.ts 现有导出口径）
+ */
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
@@ -11,8 +19,8 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import LinearGradient from 'react-native-linear-gradient';
 import { useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { getCoverImageUrl } from '../services/api';
@@ -155,7 +163,7 @@ export function CollectionDetailScreen() {
                     />
                   ) : (
                     <LinearGradient
-                      colors={getBookGradient(book.title) as [string, string]}
+                      colors={getBookGradient(book.title)}
                       style={styles.coverImage}
                     >
                       <Text style={styles.coverLetter}>{book.title.charAt(0)}</Text>
@@ -200,7 +208,8 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: spacing.md,
-      paddingTop: spacing.lg,
+      // 对齐 StatsScreen 的 header paddingTop (xl + 8),文本离 status bar 远一点。
+      paddingTop: spacing.xl + 8,
       paddingBottom: spacing.md,
     },
     backButton: {

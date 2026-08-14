@@ -1,6 +1,4 @@
 <resources>
-  <color name="splashscreen_background">#ffffff</color>
-  <color name="iconBackground">#ffffff</color>
-  <color name="colorPrimary">#023c69</color>
-  <color name="colorPrimaryDark">#ffffff</color>
+    <!-- Android 8.0+ adaptive icon 背景色 (mobile2 logo 配白色底) -->
+    <color name="ic_launcher_background">#FFFFFF</color>
 </resources>

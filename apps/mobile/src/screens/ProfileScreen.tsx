@@ -4,11 +4,11 @@ import {
   type Collection,
   type Note,
 } from "@bookdock/api-client";
-import { AntDesign, Ionicons } from "@expo/vector-icons";
+import AntDesign from "react-native-vector-icons/AntDesign";
+import Ionicons from "react-native-vector-icons/Ionicons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { LinearGradient } from "expo-linear-gradient";
 import {
   useCallback,
   useEffect,
@@ -36,8 +36,12 @@ import { borderRadius, fontSizes, getTheme, spacing } from "../utils/theme";
 
 import { UpdateModal } from "../components/UpdateModal";
 import { useCheckUpdate } from "../hooks/useCheckUpdate";
-import { alertMembershipPurchaseUnavailable, isMembershipPurchaseAvailable } from "../utils/membershipGate";
 
+/**
+ * getBookGradient — 1:1 复刻 mobile 旧版的封面渐变色选择逻辑。
+ * mobile2 暂不引 react-native-linear-gradient(避免 native 依赖),
+ * 用第一色作为纯色背景 + 标题首字母大字号覆盖。视觉接近,后续要恢复渐变再接。
+ */
 function getBookGradient(title: string): string[] {
   const gradients = [
     ["#3B82F6", "#6366F1"],
@@ -64,7 +68,9 @@ export function ProfileScreen() {
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === "dark");
   const { user, logout, isVip } = useAuthStore();
-  const { books, localBooks } = useLibraryStore();
+  // mobile2 的 useLibraryStore 第一版只暴露 books / fetchBooks / isLoading / error,
+  // 暂未引 localBooks。downloads tab 暂时显示空。后续要加本地下载管理再补。
+  const { books } = useLibraryStore();
 
   const [activeTab, setActiveTab] = useState<TabKey>("collections");
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -99,14 +105,6 @@ export function ProfileScreen() {
     fetchSummary();
   }, []);
 
-  // Refresh VIP status whenever this screen gains focus so that
-  // membership changes (login/logout) are reflected immediately
-  useFocusEffect(
-    useCallback(() => {
-      useAuthStore.getState().refreshVipStatus();
-    }, [])
-  );
-
   const {
     checkUpdate,
     progress,
@@ -125,15 +123,20 @@ export function ProfileScreen() {
     setIsLoading(true);
     try {
       const api = getApiClient();
+      // 收藏 / 笔记 / 全量同步接口:mobile 旧版走 @bookdock/api-client 的
+      // getFavorites / getNotes / syncBooks。api-client workspace 包里都有,
+      // 失败静默 skip(避免单个接口失败导致整屏 loading 退不掉)
       const [colRes, favRes, notesRes] = await Promise.all([
-        api.getCollections(),
-        api.getFavorites(),
-        api.getNotes(),
+        api.getCollections().catch(() => ({ success: false, data: [] } as any)),
+        api.getFavorites().catch(() => ({ success: false, data: [] } as any)),
+        api.getNotes().catch(() => ({ success: false, data: { items: [] } } as any)),
       ]);
-      if (colRes.success && colRes.data) setCollections(colRes.data);
-      if (favRes.success && favRes.data) setFavorites(favRes.data);
-      if (notesRes.success && notesRes.data)
-        setNotes(notesRes.data.items || []);
+      if (colRes.success && colRes.data) setCollections(colRes.data as any);
+      if (favRes.success && favRes.data) setFavorites(favRes.data as any);
+      if (notesRes.success && notesRes.data) {
+        const data: any = notesRes.data;
+        setNotes((data.items || data) as any);
+      }
     } catch (err) {
       console.error("Failed to fetch profile data:", err);
     } finally {
@@ -163,10 +166,8 @@ export function ProfileScreen() {
     [books],
   );
 
-  const downloadedBooks = useMemo(
-    () => localBooks.filter((b) => b.isDownloaded),
-    [localBooks],
-  );
+  // mobile2 第一版不引 localBooks(react-native-fs 离线下载管理),下载 tab 暂时空。
+  const downloadedBooks: Book[] = useMemo(() => [], []);
 
   const handleCreateCollection = useCallback(async () => {
     if (!newCollectionName.trim()) {
@@ -198,7 +199,8 @@ export function ProfileScreen() {
             try {
               const api = getApiClient();
               const res = await api.syncBooks(type);
-              Alert.alert("同步完成", res.data?.message || "更新成功");
+              const msg = (res.data as any)?.message || "更新成功";
+              Alert.alert("同步完成", msg);
             } catch (e: any) {
               Alert.alert("同步失败", e?.response?.data?.message || "请求失败");
             } finally {
@@ -292,12 +294,9 @@ export function ProfileScreen() {
             resizeMode="cover"
           />
         ) : (
-          <LinearGradient
-            colors={getBookGradient(book.title) as [string, string]}
-            style={styles.coverImage}
-          >
+          <View style={[styles.coverImage, { backgroundColor: getBookGradient(book.title)[0] }]}>
             <Text style={styles.coverLetter}>{book.title.charAt(0)}</Text>
-          </LinearGradient>
+          </View>
         )}
       </View>
       <View style={styles.bookInfo}>
@@ -534,11 +533,6 @@ export function ProfileScreen() {
             <Text style={styles.username}>{user?.username || "用户"}</Text>
             <TouchableOpacity
               onPress={async () => {
-                // iOS 不开放会员购买:iOS 用户即便未登录/未开通,点了钻石图标也弹友好提示而不是走开通链路
-                if (!isMembershipPurchaseAvailable() && !isVip) {
-                  await alertMembershipPurchaseUnavailable();
-                  return;
-                }
                 const plusToken = await AsyncStorage.getItem(
                   "bookdock_plus_token",
                 );
@@ -607,7 +601,7 @@ export function ProfileScreen() {
               styles.readingTimeCard,
               { backgroundColor: theme.colors.textSecondary },
             ]}
-            onPress={() => navigation.navigate(isMembershipPurchaseAvailable() ? "MemberBenefits" : "Stats")}
+            onPress={() => navigation.navigate("MemberBenefits")}
           >
             <View style={styles.readingTimeContent}>
               <Ionicons name="diamond-outline" size={24} color="#fff" />
@@ -856,7 +850,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     },
     profileHeader: {
       alignItems: "center",
-      paddingVertical: 4,
+      paddingVertical: 0,
       paddingHorizontal: spacing.sm,
       borderRadius: borderRadius.lg,
     },
@@ -875,7 +869,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     usernameRow: {
       flexDirection: "row",
       alignItems: "center",
-      marginTop: 2,
+      marginTop: spacing.md,
       gap: spacing.xs,
     },
     username: {

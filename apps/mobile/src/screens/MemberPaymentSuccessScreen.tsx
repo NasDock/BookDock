@@ -1,6 +1,18 @@
+/**
+ * MemberPaymentSuccessScreen — mobile2 版
+ *
+ * 1:1 复刻 mobile 旧版，替换：
+ * - SafeAreaView → View（mobile2 不用 react-native-safe-area-context）
+ *
+ * 行为：
+ * - 支付成功后展示 3 秒倒计时 + 自动返回
+ * - 显示会员等级 + 有效期
+ * - 两个按钮：
+ *   1. "查看会员详情" → replace('MemberDetail') 看完整特权页
+ *   2. "返回书架" → getParent()?.goBack() 回到进 Settings 之前的屏（通常是 MainTab）
+ */
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -32,7 +44,7 @@ export function MemberPaymentSuccessScreen({ navigation }: any) {
   const levelName = vipUser?.level === 'lifetime' ? '永久卡' : vipUser?.level === 'year' ? '年卡' : '会员';
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <View style={styles.content}>
         {/* Success Icon */}
         <View style={[styles.successIcon, { backgroundColor: '#10b981' }]}>
@@ -76,7 +88,7 @@ export function MemberPaymentSuccessScreen({ navigation }: any) {
           </Text>
         )}
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 

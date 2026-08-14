@@ -1,3 +1,15 @@
+/**
+ * StatsScreen — mobile2 (1:1 移植自 mobile StatsScreen.tsx)
+ *
+ * 适配点（mobile → mobile2）:
+ *   1. @expo/vector-icons → react-native-vector-icons/Ionicons
+ *   2. default export → named export（对齐 mobile2 screens/index.ts 现有导出口径）
+ *
+ * 数据源（来自 @bookdock/api-client 共享包）:
+ *   - api.getReadingTimeSummary() → 累计总时长
+ *   - api.getPeriodReadingStats(period) → 周/月/年阅读分布
+ *   - api.getDailyReadingHours() → 24 小时分布
+ */
 import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View,
@@ -10,7 +22,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { getApiClient, type PeriodReadingStats, type DailyHourStats } from '@bookdock/api-client';
 import { useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
@@ -35,7 +47,7 @@ function formatDuration(secs: number): string {
   return `${hours}小时${mins}分钟`;
 }
 
-export default function StatsScreen() {
+export function StatsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
@@ -140,7 +152,7 @@ export default function StatsScreen() {
   // other periods keep a fixed 28pt column and rely on horizontal scrolling.
   const chartViewportWidth = windowWidth - spacing.md * 2 - spacing.lg * 2;
   const weekColumnWidth = useMemo(() => {
-    if (chartViewportWidth <= 0 || 7 === 0) return 0;
+    if (chartViewportWidth <= 0) return 0;
     return (chartViewportWidth - spacing.xs * 2 - 6 * 6) / 7;
   }, [chartViewportWidth]);
 

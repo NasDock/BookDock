@@ -1,20 +1,22 @@
-<resources xmlns:tools="http://schemas.android.com/tools">
-  <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar">
-    <item name="android:textColor">@android:color/black</item>
-    <item name="android:editTextStyle">@style/ResetEditText</item>
-    <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
-    <item name="colorPrimary">@color/colorPrimary</item>
-    <item name="android:statusBarColor">#ffffff</item>
-    <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="28">shortEdges</item>
-  </style>
-  <style name="ResetEditText" parent="@android:style/Widget.EditText">
-    <item name="android:padding">0dp</item>
-    <item name="android:textColorHint">#c8c8c8</item>
-    <item name="android:textColor">@android:color/black</item>
-  </style>
-  <style name="Theme.App.SplashScreen" parent="Theme.SplashScreen">
-    <item name="windowSplashScreenBackground">@color/splashscreen_background</item>
-    <item name="windowSplashScreenAnimatedIcon">@drawable/splashscreen_logo</item>
-    <item name="postSplashScreenTheme">@style/AppTheme</item>
-  </style>
+<resources>
+
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <!-- Customize your theme here. -->
+        <item name="android:editTextBackground">@drawable/rn_edit_text_material</item>
+        <!--
+            2026-08-13: 显式让状态栏 / 导航栏透明,改由 App 顶层 View 的 backgroundColor
+            铺底。否则 RN 0.81 在 Android 12+ 默认 window-level 渲染 letterbox 黑条,
+            旋转到横屏时"距离摄像头那侧"会出现不可控的黑色横条。
+            - android:statusBarColor / navigationBarColor 已经从 Android 21 (5.0) 起
+              就是 Window 全局属性,必须用 @android:color/transparent 才能被 JS 层覆盖。
+            - android:windowDrawsSystemBarBackgrounds / windowLightStatusBar 让 RN
+              能动态控制状态栏文字颜色 (浅/深色 content)。
+        -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
 </resources>

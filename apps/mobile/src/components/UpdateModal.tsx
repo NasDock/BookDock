@@ -146,7 +146,7 @@ export const UpdateModal = ({
               </Text>
 
               <Text style={[styles.descText, { color: colors.textSecondary }]}>
-                更新正在系统下载管理器中下载，完成后请在通知栏中点击安装。
+                更新正在系统下载管理器中下载,完成后请在通知栏中点击安装。
               </Text>
 
               <TouchableOpacity

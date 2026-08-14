@@ -1,3 +1,17 @@
+/**
+ * BookDetailScreen — mobile2 (1:1 移植自 mobile BookDetailScreen.tsx)
+ *
+ * 适配点（mobile → mobile2）:
+ *   1. @expo/vector-icons → react-native-vector-icons/Ionicons
+ *   2. expo-linear-gradient → 纯色 <View> + 取 getBookGradient(title)[0]
+ *      (纯色替代视觉差异:封面从双色渐变降级为单色 + 大字号首字)
+ *   3. Screen 文件名跟 mobile 对齐: BookDetailsScreen → BookDetailScreen
+ *      (route name 仍为 'BookDetails',跟 navigation/types.ts 一致)
+ *
+ * 其余逻辑（封面懒加载、章节列表、收藏/书单 modal、横竖屏布局、
+ * 阅读进度条、笔记/作者跳转）跟 mobile 完全一致。
+ */
+
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
@@ -14,8 +28,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { useOrientation } from '../hooks/useOrientation';
@@ -210,7 +223,7 @@ export function BookDetailScreen() {
   const coverWidth = isLandscape ? 180 : 160;
   const coverHeight = coverWidth * 1.5;
 
-  // 渲染封面
+  // 渲染封面（mobile 用 LinearGradient,mobile2 降级为纯色 View + 首字大字）
   const renderCover = (width: number, height: number) => (
     <View style={[styles.coverContainer, { width, height }]}>
       {book.coverUrl ? (
@@ -220,14 +233,19 @@ export function BookDetailScreen() {
           resizeMode="cover"
         />
       ) : (
-        <LinearGradient
-          colors={getBookGradient(book.title) as [string, string]}
-          style={{ width, height, justifyContent: 'center', alignItems: 'center' }}
+        <View
+          style={{
+            width,
+            height,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: getBookGradient(book.title)[0],
+          }}
         >
           <Text style={[styles.coverLetter, { fontSize: width * 0.3 }]}>
             {book.title.charAt(0)}
           </Text>
-        </LinearGradient>
+        </View>
       )}
     </View>
   );

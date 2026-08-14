@@ -1,7 +1,7 @@
 import type { Book, Author } from '@bookdock/api-client';
-import type { EbookSource } from '../services/api';
 
-// Root stack param list
+// Root stack param list — 与 mobile/src/navigation/types.ts 字段一致
+// 后续每迁一个页面,把对应 component 接到 RootNavigator 的 <Stack.Screen> 上即可。
 export type RootStackParamList = {
   Main: undefined;
   Reader: { book: Book };
@@ -21,6 +21,7 @@ export type RootStackParamList = {
   CollectionDetail: { collectionId: string };
   Notes: { bookId?: string; author?: string };
   Stats: undefined;
+  Search: undefined;
 };
 
 // Tab navigator param list

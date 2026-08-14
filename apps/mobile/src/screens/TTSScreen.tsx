@@ -14,7 +14,8 @@ import {
   TTSProvider,
   TTSVoice,
 } from "@bookdock/api-client";
-import { Ionicons } from "@expo/vector-icons";
+// mobile2:去掉 @expo/vector-icons,改用 react-native-vector-icons (P4 复制)
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -26,8 +27,8 @@ import {
   Image,
   Modal,
   Pressable,
-  SafeAreaView,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -120,6 +121,9 @@ export function TTSScreen() {
   const theme = getTheme(actualTheme === "dark");
   const ttsStore = useTTSStore();
 
+  // mobile2:RN 0.81 没有 SafeAreaView,用 StatusBar.currentHeight 推 top inset
+  const insets = { top: StatusBar.currentHeight || 24, bottom: 0 };
+
   // Derived state from store (single source of truth)
   const paragraphs = ttsStore.paragraphs;
   const chapterTitle = ttsStore.chapterTitle;
@@ -188,10 +192,10 @@ export function TTSScreen() {
   // Use ttsStore state for UI to avoid flicker during paragraph transitions
   const isPlaying = ttsStore.state === "playing";
   const isPaused = ttsStore.state === "paused";
+  // mobile2: track-player v5 移除了 State.Connecting, 留 Buffering 一种。
   const isLoadingAudio =
     ttsStore.state === "loading" ||
-    playbackState === State.Connecting ||
-    playbackState === State.Buffering;
+    (playbackState as any)?.state === State.Buffering;
 
   const [paragraphProgress, setParagraphProgress] = useState(0);
   const [resumeOffsetMs, setResumeOffsetMs] = useState(0);
@@ -222,12 +226,7 @@ export function TTSScreen() {
             Capability.JumpForward,
             Capability.JumpBackward,
           ],
-          compactCapabilities: [
-            Capability.Play,
-            Capability.Pause,
-            Capability.SkipToNext,
-            Capability.SkipToPrevious,
-          ],
+          // mobile2: track-player v5 移除了 compactCapabilities 选项,新版 capabilities 全展开
           progressUpdateEventInterval: 1,
         });
         // Only reset if nothing is playing (avoid interrupting playback from mini player)
@@ -273,7 +272,7 @@ export function TTSScreen() {
         if (cancelled) return;
         const ps = (provRes.success && provRes.data?.providers) || [];
         setProviders(ps);
-        const enabledNames = ps.filter((p) => p.enabled).map((p) => p.name);
+        const enabledNames = ps.filter((p: any) => p.enabled).map((p: any) => p.name);
         const finalProvider = enabledNames.includes(provider)
           ? provider
           : enabledNames[0] || "edge";
@@ -346,7 +345,7 @@ export function TTSScreen() {
         if (cancelled) return;
         const vs = (vRes.success && vRes.data) || [];
         setVoices(vs);
-        if (!vs.find((v) => v.id === voiceId)) {
+        if (!vs.find((v: any) => v.id === voiceId)) {
           setVoiceId(vs[0]?.id || "");
         }
       } catch {
@@ -425,8 +424,8 @@ export function TTSScreen() {
   // ── TrackPlayer event: track changed (user clicked next/prev in system UI) ──
   useEffect(() => {
     const sub = TrackPlayer.addEventListener(
-      Event.PlaybackTrackChanged,
-      async (event) => {
+      Event.PlaybackActiveTrackChanged,
+      async (event: any) => {
         // event.nextTrack is the new track index
         // When user clicks "next" in system UI, we need to update currentParagraph
         if (event.nextTrack !== undefined && event.nextTrack !== null) {
@@ -1643,21 +1642,21 @@ export function TTSScreen() {
   // ── Render ───────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <SafeAreaView
-        style={[styles.container, { backgroundColor: theme.colors.background }]}
+      <View
+        style={[styles.container, { backgroundColor: theme.colors.background, paddingTop: insets.top }]}
       >
         <View style={styles.center}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={styles.muted}>加载听书内容…</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (loadError || !paragraphs.length) {
     return (
-      <SafeAreaView
-        style={[styles.container, { backgroundColor: theme.colors.background }]}
+      <View
+        style={[styles.container, { backgroundColor: theme.colors.background, paddingTop: insets.top }]}
       >
         <View style={styles.center}>
           <Ionicons
@@ -1673,15 +1672,15 @@ export function TTSScreen() {
             <Text style={styles.buttonText}>返回</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   // ── Wide Screen Layout (tablet/desktop) ──────────────────────────────
   if (isWideScreen) {
     return (
-      <SafeAreaView
-        style={[styles.container, { backgroundColor: theme.colors.background }]}
+      <View
+        style={[styles.container, { backgroundColor: theme.colors.background, paddingTop: insets.top }]}
       >
         {renderHeader()}
         <View style={styles.wideContainer}>
@@ -1702,15 +1701,15 @@ export function TTSScreen() {
           </View>
         </View>
         {renderModals()}
-      </SafeAreaView>
+      </View>
     );
   }
 
   // ── Mobile Layout: Controls View ───────────────────────────────────
   if (viewMode === "controls") {
     return (
-      <SafeAreaView
-        style={[styles.container, { backgroundColor: theme.colors.background }]}
+      <View
+        style={[styles.container, { backgroundColor: theme.colors.background, paddingTop: insets.top }]}
       >
         {renderHeader()}
         <ScrollView contentContainerStyle={styles.controlsContent}>
@@ -1720,14 +1719,14 @@ export function TTSScreen() {
         </ScrollView>
         {renderBottomBar()}
         {renderModals()}
-      </SafeAreaView>
+      </View>
     );
   }
 
   // ── Mobile Layout: Content View ────────────────────────────────────
   return (
-    <SafeAreaView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    <View
+      style={[styles.container, { backgroundColor: theme.colors.background, paddingTop: insets.top }]}
     >
       {renderHeader()}
       <View style={styles.contentViewContainer}>
@@ -1735,7 +1734,7 @@ export function TTSScreen() {
         {renderBottomBar()}
       </View>
       {renderModals()}
-    </SafeAreaView>
+    </View>
   );
 }
 

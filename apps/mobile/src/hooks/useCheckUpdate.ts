@@ -87,7 +87,7 @@ export const useCheckUpdate = () => {
       const downloadUrl = androidFile.url;
       console.log(`Found APK from audiodock: ${downloadUrl}`);
 
-      // 2. 保留从 GitHub 获取更新内容（release notes）
+      // 2. 保留从 GitHub 获取更新内容(release notes)
       let body = '建议立即更新体验新功能';
       try {
         const tagName = `v${remoteVersion}`;
@@ -98,7 +98,7 @@ export const useCheckUpdate = () => {
           body = githubData.body;
         }
       } catch (e) {
-        console.warn('从 GitHub 获取 release 说明失败，使用默认文案', e);
+        console.warn('从 GitHub 获取 release 说明失败,使用默认文案', e);
       }
 
       const localVersion = getLocalVersion();
@@ -125,7 +125,7 @@ export const useCheckUpdate = () => {
         // 检查本地是否已经下载过
         const exists = await checkLocalApkExists(downloadUrl);
         if (exists) {
-          setProgress(1); // 如果已存在，直接标记进度为完成
+          setProgress(1); // 如果已存在,直接标记进度为完成
         } else {
           setProgress(0);
         }
@@ -176,7 +176,7 @@ export const useCheckUpdate = () => {
     setUpdateInfo(null);
   };
 
-  // 内部函数：调起系统下载管理器
+  // 内部函数:调起系统下载管理器
   const startSystemDownload = async (url: string) => {
     setIsUpdating(true);
     setProgress(0);
@@ -185,14 +185,14 @@ export const useCheckUpdate = () => {
       // 使用系统下载管理器
       await downloadWithSystemManager(url);
 
-      // 系统下载管理器调起后，标记为已开始
-      // 注意：系统下载是后台进行的，应用无法直接获取进度
+      // 系统下载管理器调起后,标记为已开始
+      // 注意:系统下载是后台进行的,应用无法直接获取进度
       setProgress(0.1); // 标记为已开始
 
       // 提示用户
       Alert.alert(
         '已开始下载',
-        '更新正在系统下载管理器中下载，完成后请在通知栏中点击安装。',
+        '更新正在系统下载管理器中下载,完成后请在通知栏中点击安装。',
         [{ text: '知道了', onPress: () => {
           setIsUpdating(false);
           setUpdateInfo(null); // 关闭弹窗
@@ -200,12 +200,12 @@ export const useCheckUpdate = () => {
       );
     } catch (e) {
       console.error('系统下载调起失败:', e);
-      Alert.alert('更新失败', '无法调起系统下载，请重试');
+      Alert.alert('更新失败', '无法调起系统下载,请重试');
       setIsUpdating(false);
     }
   };
 
-  // 返回：触发函数 + UI组件
+  // 返回:触发函数 + UI组件
   return {
     checkUpdate,
     progress,

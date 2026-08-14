@@ -1,3 +1,12 @@
+/**
+ * PlaybackService — track-player 后台播放服务 (mobile2)
+ * 直接复制自 mobile/src/services/playbackService.ts,无 expo 依赖。
+ *
+ * 注意:react-native-track-player 需要在 App.tsx 的 index.js 里注册这个 service,
+ * 通过 TrackPlayer.registerPlaybackService(() => require('./services/playbackService').PlaybackService)。
+ * mobile/src/index.js 里有这个注册,mobile2 等 TTSMiniPlayer / TTSScreen 迁过来时再加。
+ */
+
 import TrackPlayer, { Event, State } from 'react-native-track-player';
 
 export const PlaybackService = async function () {

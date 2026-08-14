@@ -11,7 +11,7 @@ import {
   Modal,
   Pressable,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useThemeStore, useAuthStore, useReaderStore, useTTSStore } from '../stores';
@@ -71,7 +71,7 @@ export function SettingsScreen() {
       } else {
         Alert.alert(
           '需要权限',
-          '请在设备设置中开启通知权限，以接收阅读提醒。'
+          '请在设备设置中开启通知权限,以接收阅读提醒。'
         );
       }
     } else {
@@ -93,7 +93,7 @@ export function SettingsScreen() {
   const handleClearCache = useCallback(async () => {
     Alert.alert(
       '清除缓存',
-      '这将清除所有缓存数据，包括已下载的书籍和阅读进度。此操作不可撤销。',
+      '这将清除所有缓存数据,包括已下载的书籍和阅读进度。此操作不可撤销。',
       [
         { text: '取消', style: 'cancel' },
         {
@@ -103,7 +103,7 @@ export function SettingsScreen() {
             try {
               const downloadedBooks = await fileSystemService.listDownloadedBooks();
               for (const file of downloadedBooks) {
-                const path = `${fileSystemService['booksDir']}${file}`;
+                const path = `${fileSystemService.booksDir}${file}`;
                 await fileSystemService.deleteBookFile(path);
               }
               Alert.alert('成功', '缓存已清除');
@@ -119,7 +119,7 @@ export function SettingsScreen() {
   const handleDeleteAccount = useCallback(() => {
     Alert.alert(
       '删除账户',
-      '此操作不可逆，您的所有数据将被永久删除。',
+      '此操作不可逆,您的所有数据将被永久删除。',
       [
         { text: '取消', style: 'cancel' },
         {
@@ -132,7 +132,7 @@ export function SettingsScreen() {
               await apiClient.deleteUser(user?.id || '');
               useAuthStore.getState().logout();
             } catch {
-              Alert.alert('错误', '删除账户失败，请联系客服');
+              Alert.alert('错误', '删除账户失败,请联系客服');
             } finally {
               setIsLoading(false);
             }
@@ -144,7 +144,7 @@ export function SettingsScreen() {
 
   const handleJoinInternalTest = useCallback(async () => {
     if (isVip) {
-      Alert.alert('已是内测用户', '您已经参与内测，无需重复申请');
+      Alert.alert('已是内测用户', '您已经参与内测,无需重复申请');
       return;
     }
 
@@ -168,9 +168,9 @@ export function SettingsScreen() {
         vipEndsAt: vipEndsAt.toISOString(),
       });
 
-      const payload = res.data?.data;
-      if (res.data?.code !== 200 || !payload?.ok) {
-        throw new Error(res.data?.message || '参与内测失败');
+      const payload = res.data;
+      if (res.code !== 200 || !payload?.ok) {
+        throw new Error(res.message || '参与内测失败');
       }
 
       await AsyncStorage.setItem('bookdock_vip_status', 'true');
@@ -186,12 +186,12 @@ export function SettingsScreen() {
       // 更新全局状态
       useAuthStore.setState({ isVip: true, vipTier: payload.vipTier || 'BASIC' });
 
-      Alert.alert('成功', '恭喜！您已成功参与内测，获得1个月会员体验');
+      Alert.alert('成功', '恭喜!您已成功参与内测,获得1个月会员体验');
     } catch (error) {
       console.error('参与内测失败:', error);
       Alert.alert(
         '失败',
-        error instanceof Error ? error.message : '参与内测失败，请稍后重试'
+        error instanceof Error ? error.message : '参与内测失败,请稍后重试'
       );
     } finally {
       setRedeemingInternalTest(false);

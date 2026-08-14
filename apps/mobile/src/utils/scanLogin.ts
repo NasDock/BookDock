@@ -4,7 +4,7 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { ScanLoginClaimPayload, ScanLoginConfirmResult } from "../services/plus";
+import type { ScanLoginClaimPayload } from "../services/plus";
 
 export async function collectMobileScanLoginPayload(): Promise<ScanLoginClaimPayload> {
   const plusToken = await AsyncStorage.getItem("bookdock_plus_token");
@@ -12,6 +12,7 @@ export async function collectMobileScanLoginPayload(): Promise<ScanLoginClaimPay
 
   return {
     deviceName: "Mobile Device",
+    deviceType: "mobile",
     nativeAuth: null,
     plusAuth:
       plusToken && plusUserId
@@ -24,7 +25,16 @@ export async function collectMobileScanLoginPayload(): Promise<ScanLoginClaimPay
   };
 }
 
-export async function applyMobileScanLoginResult(result: ScanLoginConfirmResult) {
+/**
+ * Apply scan-login result to local storage.
+ *
+ * Source devices (mobile/desktop) return a wide object (ScanLoginSession with plusAuth),
+ * target devices get a narrower ScanLoginConfirmResult. We only care about the plusAuth
+ * field in both cases, so accept any shape that has it.
+ */
+export async function applyMobileScanLoginResult(result: {
+  plusAuth?: { token: string; userId: string | number } | null;
+}) {
   if (result.plusAuth) {
     await AsyncStorage.setItem("bookdock_plus_token", result.plusAuth.token);
     await AsyncStorage.setItem("bookdock_plus_user_id", JSON.stringify(result.plusAuth.userId));

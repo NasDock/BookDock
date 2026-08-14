@@ -2,13 +2,12 @@
  * payments.ts
  *
  * 微信 / 支付宝支付模块抽象。
- * 设计参考 AudioDock `apps/mobile/src/services/payments.ts`,精简为 BookDock 实际需要的部分:
- * - 微信:走 react-native-wechat-lib NativeModule,只在 Android 上启用。
- * - 支付宝:暂未集成 SDK,仅保留函数形状便于以后接入 @uiw/react-native-alipay。
+ * 直接从 mobile/src/services/payments.ts 复制,mobile2 不依赖 expo,
+ * 但本文件本身只用 react-native 的 Linking + NativeModules,
+ * mobile2 无 expo-* 替换负担。
  *
- * 注意 (2026-08-12):
+ * 注意:
  * - iOS 端不开放支付功能,MemberBenefitsScreen 在 iOS 上不会调用本文件的支付函数。
- *   但本文件本身不强制 Platform 判断,由 UI 层(utils/membershipGate.ts)控制。
  * - WECHAT_APP_ID 是占位符,与 AudioDock 一致(`wx1234567890abcdef`)。
  *   真支付所需的 AppID 在后端 /payment/create 返回 wechatPay.appId,SDK 用返回的 appId register。
  */
@@ -57,8 +56,8 @@ export type WechatPayPayload = {
   timeStamp: string;
   sign: string;
   /**
-   * 可选冗余字段：与 ensureWeChatRegistered 的 appId 同源，
-   * payWithWeChat 内部实际不读这个字段（registerApp 已处理）。
+   * 可选冗余字段:与 ensureWeChatRegistered 的 appId 同源,
+   * payWithWeChat 内部实际不读这个字段(registerApp 已处理)。
    * 保留是因为部分调用方习惯把整个微信支付参数对象一锅端传进来。
    */
   appId?: string;
@@ -135,7 +134,6 @@ const getWeChatModule = (): WeChatModule => {
   console.log('[Pay][WeChat] module', {
     ok: !!mod,
     hasRegister: !!(mod as any)?.registerApp,
-    hasPay: !!(mod as any)?.pay,
   });
   if (!mod || !mod.registerApp) {
     throw new Error('微信支付模块不可用(已禁用或未集成)');
@@ -154,7 +152,7 @@ export const isWeChatModuleAvailable = (): boolean => {
 };
 
 /**
- * 在支付前调用 registerApp，把微信 SDK 绑定到指定 AppID。
+ * 在支付前调用 registerApp,把微信 SDK 绑定到指定 AppID。
  * 后端 /payment/create 返回的 wechatPay.appId 优先,WECHAT_APP_ID 是 fallback。
  */
 export const ensureWeChatRegistered = async (

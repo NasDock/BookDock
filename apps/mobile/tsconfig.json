@@ -1,19 +1,27 @@
 {
-  "extends": "../../tsconfig.json",
+  "extends": "@react-native/typescript-config/tsconfig.json",
   "compilerOptions": {
-    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      // 把 workspace 共享包指到 ambient stub，避免 packages/* 的源文件被 tsc 扫到
+      // （packages/ebook-reader/src/index.ts 用了 document/innerHTML 等 web 域 API，
+      //  mobile2 不需要检查它的源码，运行时由 metro bundle 自己处理）
+      "@bookdock/api-client": ["src/types/api-client-stub.d.ts"],
+      "@bookdock/ebook-reader": ["src/types/ebook-reader-stub.d.ts"],
+      "@bookdock/auth": ["src/types/empty-stub.d.ts"],
+      "@bookdock/tts": ["src/types/empty-stub.d.ts"],
+      "@bookdock/ui": ["src/types/empty-stub.d.ts"]
+    },
     "jsx": "react-native",
-    "moduleResolution": "bundler",
-    "allowSyntheticDefaultImports": true,
+    "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "noEmit": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    }
+    "isolatedModules": true,
+    "allowSyntheticDefaultImports": true,
+    "lib": ["es2022"]
   },
-  "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules", "babel.config.js", "metro.config.js", "jest.config.js"]
+  "include": ["src/**/*", "App.tsx", "index.js"],
+  "exclude": ["node_modules", "android", "ios", "babel.config.js", "metro.config.js", "../../packages"]
 }

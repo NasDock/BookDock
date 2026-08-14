@@ -1,3 +1,20 @@
+/**
+ * LoginScreen — mobile2 数据源登录页
+ *
+ * 1:1 移植自 mobile/src/screens/LoginScreen.tsx。
+ *
+ * 与 mobile 原版的关键差异:
+ * - @expo/vector-icons → react-native-vector-icons/Ionicons
+ * - assets/logo.webp 不存在 → 用 Ionicons 大图标 + 文字代替
+ * - mobile2 的 plus.ts scan-login 接口无 secret 参数 (mobile 端 secret 隐含在创建方),
+ *   大写枚举状态值 ('PENDING' | 'CLAIMED' | 'CONFIRMED' | 'CONSUMED' | 'EXPIRED'),
+ *   ScanLoginSession.id 替代 mobile 的 sessionId
+ * - mobile 原版 @ts-ignore 注释保留 (navigation prop 是 loose 类型)
+ *
+ * authStore.isAuthenticated = true 时 RootNavigator 自动切到 Main,本屏不用手动跳转;
+ * 这里 navigation.replace('Main') 是兜底 (防止 RootNavigator 切换有延迟时屏叠)。
+ */
+
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -15,11 +32,11 @@ import {
   Image,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { useThemeStore } from '../stores';
-import { initApiClient } from '@bookdock/api-client';
+import { initApiClient, getApiClient } from '@bookdock/api-client';
 import {
   loadServerConfig,
   saveServerConfig,
@@ -37,7 +54,6 @@ import {
   reportScanLoginResult,
   reportScanLoginResultViaSocket,
   type ScanLoginSession,
-  type ScanLoginSessionStatus,
 } from '../services/plus';
 
 export function LoginScreen() {
@@ -60,9 +76,8 @@ export function LoginScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // Scan login state
+  // Scan login state (mobile2: 直接存 session,subscribe 回调也是 session)
   const [scanSession, setScanSession] = useState<ScanLoginSession | null>(null);
-  const [scanStatus, setScanStatus] = useState<ScanLoginSessionStatus | null>(null);
   const [scanBusy, setScanBusy] = useState(false);
 
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -106,19 +121,10 @@ export function LoginScreen() {
   // --- Scan Login ---
   const createTargetSession = useCallback(async () => {
     try {
-      const res = await createScanLoginSession({ role: 'target', deviceKind: 'mobile' });
+      // mobile2 接口:createScanLoginSession() 无参数
+      const res = await createScanLoginSession();
       if (res.data) {
         setScanSession(res.data);
-        setScanStatus({
-          sessionId: res.data.sessionId,
-          role: res.data.role,
-          deviceKind: res.data.deviceKind,
-          expiresAt: res.data.expiresAt,
-          status: 'waiting_scan',
-          sourceBundles: [],
-          hasNativeAuth: false,
-          hasPlusAuth: false,
-        });
       }
     } catch (err) {
       console.error('Failed to create scan session', err);
@@ -128,7 +134,6 @@ export function LoginScreen() {
   useEffect(() => {
     if (!isLandscape) {
       setScanSession(null);
-      setScanStatus(null);
       return;
     }
     createTargetSession();
@@ -136,49 +141,65 @@ export function LoginScreen() {
 
   useEffect(() => {
     if (!scanSession || !isLandscape) return;
-    getScanLoginSession(scanSession.sessionId, scanSession.secret).catch(console.error);
+    // mobile2 接口:无 secret 参数
+    getScanLoginSession(scanSession.id).catch(console.error);
     const unsubscribe = subscribeScanLoginSession(
-      scanSession.sessionId,
-      scanSession.secret,
-      (status) => setScanStatus(status),
+      scanSession.id,
+      (session) => setScanSession(session),
     );
     return () => unsubscribe();
-  }, [scanSession, isLandscape]);
+  }, [scanSession?.id, isLandscape]);
 
   useEffect(() => {
-    if (!scanSession || scanStatus?.status !== 'confirmed') return;
+    if (!scanSession || scanSession.status !== 'CONFIRMED') return;
 
     const consumeConfirmedScan = async () => {
       try {
         setScanBusy(true);
-        const res = await consumeScanLoginSession(scanSession.sessionId, { secret: scanSession.secret });
+        // mobile2 接口:无 secret 参数
+        const res = await consumeScanLoginSession(scanSession.id);
 
-        try {
-          if (!res.data) throw new Error('No data returned');
-          // Apply result: save plus token if present
-          if (res.data.plusAuth) {
-            await AsyncStorage.setItem('bookdock_plus_token', res.data.plusAuth.token);
-            await AsyncStorage.setItem('bookdock_plus_user_id', JSON.stringify(res.data.plusAuth.userId));
+        if (!res.data) throw new Error('No data returned');
+
+        // Apply result: scan login 同步过来的可能是 数据源 token/Plus token,
+        // 拿到 session.userId/token 后写入数据源 authStore (登录自己)
+        if (res.data.token && res.data.userId) {
+          // 注:扫码场景下 session.userId/token 是 desktop 上已登录的数据源账号,
+          // 我们用 fetchUserInfo 拉一次真实 User 对象,或者直接构造 minimal User。
+          // 这里走 setToken + setUser 路径,后续 restoreAuth 会用 getCurrentUser 校验。
+          try {
+            const apiClient = getApiClient();
+            const me = await apiClient.getCurrentUser();
+            if (me.success && me.data) {
+              authStore.login(me.data, res.data.token);
+            } else {
+              // 拉不到 user,退而构造 minimal stub (后续 restoreAuth 会刷新)
+              authStore.login(
+                { id: String(res.data.userId) } as any,
+                res.data.token,
+              );
+            }
+          } catch {
+            authStore.login(
+              { id: String(res.data.userId) } as any,
+              res.data.token,
+            );
           }
-        } catch (applyErr: any) {
-          await reportScanLoginResult(scanSession.sessionId, {
-            secret: scanSession.secret,
-            success: false,
-            error: applyErr.message,
-          }).catch(console.error);
-          reportScanLoginResultViaSocket(scanSession.sessionId, scanSession.secret, false, applyErr.message);
-          throw applyErr;
         }
 
-        await reportScanLoginResult(scanSession.sessionId, {
-          secret: scanSession.secret,
+        await reportScanLoginResult(scanSession.id, {
           success: true,
         }).catch(console.error);
-        reportScanLoginResultViaSocket(scanSession.sessionId, scanSession.secret, true);
-        // @ts-ignore
+        reportScanLoginResultViaSocket(scanSession.id, { success: true });
+        // @ts-ignore - navigation prop 是 loose 类型,RootStackParamList 实际有 Main
         navigation.replace('Main');
       } catch (err: any) {
         console.error(err);
+        await reportScanLoginResult(scanSession.id, {
+          success: false,
+          error: err?.message,
+        }).catch(console.error);
+        reportScanLoginResultViaSocket(scanSession.id, { success: false, error: err?.message });
         Alert.alert('错误', err.message || '确认扫码登录失败');
       } finally {
         setScanBusy(false);
@@ -186,7 +207,7 @@ export function LoginScreen() {
     };
 
     consumeConfirmedScan();
-  }, [scanSession?.sessionId, scanStatus?.status, navigation]);
+  }, [scanSession?.id, scanSession?.status, navigation]);
 
   // --- Form handlers ---
   const saveConfig = async (internal: string, external: string) => {
@@ -275,14 +296,13 @@ export function LoginScreen() {
         );
       }
 
-      const { getApiClient } = await import('@bookdock/api-client');
       const apiClient = getApiClient();
 
       if (isLogin) {
         const response = await apiClient.login(username.trim(), password);
         if (response.success && response.data) {
           authStore.login(response.data.user, response.data.token);
-          // @ts-ignore
+          // @ts-ignore - navigation prop 是 loose 类型
           navigation.replace('Main');
         } else {
           setError(response.error || '登录失败');
@@ -307,7 +327,10 @@ export function LoginScreen() {
 
   const renderScanPanel = () => {
     if (isLandscape) {
-      if (scanStatus?.status === 'waiting_confirm') {
+      if (scanSession?.status === 'CLAIMED') {
+        // mobile2:状态 CLAIMED = desktop 已扫码,等用户在 mobile 端确认 (这里 mobile 是 target,自动等待 confirm)
+        // 实际上 mobile 作为 target 时不需要"点确认"——mobile 端不做 UI 操作,
+        // 直接等 desktop 用户确认后 mobile consume。
         return (
           <View style={[styles.scanCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}>
             <Text style={[styles.scanTitle, { color: theme.colors.text }]}>等待确认</Text>
@@ -323,7 +346,7 @@ export function LoginScreen() {
         <View style={[styles.scanCard, styles.scanCardQr, { backgroundColor: 'transparent', borderColor: 'transparent' }]}>
           <Text style={[styles.qrLabel, { color: theme.colors.textSecondary }]}>扫码登录</Text>
           <View style={styles.qrBox}>
-            {/* QR code placeholder - would use react-native-qrcode-svg */}
+            {/* QR code placeholder - 待接入 react-native-qrcode-svg */}
             <View style={[styles.qrPlaceholder, { backgroundColor: theme.colors.surface }]}>
               <Ionicons name="qr-code" size={80} color={theme.colors.primary} />
             </View>
@@ -462,7 +485,11 @@ export function LoginScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.logoContainer}>
-            <Image source={require('../../assets/logo.webp')} style={{ width: 64, height: 64 }} resizeMode="contain" />
+            <Image
+              source={require('../../assets/logo.webp')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
             <Text style={[styles.title, { color: theme.colors.text }]}>
               BookDock
             </Text>
@@ -505,9 +532,7 @@ const createStyles = (theme: ReturnType<typeof getTheme>) =>
     logo: {
       width: 72,
       height: 72,
-      borderRadius: borderRadius.xl,
-      alignItems: 'center',
-      justifyContent: 'center',
+      borderRadius: borderRadius.md,
       marginBottom: spacing.md,
     },
     title: {

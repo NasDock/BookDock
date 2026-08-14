@@ -1,103 +1,57 @@
 # BookDock 项目长期约定
 
-## Plus 服务层（apps/mobile/src/services/plus.ts）
+## mobile2（apps/mobile2）—— 纯 RN 复刻 mobile
 
-### 致命坑：plusRequest 已经是 envelope，别再加 `.data`
+### 定位与硬约束
+- mobile2 = 纯 RN 版（RN 0.81.5 + React 19.1.0 + Fabric）；mobile（Expo 52 + RN 0.76.9）仅存 git 作对照（`git show HEAD:apps/mobile/...`）。
+- **不引任何 expo-* 模块；不要跑 `npx expo prebuild`**（会破坏 android/ios 原生工程）。
+- **safe-area-context 包必须保留，但组件不用**（2026-08-14 校正 08-13 的"卸载"决定）：react-native-screens 内部硬依赖它（NativeStackView 直接 import），卸载会红屏 `Can't find ViewManager 'RNCSafeAreaProvider'`。做法：package.json 保留依赖，代码里不用 SafeAreaView/SafeAreaProvider（SafeAreaProvider 在 RN 0.81 上偶发 native bridge throw → navigationRef undefined）。布局替代：App.tsx 顶层全屏 View 铺主题背景 + RN 内置 StatusBar + styles.xml 透明栏（statusBarColor/navigationBarColor=transparent + windowDrawsSystemBarBackgrounds=true）。加/删 native 包后必须 native rebuild 一次。
+- Metro：`@react-native/metro-config` + watchFolders + disableHierarchicalLookup。Babel：worklets plugin 放最后。
+- iOS 无 Gemfile，直接 `pod install`，不走 bundle。
 
-`apps/mobile/src/services/plus.ts` 里的 `plusRequest` 是 axios instance，但加了
-response interceptor `return data`，意思是 `await plusRequest.get/post(...)` 拿到的
-**就是** envelope `{code, message, data: <inner>}`，不是 `AxiosResponse`。
+### expo → 纯 RN 替换映射
+vector-icons→react-native-vector-icons；notifications→@notifee/react-native；file-system→react-native-fs；intent-launcher→react-native-intent-launcher；web-browser→react-native-inappbrowser-reborn；sharing→react-native-share；navigation-bar→utils/navigationBar.ts；status-bar/constants/font→RN 内置；av→react-native-track-player（⚠️ 5.0.0-alpha0，API 不同于 v4：setupPlayer / Event.PlaybackActiveTrackChanged 等，index.js 必须 registerPlaybackService）；camera→react-native-vision-camera（待装）。
+JS-only 库（vector-icons / intent-launcher）无 .d.ts → 集中声明在 `src/types/declarations.d.ts`（Hermes globals atob/btoa/TextDecoder/navigator.share 也在此，别到处 @ts-ignore）。
 
-任何 `plus*` 请求函数封装必须**直接返回 res**，不能 `return res.data as ...`。
-参考 AudioDock `packages/services/src/plus.ts` 的范式：`return plusRequest.get(...)` 不再 unwrap。
+### 踩坑清单
+1. **新 RN 子项目第一步**：package.json 显式 declare 14 个 `@react-native/*`（与 react-native 同版本）+ `react-devtools-core`，再 `pnpm install --force`。否则 root shamefully-hoist 用 mobile 的 0.76 transitive 占位 → gradle-plugin/autolinking/codegen 链式炸。
+2. **workspace 包禁止 `await import()`**：Metro 给 async bundle 生成 `../../` 路径，URL 解析后 404。一律静态 import。
+3. **新 native 库必须 rebuild APK**：`./gradlew assembleDebug && adb install -r`，热更只更 JS。react-native-webview@13.12.5 + RN 0.81 有 Kotlin null-safety 编译错 → pnpm patch（patches/react-native-webview.patch + pnpm-workspace.yaml 注册）。
+4. **`as any` ≠ runtime 通**：P 阶段结束 grep `as any`，缺啥补啥（libraryStore 的 getLocalBookPath 必须同步返回）。
+5. **Metro markdown-it@10 legacy require**（entities.json 解析失败）→ metro.config.js 的 resolver.resolveRequest hook 精准拦截返回绝对路径，不要 pnpm.overrides。
+6. **RN7 导航**：`useNavigationContainerRef<T>()` 不传 initialState；NavigationContainer theme 必传 fonts（400/500/700/900）。
+7. **页面迁移时注册 options 要跟 mobile 原版对齐**：自绘 header 的页面必须 `headerShown: false`，否则双 header。已修：BookDetails（2026-08-14）。未迁页面：AuthorDetail / Notes / TTSReader（点对应入口会静默无反应，RN7 只 console.error）。
+8. **ReaderScreen 的 libraryStore 三方法**（getLocalBookPath / saveReadingProgress / downloadBook）已补齐进 mobile2 libraryStore，getLocalBookPath 保持同步。
 
-```ts
-// ✅ 正确（与 AudioDock 一致）
-export const plusFoo = async () => {
-  const res = await plusRequest.get('/foo');
-  return res as unknown as ISuccessResponse<FooData>;
-};
+### ⚠️ 触摸按钮点不到 → **先查 GestureHandlerRootView（hard rule）**
+**症状**：TouchableOpacity.onPress 全部失灵，含纯 setState 的按钮；系统侧边返回手势无效；View.onTouchStart 可能偶发触发；WebView 内 Chromium 滚动正常。
+**真正根因（2026-08-14 教训，治标多轮浪费 1 小时才发现）**：`react-native-gesture-handler` 没正确初始化 —— 任何 RN 0.81 + native-stack（@react-navigation/native-stack@7）项目 **必须同时做两件事**：
+1. `index.js` **第一行** `import 'react-native-gesture-handler';`（触发 native module 注册）
+2. `App.tsx` 根容器用 `<GestureHandlerRootView style={{flex:1}}>` 包裹 `<RootNavigator />`（TapGestureHandler / BackHandler 都依赖根容器上下文）
 
-// ❌ 错（多 unwrap 一次，把 inner 当 envelope 返回，调用方读 .code 是 undefined）
-export const plusFoo = async () => {
-  const res = await plusRequest.get('/foo');
-  return res.data as ISuccessResponse<FooData>;
-};
-```
+**排查优先级**（不要再被表象骗）：
+1. 先看 `App.tsx` 根是不是 `GestureHandlerRootView`
+2. 再看 `index.js` 头一行有没有 `import 'react-native-gesture-handler';`
+3. 才是 layout / zIndex / elevation
 
-二段 cast（`as unknown as ...`）是必须的，因为 axios 静态类型 `AxiosResponse<any>`
-与 `ISuccessResponse<T>` 形状不重叠，TS 拒绝直接 as。
+**诊断信号**：`<View onTouchStart>` 能触发 + `<TouchableOpacity onPress>` 全部失灵 = **100% 是 gesture 系统问题**，不是层级问题。
+**未来所有纯 RN 项目模板**：`App.tsx` 顶层强制 `<GestureHandlerRootView>` —— 这是 hard rule，不可选。
 
-### Plus 后端是共享的
+### WebView + absolute 栏的次级坑（RN 0.81 + Fabric + Android，gesture 修好后才需要关心）
+gesture 修好后如果栏点不到，再考虑 layout 三件套：①栏在 WebView 之后 render；②栏静态外壳加 `elevation: 12, zIndex: 10`；③内层动画 `useNativeDriver: false`（JS driver 保热区==视觉）。mobile（RN 0.76）跑通的 layout 不代表 mobile2（RN 0.81 + Fabric）也跑通。
 
-BookDock mobile 的 Plus 接口（`/payment/create`、`/vip/current-lowest-price`、
-`/coupons/mine` 等）跑在 AudioDock 共享 Plus 服务上（`https://www.audiodock.cn/api`），
-BookDock server 里**没有 payment 模块**。改 DTO / 加新接口前，**先读**
-`AudioDock/packages/services/src/plus.ts` 对照字段形状（特别是嵌套 vs 平铺）。
+### mobile2 tsc 现状
+2026-08-14 起全项目 TS2786（'View' cannot be used as a JSX component 等）刷屏——root @types/react 版本与 RN 不匹配的**存量环境问题**，与业务代码无关。验证改动时过滤：`npx tsc --noEmit | grep <文件> | grep -v TS2786`。
 
-调试联调：`curl https://www.audiodock.cn/api/vip/current-lowest-price` 不带 token
-就能拿到 200 + 完整 envelope，是最快的 sanity check。
+## Plus 服务层（services/plus.ts）
+- **plusRequest 已是 envelope**：interceptor `return data`，`await plusRequest.get()` 拿到的就是 `{code,message,data}`。范式：`return res as unknown as ISuccessResponse<T>`（二段 cast 必需）。
+- Plus 后端是 AudioDock 共享服务（`https://www.audiodock.cn/api`），改 DTO 前对照 `AudioDock/packages/services/src/plus.ts`（注意嵌套 vs 平铺，如 VipCurrentLowestPriceData 嵌套 annual/lifetime.plan）。
+- 联调：`curl https://www.audiodock.cn/api/vip/current-lowest-price`（无需 token）。
 
-## Silent fallback bug
+## 会员权益文案维护约定
+"4 免 4 会"分布在 7 文件 10+ 处：mobile MemberBenefitsScreen/MemberDetailScreen；desktop MemberBenefits/MemberDetail/Membership/NoVipBlock；server vip.service.ts + vip.dto.ts。改文案必须全改，grep 验证 `扫码登录|桌面小组件|优先客服|声仓会员` + `基础功能|云端同步|云端朗读|免广告`。图标：QrCode/Layout/MessageCircle/Headphones（mobile emoji 📷🪟💬🎧）。永久卡 features 4 条平铺，不加"全部年卡特权"前缀。
 
-`MemberBenefitsScreen` 等页面用 `STATIC_PRODUCTS[].fallbackPrice` 做兜底。当 backend
-失败被 `catch {}` 吞掉时，UI 静默显示兜底值，看起来像「请求没发出去」。排查这类问题
-最快的方法是**直接 render `JSON.stringify(rawResponse, null, 2)` 到页面上**，看 envelope
-是否完整（`code/message/data` 三层都要在）。如果只有 inner data，说明上层有错位 unwrap。
-
-## 工作流提醒（来自用户偏好）
-
-- **代码先于 UI**：需求涉及「接口 + 组件」时，第一步永远在 service 层加类型 / API，
-  确认接口落点正确，再做 UI。绝不能先画 UI 设计稿。
-- 接到需求如果不确定先后，先用一句话确认优先级。
-
-## SafeAreaView + React Navigation native-stack：header 下面避免重复顶部 inset
-
-凡是用了 React Navigation `Stack.Screen` 默认 header（`headerShown: true`，包括
-title/back 自动渲染）的页面，**`<SafeAreaView>` 必须 `edges={['left', 'right']}`**
-（或干脆换成 `<View>`），**不能用默认 edges**。
-
-原因：App.tsx 的 `SafeAreaProvider` 没传 `initialMetrics`，默认从 native module 拿
-设备级 insets（status bar 高度）；React Navigation native-stack 的 Screen frame 已经
-从 header bottom 开始（header 自带 status bar），但 SafeAreaProvider 不知道 Screen
-frame，会把设备级 top inset 加到 Screen 内部 → header 下面多 ≈ 44px 空白。
-
-判定：
-- `headerShown: false`（自绘 header）→ SafeAreaView 用默认 edges 是对的
-  （参考 `SearchScreen.tsx:165`）。
-- `headerShown: true`（用 RN header）→ SafeAreaView 必须 `edges={['left', 'right']}`，
-  顶交给 RN header，底交给 scrollContent 的 `paddingBottom`（≥ 40 覆盖 home indicator）。
-
-BookDock mobile 已确认有此问题的页面（4 个有 RN header 的）：
-- `SettingsScreen` / `MemberDetailScreen` / `AdminUsersScreen` / `MemberBenefitsScreen`
-- 第一个元素是大色卡（MemberDetail 紫卡 / Settings 列表第一行）的不明显；
-  第一个元素是浅色卡片（MemberBenefits 对比表）就会被用户感知成"很大一块空白"。
-- 修复状态：✅ `MemberBenefitsScreen`（2026-08-13）✅ `MemberDetailScreen`（2026-08-13）。
-  待修：`SettingsScreen` / `AdminUsersScreen`（等用户报修再改）。
-
-## 会员权益文案的维护约定（**重要**）
-
-会员权益文案分布在 **7 个文件、10+ 处**，是**强一致性**内容（"4 免 4 会"）：
-
-| 位置 | 角色 |
-|---|---|
-| `apps/mobile/src/screens/MemberBenefitsScreen.tsx` | mobile 对比表（**唯一** mobile 端"免费 + 会员"两列对比）+ STATIC_PRODUCTS features (dead field, 但保持一致) |
-| `apps/mobile/src/screens/MemberDetailScreen.tsx` | mobile 会员详情特权 grid（emoji 前缀） |
-| `apps/desktop/src/pages/MemberBenefits.tsx` | web 购买页 banner + 套餐 features (active) |
-| `apps/desktop/src/pages/MemberDetail.tsx` | web 会员详情特权 grid |
-| `apps/desktop/src/pages/Membership.tsx` | web **另一个** 购买页（3 档方案：免费版+年卡+永久卡），含免费版 features |
-| `apps/desktop/src/components/NoVipBlock.tsx` | web VIP 拦截弹窗（次级弹窗里的权益列表） |
-| `apps/server/src/modules/vip/vip.service.ts` | server `GET /vip/products` 返回值 |
-| `apps/server/src/modules/vip/dto/vip.dto.ts` | swagger `@ApiProperty` example |
-
-修改权益文案**必须全改**：grep 验证 `扫码登录|桌面小组件|优先客服|声仓会员` 和 `基础功能|云端同步|云端朗读|免广告` 各处都命中。
-
-图标约定（web 端 lucide-react）：
-- 扫码登录 → `QrCode`
-- 桌面小组件 → `Layout`
-- 优先客服 → `MessageCircle`
-- 声仓会员 → `Headphones`
-
-Mobile 端 emoji 前缀：📷 🪟 💬 🎧
-
-**不要加"全部年卡特权"前缀**：永久卡 features 直接 4 条平铺（mobile 端 2 列 grid 加 5 条会换行不平衡）。
+## mobile（Expo 版，仅存 git）遗留知识
+- SafeAreaView + native-stack header 重复 inset：headerShown:true 时 SafeAreaView 必须 `edges={['left','right']}`。
+- Android 横屏相机侧横条：app.json android 块 `edgeToEdgeEnabled: true` + App.tsx 全屏主题背景 View；不改 styles.xml 的 statusBarColor；必须 `expo prebuild --clean` 生效。
+- Silent fallback：MemberBenefits 等页 fallbackPrice 吞错 → 临时 render `JSON.stringify(rawResponse)` 看 envelope 三层是否完整。

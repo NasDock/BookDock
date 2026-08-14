@@ -1,3 +1,15 @@
+/**
+ * MemberLoginScreen — mobile2 (1:1 移植自 mobile MemberLoginScreen.tsx)
+ *
+ * 适配点（mobile → mobile2）:
+ *   1. @expo/vector-icons → react-native-vector-icons/Ionicons
+ *   2. assets/logo.webp 不存在(mobile2 assets 是空目录),改用 Ionicons 大图标 + 文字
+ *   3. navigation 从 prop any 改为 typed `useNavigation<NativeStackNavigationProp<RootStackParamList>>()`
+ *
+ * 其余逻辑（手机号验证码登录、倒计时、AsyncStorage 持久化、
+ * refreshVipStatus、Alert + goBack）与 mobile 完全一致。
+ */
+
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
@@ -12,8 +24,10 @@ import {
   ScrollView,
   Image,
 } from 'react-native';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons } from '@expo/vector-icons';
 import { useThemeStore, useAuthStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import {
@@ -21,14 +35,13 @@ import {
   plusSendCode,
   setPlusToken,
 } from '../services/plus';
+import type { RootStackParamList } from '../navigation/types';
 
-interface MemberLoginScreenProps {
-  navigation: any;
-}
-
-export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
+export function MemberLoginScreen() {
   const actualTheme = useThemeStore((s) => s.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   // Form state
   const [phone, setPhone] = useState('');
@@ -82,8 +95,14 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
       if (res.code === 200 || res.code === 201) {
         const { token: plusToken, userId } = res.data!;
         await AsyncStorage.setItem('bookdock_plus_token', plusToken);
-        await AsyncStorage.setItem('bookdock_plus_user_id', JSON.stringify(userId));
-        await AsyncStorage.setItem('bookdock_plus_user', JSON.stringify({ id: userId }));
+        await AsyncStorage.setItem(
+          'bookdock_plus_user_id',
+          JSON.stringify(userId),
+        );
+        await AsyncStorage.setItem(
+          'bookdock_plus_user',
+          JSON.stringify({ id: userId }),
+        );
         await setPlusToken(plusToken);
         // Sync VIP state into the store immediately so the profile screen
         // reflects membership without requiring an app restart
@@ -112,16 +131,27 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backBtn}
+          >
             <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
           </TouchableOpacity>
         </View>
 
         {/* Logo */}
         <View style={styles.logoSection}>
-          <Image source={require('../../assets/logo.webp')} style={{ width: 64, height: 64 }} resizeMode="contain" />
-          <Text style={[styles.title, { color: theme.colors.text }]}>BookDock</Text>
-          <Text style={[styles.subtitle, { color: theme.colors.textSecondary }]}>
+          <Image
+            source={require('../../assets/logo.webp')}
+            style={styles.logoCircle}
+            resizeMode="contain"
+          />
+          <Text style={[styles.title, { color: theme.colors.text }]}>
+            BookDock
+          </Text>
+          <Text
+            style={[styles.subtitle, { color: theme.colors.textSecondary }]}
+          >
             书仓会员登录
           </Text>
         </View>
@@ -130,7 +160,9 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
         <View style={styles.formCard}>
           {/* Phone */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: theme.colors.text }]}>手机号</Text>
+            <Text style={[styles.label, { color: theme.colors.text }]}>
+              手机号
+            </Text>
             <View style={styles.phoneRow}>
               <TextInput
                 style={[
@@ -152,7 +184,12 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
               <TouchableOpacity
                 style={[
                   styles.codeBtn,
-                  { backgroundColor: countdown > 0 || isSending ? theme.colors.border : theme.colors.primary },
+                  {
+                    backgroundColor:
+                      countdown > 0 || isSending
+                        ? theme.colors.border
+                        : theme.colors.primary,
+                  },
                 ]}
                 onPress={handleSendCode}
                 disabled={countdown > 0 || isSending}
@@ -170,7 +207,9 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
 
           {/* Code */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: theme.colors.text }]}>验证码</Text>
+            <Text style={[styles.label, { color: theme.colors.text }]}>
+              验证码
+            </Text>
             <TextInput
               style={[
                 styles.input,
@@ -193,13 +232,26 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
           </View>
 
           {error && (
-            <View style={[styles.errorBox, { backgroundColor: theme.colors.error + '15', borderColor: theme.colors.error + '40' }]}>
-              <Text style={[styles.errorText, { color: theme.colors.error }]}>{error}</Text>
+            <View
+              style={[
+                styles.errorBox,
+                {
+                  backgroundColor: theme.colors.error + '15',
+                  borderColor: theme.colors.error + '40',
+                },
+              ]}
+            >
+              <Text style={[styles.errorText, { color: theme.colors.error }]}>
+                {error}
+              </Text>
             </View>
           )}
 
           <TouchableOpacity
-            style={[styles.loginBtn, { backgroundColor: theme.colors.primary }]}
+            style={[
+              styles.loginBtn,
+              { backgroundColor: theme.colors.primary },
+            ]}
             onPress={handleLogin}
             disabled={isLoading}
           >
@@ -213,7 +265,9 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Text style={[styles.footerText, { color: theme.colors.textSecondary }]}>
+          <Text
+            style={[styles.footerText, { color: theme.colors.textSecondary }]}
+          >
             登录即代表同意
             <Text style={{ color: theme.colors.primary }}>《隐私政策》</Text>
             和
@@ -248,6 +302,12 @@ const styles = StyleSheet.create({
   logoSection: {
     alignItems: 'center',
     marginVertical: spacing.xl,
+  },
+  logoCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 12,
+    marginBottom: spacing.sm,
   },
   title: {
     fontSize: 24,

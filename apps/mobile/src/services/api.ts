@@ -1,5 +1,6 @@
 /**
- * API Service Layer for BookDock Mobile
+ * API Service Layer for BookDock Mobile2
+ * 复制自 mobile/src/services/api.ts,行为完全一致。
  * Wraps @bookdock/api-client with mobile-specific handling
  */
 
@@ -63,14 +64,18 @@ async function apiFetch<T>(
     const authData = await AsyncStorage.getItem('bookdock-auth');
     let token: string | null = null;
     if (authData) {
-      const parsed = JSON.parse(authData);
-      token = parsed.state?.token;
+      try {
+        const parsed = JSON.parse(authData);
+        token = parsed.state?.token;
+      } catch {
+        // ignore parse error
+      }
     }
 
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(token && { Authorization: `Bearer ${token}` }),
-      ...options.headers,
+      ...(options.headers as Record<string, string> | undefined),
     };
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -516,9 +521,7 @@ const collectionsApi = {
 
   removeBookFromCollection: async (collectionId: string, bookId: string): Promise<ApiResponse<void>> => {
     invalidateCache(`collection-${collectionId}`);
-    return apiFetch(`/collections/${collectionId}/books/${bookId}`, {
-      method: 'DELETE',
-    });
+    return apiFetch(`/collections/${collectionId}/books/${bookId}`, { method: 'DELETE' });
   },
 };
 
@@ -565,9 +568,7 @@ const highlightsApi = {
 
   deleteHighlight: async (bookId: string, highlightId: string): Promise<ApiResponse<void>> => {
     invalidateCache(`highlights-${bookId}`);
-    return apiFetch(`/books/${bookId}/highlights/${highlightId}`, {
-      method: 'DELETE',
-    });
+    return apiFetch(`/books/${bookId}/highlights/${highlightId}`, { method: 'DELETE' });
   },
 };
 
@@ -630,8 +631,12 @@ const vipApi = {
     const authData = await AsyncStorage.getItem('bookdock-auth');
     let token: string | null = null;
     if (authData) {
-      const parsed = JSON.parse(authData);
-      token = parsed.state?.token;
+      try {
+        const parsed = JSON.parse(authData);
+        token = parsed.state?.token;
+      } catch {
+        // ignore
+      }
     }
     return apiFetch<VipProfile>('/vip/profile', {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -649,8 +654,12 @@ const vipApi = {
     const authData = await AsyncStorage.getItem('bookdock-auth');
     let token: string | null = null;
     if (authData) {
-      const parsed = JSON.parse(authData);
-      token = parsed.state?.token;
+      try {
+        const parsed = JSON.parse(authData);
+        token = parsed.state?.token;
+      } catch {
+        // ignore
+      }
     }
     return apiFetch<VipOrder>('/vip/create-order', {
       method: 'POST',

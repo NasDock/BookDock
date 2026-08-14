@@ -5,21 +5,16 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  TextInput,
   RefreshControl,
   Pressable,
-  Alert,
   ActivityIndicator,
   ScrollView,
   Image,
-  Animated,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { LinearGradient } from 'expo-linear-gradient';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { useLibraryStore, useThemeStore, useAuthStore } from '../stores';
+import { useLibraryStore, useThemeStore } from '../stores';
 import { getTheme, spacing, fontSizes, borderRadius } from '../utils/theme';
 import { useOrientation } from '../hooks/useOrientation';
 import { getCoverImageUrl } from '../services/api';
@@ -61,6 +56,11 @@ function SearchNavButton() {
 const FORMATS = ['all', 'txt', 'epub', 'pdf', 'mobi'] as const;
 const STATUSES = ['all', 'unread', 'reading', 'completed'] as const;
 
+/**
+ * getBookGradient — 1:1 复刻 mobile 旧版的封面渐变色选择逻辑。
+ * mobile2 暂不引 react-native-linear-gradient(避免 native 依赖),
+ * 用第一色作为纯色背景 + 标题首字母大字号覆盖。视觉接近,后续要恢复渐变再接。
+ */
 function getBookGradient(title: string): string[] {
   const gradients = [
     ['#3B82F6', '#6366F1'],
@@ -89,24 +89,22 @@ export function LibraryScreen() {
   const navigation = useNavigation<NavigationProp>();
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === 'dark');
+  // mobile2 的 useLibraryStore 第一版只暴露 fetchBooks / books / isLoading / error,
+  // 暂未引 localBooks / downloadBook / deleteLocalBook（要 react-native-fs 离线下载管理）,
+  // 这里只解构已有字段。后续要加离线下载管理再补。
   const {
     books,
-    localBooks,
     fetchBooks,
-    downloadBook,
-    deleteLocalBook,
     isLoading,
     error,
   } = useLibraryStore();
 
   const [refreshing, setRefreshing] = useState(false);
   const [localSearchQuery, setLocalSearchQuery] = useState('');
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [filterFormat, setFilterFormat] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [showScrollTop, setShowScrollTop] = useState(false);
   const [showHeaderSearch, setShowHeaderSearch] = useState(false);
-  const scrollY = useState(new Animated.Value(0))[0];
   const flatListRef = useRef<FlatList<Book>>(null);
 
   const orientation = useOrientation();
@@ -168,10 +166,6 @@ export function LibraryScreen() {
     navigation.navigate('BookDetails', { book });
   }, [navigation]);
 
-  const handleTTSPress = useCallback(async (book: Book) => {
-    navigation.navigate('TTSScreen', { book });
-  }, [navigation]);
-
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await fetchBooks();
@@ -195,44 +189,10 @@ export function LibraryScreen() {
     flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
   }, []);
 
-  const handleDownload = useCallback(async (book: Book) => {
-    const isDownloaded = localBooks.some((b) => b.id === book.id && b.isDownloaded);
-    if (isDownloaded) {
-      Alert.alert('Confirm', 'Delete this downloaded book?', [
-        { text: '取消', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            await deleteLocalBook(book.id);
-          },
-        },
-      ]);
-      return;
-    }
-
-    setDownloadingId(book.id);
-    try {
-      const path = await downloadBook(book);
-      if (path) {
-        Alert.alert('成功', '书籍已下载，可离线阅读');
-      } else {
-        Alert.alert('错误', '下载失败');
-      }
-    } catch {
-      Alert.alert('错误', '下载失败');
-    } finally {
-      setDownloadingId(null);
-    }
-  }, [localBooks, downloadBook, deleteLocalBook]);
-
   const renderBookItem = useCallback(({ item }: { item: Book }) => {
-    const localBook = localBooks.find((b) => b.id === item.id);
-    const isDownloaded = !!localBook?.isDownloaded;
-    const isDownloading = downloadingId === item.id;
     const progress = item.readingProgress ?? 0;
     const statusLabel = getStatusLabel(progress);
-    const [gradStart, gradEnd] = getBookGradient(item.title);
+    const gradStart = getBookGradient(item.title)[0];
     const hasCover = !!item.coverUrl;
 
     return (
@@ -250,35 +210,15 @@ export function LibraryScreen() {
               resizeMode="cover"
             />
           ) : (
-            <LinearGradient
-              colors={[gradStart, gradEnd]}
-              style={styles.coverGradient}
-            >
+            <View style={[styles.coverGradient, { backgroundColor: gradStart }]}>
               <Text style={styles.coverInitial}>{item.title.charAt(0)}</Text>
-            </LinearGradient>
+            </View>
           )}
 
           {/* Format badge */}
           <View style={styles.formatBadge}>
             <Text style={styles.formatBadgeText}>{(item.fileType || item.format || 'unknown').toUpperCase()}</Text>
           </View>
-
-          {/* Download button */}
-          <TouchableOpacity
-            style={styles.downloadButton}
-            onPress={() => handleDownload(item)}
-            disabled={isDownloading}
-          >
-            {isDownloading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Ionicons
-                name={isDownloaded ? 'cloud-done' : 'cloud-download-outline'}
-                size={14}
-                color="#fff"
-              />
-            )}
-          </TouchableOpacity>
 
           {/* Progress bar at the bottom of cover if in progress */}
           {progress > 0 && progress < 100 && (
@@ -297,7 +237,7 @@ export function LibraryScreen() {
         </View>
       </Pressable>
     );
-  }, [styles, theme, localBooks, downloadingId, handleBookPress, handleDownload]);
+  }, [styles, theme, handleBookPress]);
 
   const handleSearchPress = useCallback(() => {
     navigation.navigate('Search');
@@ -548,18 +488,6 @@ function createStyles(theme: ReturnType<typeof getTheme>, itemWidth: number) {
       fontSize: 10,
       color: '#fff',
       fontWeight: '600',
-    },
-    downloadButton: {
-      position: 'absolute',
-      bottom: spacing.xs,
-      right: spacing.xs,
-      backgroundColor: 'rgba(0,0,0,0.4)',
-      borderRadius: borderRadius.full,
-      padding: spacing.xs,
-      minWidth: 24,
-      minHeight: 24,
-      alignItems: 'center',
-      justifyContent: 'center',
     },
     coverProgressBarContainer: {
       position: 'absolute',

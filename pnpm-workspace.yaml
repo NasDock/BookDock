@@ -4,3 +4,5 @@ packages:
 allowUnusedPatches: true
 patchedDependencies:
   expo-modules-core: patches/expo-modules-core.patch
+  react-native-intent-launcher: patches/react-native-intent-launcher.patch
+  react-native-webview: patches/react-native-webview.patch

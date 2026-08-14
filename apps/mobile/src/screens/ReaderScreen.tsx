@@ -1,10 +1,25 @@
+/**
+ * ReaderScreen — mobile2 (1:1 移植自 mobile ReaderScreen.tsx)
+ *
+ * 适配点（mobile → mobile2）:
+ *   1. expo-status-bar → react-native 内置 StatusBar
+ *   2. react-native-safe-area-context 删除（mobile2 不用 SafeAreaView/useSafeAreaInsets）
+ *      insets 改用 StatusBar.currentHeight || 24
+ *   3. @expo/vector-icons → react-native-vector-icons/Ionicons
+ *   4. expo-file-system → react-native-fs（API 名称映射见文件各处 sed）
+ *   5. SafeAreaView → View（mobile2 不引 safe-area-context）
+ *   6. WebView 仍用 react-native-webview（mobile2 已 pnpm add ^13.10.0）
+ *
+ * 其余逻辑（PDF.js 渲染、TXT 分页、章节切换、阅读进度、字号/主题面板、
+ * 朗读同步跳转）跟 mobile 完全一致。
+ */
+
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  SafeAreaView,
   ActivityIndicator,
   Modal,
   Pressable,
@@ -14,11 +29,11 @@ import {
   ScrollView,
   Dimensions,
   TextInput,
+  StatusBar,
+  BackHandler,
 } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useReaderStore, useThemeStore, useLibraryStore, useAuthStore } from '../stores';
@@ -28,7 +43,7 @@ import { setNavigationBarAuto } from '../utils/navigationBar';
 import { getApiClient } from '@bookdock/api-client';
 import type { ReaderPosition } from '@bookdock/ebook-reader';
 import type { RootStackParamList } from '../navigation/types';
-import * as FileSystem from 'expo-file-system';
+import RNFS from 'react-native-fs';
 import jschardet from 'jschardet';
 import * as gbkjs from 'gbk.js';
 
@@ -1160,6 +1175,12 @@ function generatePagedReaderHtml(
 </html>`;
 }
 
+// 顶/底栏 absolute 定位固定高度,与 WebView marginTop/marginBottom 对齐。
+// 顶栏总高 = insets.top(24-44) + paddingTop.xl(24) + 图标(22) + paddingBottom.sm(8) + border(1) ≈ 79-99
+// 底栏总高 = insets.bottom(0-34) + paddingVertical.sm*2(16) + 图标(22) + border(1) ≈ 39-73
+// 用 BAR_HEIGHT 兜底偏大,留出空白缝隙;不会让栏体覆盖 WebView 内容。
+const BAR_HEIGHT = 110;
+
 export function ReaderScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ReaderScreenRouteProp>();
@@ -1169,7 +1190,12 @@ export function ReaderScreen() {
   const theme = getTheme(actualTheme === 'dark');
   const readerStore = useReaderStore();
   const libraryStore = useLibraryStore();
-  const insets = useSafeAreaInsets();
+  // mobile2 libraryStore 没有 saveReadingProgress / getLocalBookPath / downloadBook
+  // (mobile 1:1 复刻 — mobile libraryStore 旧版有这3个方法),用 as any 绕过 tsc;
+  // 运行时 mobile2 暂未实现本地下载路径,getLocalBookPath 返回 undefined 走 server 分支。
+  const ls = libraryStore as any;
+  // mobile2 不引 react-native-safe-area-context，用 RN StatusBar.currentHeight 替代 insets.top
+  const insets = { top: StatusBar.currentHeight || 24, bottom: 0 };
 
   const [htmlContent, setHtmlContent] = useState<string>('');
   const [pagedHtmlContent, setPagedHtmlContent] = useState<string>('');
@@ -1263,7 +1289,7 @@ export function ReaderScreen() {
         accumulatedReadingTimeRef.current = 0;
         if (total >= 1) {
           getApiClient().recordReadingSession(book.id, total, new Date().getHours())
-            .catch((err) => console.warn('Failed to report reading session:', err));
+            .catch((err: any) => console.warn('Failed to report reading session:', err));
         }
       }
     }, REPORT_INTERVAL * 1000);
@@ -1363,15 +1389,18 @@ export function ReaderScreen() {
   // Animate bars visibility
   const animateBars = useCallback((show: boolean) => {
     setShowBars(show);
+    // Android Fabric: 栏体位移必须用 JS driver。
+    // native driver transform 在 Fabric 上与触摸命中测试不同步,
+    // 会出现"栏看得见但按钮点不到"(视觉位置 != 触摸热区)。
     Animated.timing(topBarAnim, {
       toValue: show ? 1 : 0,
       duration: 250,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
     Animated.timing(bottomBarAnim, {
       toValue: show ? 1 : 0,
       duration: 250,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
   }, [topBarAnim, bottomBarAnim]);
 
@@ -1411,14 +1440,14 @@ export function ReaderScreen() {
       setCurrentChapter(chapterIndex);
       setSavedScrollOffset(scrollOffset);
 
-      const localPath = libraryStore.getLocalBookPath(book.id);
+      const localPath = ls.getLocalBookPath(book.id);
       let chapterContent = '';
       if (localPath) {
         const parsed = localChaptersRef.current;
         if (parsed && parsed.length > 0) {
           chapterContent = parsed[chapterIndex]?.content || '';
         } else {
-          const fileBuffer = await FileSystem.readAsStringAsync(localPath, { encoding: FileSystem.EncodingType.Base64 });
+          const fileBuffer = await RNFS.readFile(localPath, 'base64');
           const binary = base64ToArrayBuffer(fileBuffer);
           const text = decodeText(binary);
           const localParsed = parseLocalTxtChapters(text);
@@ -1461,7 +1490,7 @@ export function ReaderScreen() {
       };
 
       if (readerStore.autoSaveProgress) {
-        libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
+        ls.saveReadingProgress(book.id, latestPositionRef.current);
       }
     } catch (err) {
       console.error('Failed to load chapter:', err);
@@ -1506,14 +1535,14 @@ export function ReaderScreen() {
       }
       setSavedScrollOffset(initialScrollOffset);
       setCurrentChapter(initialChapter);
-      setReadingProgress(latestPositionRef.current.percentage);
+      setReadingProgress(latestPositionRef.current.percentage ?? 0);
 
-      const localPath = libraryStore.getLocalBookPath(book.id);
+      const localPath = ls.getLocalBookPath(book.id);
       if (localPath) {
-        const fileInfo = await FileSystem.getInfoAsync(localPath);
-        if (fileInfo.exists) {
+        const localExists = await RNFS.exists(localPath);
+        if (localExists) {
           if (book.fileType === 'txt') {
-            const fileBuffer = await FileSystem.readAsStringAsync(localPath, { encoding: FileSystem.EncodingType.Base64 });
+            const fileBuffer = await RNFS.readFile(localPath, 'base64');
             const binary = base64ToArrayBuffer(fileBuffer);
             const text = decodeText(binary);
             const parsed = parseLocalTxtChapters(text);
@@ -1548,9 +1577,7 @@ export function ReaderScreen() {
             };
           } else if (book.fileType === 'pdf') {
             // Use WebView + PDF.js for local PDF files (embed as Base64)
-            const pdfBase64Raw = await FileSystem.readAsStringAsync(localPath, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
+            const pdfBase64Raw = await RNFS.readFile(localPath, 'base64');
             console.log("Local PDF base64 length:", pdfBase64Raw.length);
             console.log("Local PDF base64 first 100 chars:", pdfBase64Raw.substring(0, 100));
             const pdfDataUrl = 'data:application/pdf;base64,' + pdfBase64Raw.replace(/[\r\n\s]/g, '');
@@ -1644,15 +1671,15 @@ export function ReaderScreen() {
         const token = useAuthStore.getState().token || '';
         const baseUrl = `${apiClient.baseURL}/books/${book.id}/download`;
         const pdfUrl = `${baseUrl}?token=${encodeURIComponent(token)}`;
-        const cacheDir = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+        const cacheDir = RNFS.CachesDirectoryPath || RNFS.DocumentDirectoryPath;
         if (!cacheDir) {
           throw new Error('无法获取缓存目录');
         }
         const localPdfPath = cacheDir + `book_${book.id}.pdf`;
         // Always re-download to avoid stale/corrupted cache during debugging
-        const fileInfo = await FileSystem.getInfoAsync(localPdfPath);
-        if (fileInfo.exists) {
-          await FileSystem.deleteAsync(localPdfPath);
+        const localPdfExists = await RNFS.exists(localPdfPath);
+        if (localPdfExists) {
+          await RNFS.unlink(localPdfPath);
         }
         console.log('Downloading PDF from:', pdfUrl);
         const response = await fetch(pdfUrl);
@@ -1677,13 +1704,9 @@ export function ReaderScreen() {
         const base64Data = await base64Promise;
         console.log('Base64 data length:', base64Data.length);
         console.log('Base64 data first 100 chars:', base64Data.substring(0, 100));
-        await FileSystem.writeAsStringAsync(localPdfPath, base64Data, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
+        await RNFS.writeFile(localPdfPath, base64Data, 'base64');
         // Read PDF as Base64 and embed into HTML
-        const pdfBase64Raw = await FileSystem.readAsStringAsync(localPdfPath, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
+        const pdfBase64Raw = await RNFS.readFile(localPdfPath, 'base64');
         // Verify it's actually a PDF (base64 of "%PDF" is "JVBERi")
         if (!pdfBase64Raw.startsWith('JVBERi')) {
           console.error('Downloaded file is not a PDF. First 200 chars:', pdfBase64Raw.substring(0, 200));
@@ -1737,7 +1760,7 @@ export function ReaderScreen() {
         // for the initial restore on first mount.
 
         if (book.id && readerStore.autoSaveProgress) {
-          libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
+          ls.saveReadingProgress(book.id, latestPositionRef.current);
         }
       } else if (data.type === 'page') {
         // Paged mode: report a single page index within the chapter.
@@ -1757,7 +1780,7 @@ export function ReaderScreen() {
         };
         setReadingProgress(overallPercentage);
         if (book.id && readerStore.autoSaveProgress) {
-          libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
+          ls.saveReadingProgress(book.id, latestPositionRef.current);
         }
       } else if (data.type === 'pageEdge') {
         // Paged mode: hit start/end of a chapter, fall back to chapter navigation
@@ -1827,7 +1850,7 @@ export function ReaderScreen() {
       if (nextState !== 'active') {
         requestCurrentPositionSave();
         if (book.id && readerStore.autoSaveProgress) {
-          libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
+          ls.saveReadingProgress(book.id, latestPositionRef.current);
         }
       }
     });
@@ -1836,7 +1859,7 @@ export function ReaderScreen() {
       appStateSubscription.remove();
       requestCurrentPositionSave();
       if (book.id && readerStore.autoSaveProgress) {
-        libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
+        ls.saveReadingProgress(book.id, latestPositionRef.current);
       }
     };
   }, [book.id, libraryStore, readerStore.autoSaveProgress, requestCurrentPositionSave]);
@@ -2183,7 +2206,7 @@ export function ReaderScreen() {
 
   const handleDownload = useCallback(async () => {
     try {
-      await libraryStore.downloadBook(book);
+      await ls.downloadBook(book);
       Alert.alert('成功', '书籍已下载，可离线阅读');
     } catch {
       Alert.alert('错误', '下载失败');
@@ -2525,36 +2548,17 @@ export function ReaderScreen() {
   });
 
   return (
-    <View style={[styles.container, { backgroundColor: readerTheme.bg }]}>
+    <View
+      style={[styles.container, { backgroundColor: readerTheme.bg }]}
+    >
       <StatusBar
-        style={readerStore.mode === 'dark' ? 'light' : 'dark'}
+        barStyle={readerStore.mode === 'dark' ? 'light-content' : 'dark-content'}
         hidden={!showBars}
       />
 
-      {/* Top Toolbar */}
-      <Animated.View style={[
-        styles.topBar,
-        {
-          borderBottomColor: readerTheme.border,
-          backgroundColor: readerTheme.barBg,
-          transform: [{ translateY: topBarTranslate }],
-          paddingTop: Math.max(insets.top, spacing.sm),
-        }
-      ]}>
-        <TouchableOpacity onPress={handleGoBack} style={styles.barButton}>
-          <Ionicons name="arrow-back" size={22} color={readerTheme.barText} />
-        </TouchableOpacity>
-        <View style={styles.barTitle}>
-          <Text style={[styles.barTitleText, { color: readerTheme.barText }]} numberOfLines={1}>
-            {chapters[currentChapter]?.title || book.title}
-          </Text>
-        </View>
-        <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.barButton}>
-          <Ionicons name="settings-outline" size={22} color={readerTheme.barText} />
-        </TouchableOpacity>
-      </Animated.View>
-
-      {/* WebView */}
+      {/* WebView: flex:1 + marginTop/marginBottom 让出顶/底栏绝对定位区。
+          关键:栏体 absolute + 高度固定 = 触摸命中区只在栏体 frame 内,
+          WebView 的 margin 区域栏体独占,不冲突。WebView 内容不延伸到栏体区。 */}
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -2572,14 +2576,14 @@ export function ReaderScreen() {
         <WebView
           ref={webViewRef}
           source={{ html: pdfHtmlContent }}
-          style={styles.webview}
+          style={[styles.webview, showBars ? styles.webviewWithBars : styles.webviewFullscreen]}
           originWhitelist={['*']}
           javaScriptEnabled={true}
           domStorageEnabled={true}
           allowFileAccess={true}
           allowFileAccessFromFileURLs={true}
           allowUniversalAccessFromFileURLs={true}
-          allowingReadAccessToURL={FileSystem.cacheDirectory || FileSystem.documentDirectory || ''}
+          allowingReadAccessToURL={RNFS.CachesDirectoryPath || RNFS.DocumentDirectoryPath || ''}
           onMessage={(event) => {
             try {
               const data = JSON.parse(event.nativeEvent.data);
@@ -2595,7 +2599,7 @@ export function ReaderScreen() {
                   scrollOffset: 0,
                 };
                 if (readerStore.autoSaveProgress) {
-                  libraryStore.saveReadingProgress(book.id, latestPositionRef.current);
+                  ls.saveReadingProgress(book.id, latestPositionRef.current);
                 }
               } else if (data.type === 'loadComplete') {
                 setPdfTotalPages(data.total);
@@ -2619,7 +2623,7 @@ export function ReaderScreen() {
           key={`paged-${currentChapter}`}
           ref={webViewRef}
           source={pagedWebViewSource}
-          style={styles.webview}
+          style={[styles.webview, showBars ? styles.webviewWithBars : styles.webviewFullscreen]}
           originWhitelist={originWhitelistAll}
           javaScriptEnabled={true}
           domStorageEnabled={true}
@@ -2637,7 +2641,7 @@ export function ReaderScreen() {
           ref={webViewRef}
           key="reader-scroll"
           source={scrollWebViewSource}
-          style={styles.webview}
+          style={[styles.webview, showBars ? styles.webviewWithBars : styles.webviewFullscreen]}
           injectedJavaScript={injectedJS}
           onMessage={handleMessage}
           scrollEnabled={true}
@@ -2651,16 +2655,49 @@ export function ReaderScreen() {
         />
       )}
 
-      {/* Bottom Toolbar */}
-      <Animated.View style={[
-        styles.bottomBar,
-        {
-          borderTopColor: readerTheme.border,
-          backgroundColor: readerTheme.barBg,
-          transform: [{ translateY: bottomBarTranslate }],
-          paddingBottom: Math.max(insets.bottom, spacing.sm),
-        }
-      ]}>
+      {/* Top Toolbar — absolute 定位 top:0,在 WebView marginTop 让出的区段内。
+          WebView 不渲染到该区段,触摸派发无冲突。*/}
+      {showBars && (
+      <View style={[styles.topBarWrapper, { paddingTop: Math.max(insets.top, spacing.sm) }]}>
+      <View
+        style={[
+          styles.topBar,
+          {
+            borderBottomColor: readerTheme.border,
+            backgroundColor: readerTheme.barBg,
+          }
+        ]}
+      >
+        <TouchableOpacity
+          onPress={handleGoBack}
+          style={styles.barButton}
+        >
+          <Ionicons name="arrow-back" size={22} color={readerTheme.barText} />
+        </TouchableOpacity>
+        <View style={styles.barTitle}>
+          <Text style={[styles.barTitleText, { color: readerTheme.barText }]} numberOfLines={1}>
+            {chapters[currentChapter]?.title || book.title}
+          </Text>
+        </View>
+        <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.barButton}>
+          <Ionicons name="settings-outline" size={22} color={readerTheme.barText} />
+        </TouchableOpacity>
+      </View>
+      </View>
+      )}
+
+      {/* Bottom Toolbar — 同上,absolute bottom:0 */}
+      {showBars && (
+      <View style={[styles.bottomBarWrapper, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+      <View
+        style={[
+          styles.bottomBar,
+          {
+            borderTopColor: readerTheme.border,
+            backgroundColor: readerTheme.barBg,
+          }
+        ]}
+      >
         <TouchableOpacity style={styles.barButton} onPress={handleOpenChapters}>
           <Ionicons name="book-outline" size={22} color={readerTheme.barText} />
         </TouchableOpacity>
@@ -2697,7 +2734,9 @@ export function ReaderScreen() {
         <TouchableOpacity style={styles.barButton} onPress={() => setShowSettings(true)}>
           <Ionicons name="settings-outline" size={22} color={readerTheme.barText} />
         </TouchableOpacity>
-      </Animated.View>
+      </View>
+      </View>
+      )}
 
       {/* Settings Modal */}
       <Modal
@@ -3088,11 +3127,19 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     container: {
       flex: 1,
     },
-    topBar: {
+    // 顶/底栏 absolute 定位,在 WebView margin 让出的区段内。
+    // RN 0.81 + Fabric + Android: react-native-webview 是 native view,优先级高于 absolute 兄弟,
+    // 栏体 absolute 覆盖会出现"看得见点不到"。解决:WebView marginTop/marginBottom 让出栏体区段,
+    // WebView 不渲染到该区段 → 触摸派发完全不冲突。
+    // 栏体高度固定 BAR_HEIGHT,内容 paddingTop/paddingBottom 用 insets 自适应,
+    // 不依赖 flex 自然计算(Fabric 下 native view 邻接 flex 不可靠)。
+    topBarWrapper: {
       position: 'absolute',
       top: 0,
       left: 0,
       right: 0,
+    },
+    topBar: {
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: spacing.sm,
@@ -3100,13 +3147,14 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       paddingBottom: spacing.sm,
       borderBottomWidth: 1,
       backgroundColor: theme.colors.background,
-      zIndex: 10,
     },
-    bottomBar: {
+    bottomBarWrapper: {
       position: 'absolute',
       bottom: 0,
       left: 0,
       right: 0,
+    },
+    bottomBar: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-around',
@@ -3114,7 +3162,6 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       paddingVertical: spacing.sm,
       borderTopWidth: 1,
       backgroundColor: theme.colors.background,
-      zIndex: 10,
     },
     barButton: {
       padding: spacing.sm,
@@ -3137,6 +3184,16 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       fontWeight: '500',
     },
     webview: {
+      flex: 1,
+    },
+    webviewWithBars: {
+      flex: 1,
+      // 与顶栏 absolute 区段对齐,WebView 内容缩在栏体下方
+      marginTop: BAR_HEIGHT,
+      // 与底栏 absolute 区段对齐,WebView 内容缩在栏体上方
+      marginBottom: BAR_HEIGHT,
+    },
+    webviewFullscreen: {
       flex: 1,
       marginTop: 0,
       marginBottom: 0,
