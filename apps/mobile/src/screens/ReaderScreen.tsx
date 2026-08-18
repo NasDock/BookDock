@@ -3143,7 +3143,7 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       flexDirection: 'row',
       alignItems: 'center',
       paddingHorizontal: spacing.sm,
-      paddingTop: spacing.xl,
+      paddingTop: spacing.sm,
       paddingBottom: spacing.sm,
       borderBottomWidth: 1,
       backgroundColor: theme.colors.background,
