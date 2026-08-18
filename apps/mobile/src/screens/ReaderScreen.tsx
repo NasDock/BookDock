@@ -1869,6 +1869,19 @@ export function ReaderScreen() {
     setTimeout(() => navigation.goBack(), 120);
   }, [navigation, requestCurrentPositionSave]);
 
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        handleGoBack();
+        return true;
+      });
+
+      return () => {
+        subscription.remove();
+      };
+    }, [handleGoBack])
+  );
+
   const injectedJS = useMemo(() => `
     (function() {
       const initialScrollOffset = ${Math.max(0, Math.round(savedScrollOffset))};
@@ -3138,6 +3151,8 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       top: 0,
       left: 0,
       right: 0,
+      zIndex: 20,
+      elevation: 20,
     },
     topBar: {
       flexDirection: 'row',
@@ -3153,6 +3168,8 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       bottom: 0,
       left: 0,
       right: 0,
+      zIndex: 20,
+      elevation: 20,
     },
     bottomBar: {
       flexDirection: 'row',
@@ -3185,6 +3202,8 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     },
     webview: {
       flex: 1,
+      zIndex: 0,
+      elevation: 0,
     },
     webviewWithBars: {
       flex: 1,
@@ -3221,6 +3240,8 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     modalOverlay: {
       flex: 1,
       justifyContent: 'flex-end',
+      zIndex: 100,
+      elevation: 100,
     },
     modalBackdrop: {
       ...StyleSheet.absoluteFillObject,
