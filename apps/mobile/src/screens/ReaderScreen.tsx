@@ -1175,12 +1175,6 @@ function generatePagedReaderHtml(
 </html>`;
 }
 
-// 顶/底栏 absolute 定位固定高度,与 WebView marginTop/marginBottom 对齐。
-// 顶栏总高 = insets.top(24-44) + paddingTop.xl(24) + 图标(22) + paddingBottom.sm(8) + border(1) ≈ 79-99
-// 底栏总高 = insets.bottom(0-34) + paddingVertical.sm*2(16) + 图标(22) + border(1) ≈ 39-73
-// 用 BAR_HEIGHT 兜底偏大,留出空白缝隙;不会让栏体覆盖 WebView 内容。
-const BAR_HEIGHT = 110;
-
 export function ReaderScreen() {
   const navigation = useNavigation<NavigationProp>();
   const route = useRoute<ReaderScreenRouteProp>();
@@ -1869,6 +1863,19 @@ export function ReaderScreen() {
     setTimeout(() => navigation.goBack(), 120);
   }, [navigation, requestCurrentPositionSave]);
 
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        handleGoBack();
+        return true;
+      });
+
+      return () => {
+        subscription.remove();
+      };
+    }, [handleGoBack])
+  );
+
   const injectedJS = useMemo(() => `
     (function() {
       const initialScrollOffset = ${Math.max(0, Math.round(savedScrollOffset))};
@@ -2556,9 +2563,37 @@ export function ReaderScreen() {
         hidden={!showBars}
       />
 
-      {/* WebView: flex:1 + marginTop/marginBottom 让出顶/底栏绝对定位区。
-          关键:栏体 absolute + 高度固定 = 触摸命中区只在栏体 frame 内,
-          WebView 的 margin 区域栏体独占,不冲突。WebView 内容不延伸到栏体区。 */}
+      {/* Top Toolbar — 参与正常布局,避免 WebView 原生层覆盖点击区域。*/}
+      {showBars && (
+      <View style={[styles.topBarWrapper, { paddingTop: Math.max(insets.top, spacing.sm) }]}>
+      <View
+        style={[
+          styles.topBar,
+          {
+            borderBottomColor: readerTheme.border,
+            backgroundColor: readerTheme.barBg,
+          }
+        ]}
+      >
+        <TouchableOpacity
+          onPress={handleGoBack}
+          style={styles.barButton}
+        >
+          <Ionicons name="arrow-back" size={22} color={readerTheme.barText} />
+        </TouchableOpacity>
+        <View style={styles.barTitle}>
+          <Text style={[styles.barTitleText, { color: readerTheme.barText }]} numberOfLines={1}>
+            {chapters[currentChapter]?.title || book.title}
+          </Text>
+        </View>
+        <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.barButton}>
+          <Ionicons name="settings-outline" size={22} color={readerTheme.barText} />
+        </TouchableOpacity>
+      </View>
+      </View>
+      )}
+
+      {/* WebView: 作为中间 flex 阅读区渲染,不再覆盖顶部/底部操作栏。 */}
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -2576,7 +2611,7 @@ export function ReaderScreen() {
         <WebView
           ref={webViewRef}
           source={{ html: pdfHtmlContent }}
-          style={[styles.webview, showBars ? styles.webviewWithBars : styles.webviewFullscreen]}
+          style={styles.webview}
           originWhitelist={['*']}
           javaScriptEnabled={true}
           domStorageEnabled={true}
@@ -2623,7 +2658,7 @@ export function ReaderScreen() {
           key={`paged-${currentChapter}`}
           ref={webViewRef}
           source={pagedWebViewSource}
-          style={[styles.webview, showBars ? styles.webviewWithBars : styles.webviewFullscreen]}
+          style={styles.webview}
           originWhitelist={originWhitelistAll}
           javaScriptEnabled={true}
           domStorageEnabled={true}
@@ -2641,7 +2676,7 @@ export function ReaderScreen() {
           ref={webViewRef}
           key="reader-scroll"
           source={scrollWebViewSource}
-          style={[styles.webview, showBars ? styles.webviewWithBars : styles.webviewFullscreen]}
+          style={styles.webview}
           injectedJavaScript={injectedJS}
           onMessage={handleMessage}
           scrollEnabled={true}
@@ -2655,38 +2690,8 @@ export function ReaderScreen() {
         />
       )}
 
-      {/* Top Toolbar — absolute 定位 top:0,在 WebView marginTop 让出的区段内。
-          WebView 不渲染到该区段,触摸派发无冲突。*/}
-      {showBars && (
-      <View style={[styles.topBarWrapper, { paddingTop: Math.max(insets.top, spacing.sm) }]}>
-      <View
-        style={[
-          styles.topBar,
-          {
-            borderBottomColor: readerTheme.border,
-            backgroundColor: readerTheme.barBg,
-          }
-        ]}
-      >
-        <TouchableOpacity
-          onPress={handleGoBack}
-          style={styles.barButton}
-        >
-          <Ionicons name="arrow-back" size={22} color={readerTheme.barText} />
-        </TouchableOpacity>
-        <View style={styles.barTitle}>
-          <Text style={[styles.barTitleText, { color: readerTheme.barText }]} numberOfLines={1}>
-            {chapters[currentChapter]?.title || book.title}
-          </Text>
-        </View>
-        <TouchableOpacity onPress={() => setShowSettings(true)} style={styles.barButton}>
-          <Ionicons name="settings-outline" size={22} color={readerTheme.barText} />
-        </TouchableOpacity>
-      </View>
-      </View>
-      )}
 
-      {/* Bottom Toolbar — 同上,absolute bottom:0 */}
+      {/* Bottom Toolbar — 参与正常布局,避免 WebView 原生层覆盖点击区域。*/}
       {showBars && (
       <View style={[styles.bottomBarWrapper, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
       <View
@@ -3127,17 +3132,14 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     container: {
       flex: 1,
     },
-    // 顶/底栏 absolute 定位,在 WebView margin 让出的区段内。
-    // RN 0.81 + Fabric + Android: react-native-webview 是 native view,优先级高于 absolute 兄弟,
-    // 栏体 absolute 覆盖会出现"看得见点不到"。解决:WebView marginTop/marginBottom 让出栏体区段,
-    // WebView 不渲染到该区段 → 触摸派发完全不冲突。
-    // 栏体高度固定 BAR_HEIGHT,内容 paddingTop/paddingBottom 用 insets 自适应,
-    // 不依赖 flex 自然计算(Fabric 下 native view 邻接 flex 不可靠)。
+    // 顶/底栏参与正常 flex 布局,不要 absolute 覆盖 WebView。
+    // Android Fabric 下 react-native-webview 是独立原生视图,absolute 兄弟即使提高
+    // zIndex/elevation 也可能出现"看得见但点不到"。把栏体放回布局流后,WebView
+    // 的原生触摸区域只占中间阅读区,不会再抢顶部/底部按钮事件。
     topBarWrapper: {
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
+      flexShrink: 0,
+      zIndex: 20,
+      elevation: 20,
     },
     topBar: {
       flexDirection: 'row',
@@ -3149,10 +3151,9 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       backgroundColor: theme.colors.background,
     },
     bottomBarWrapper: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
+      flexShrink: 0,
+      zIndex: 20,
+      elevation: 20,
     },
     bottomBar: {
       flexDirection: 'row',
@@ -3185,18 +3186,8 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     },
     webview: {
       flex: 1,
-    },
-    webviewWithBars: {
-      flex: 1,
-      // 与顶栏 absolute 区段对齐,WebView 内容缩在栏体下方
-      marginTop: BAR_HEIGHT,
-      // 与底栏 absolute 区段对齐,WebView 内容缩在栏体上方
-      marginBottom: BAR_HEIGHT,
-    },
-    webviewFullscreen: {
-      flex: 1,
-      marginTop: 0,
-      marginBottom: 0,
+      zIndex: 0,
+      elevation: 0,
     },
     loadingContainer: {
       flex: 1,
@@ -3221,6 +3212,8 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
     modalOverlay: {
       flex: 1,
       justifyContent: 'flex-end',
+      zIndex: 100,
+      elevation: 100,
     },
     modalBackdrop: {
       ...StyleSheet.absoluteFillObject,
