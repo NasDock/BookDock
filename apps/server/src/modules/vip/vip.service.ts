@@ -31,12 +31,7 @@ const VIP_PRODUCTS: VipProductDto[] = [
     description: '1年会员特权',
     price: 20,
     badge: '1年',
-    features: [
-      '无限书籍阅读',
-      '优先客服支持',
-      '新功能抢先体验',
-      '去除广告',
-    ],
+    features: ['扫码登录', '桌面小组件', '优先客服', '声仓会员'],
   },
   {
     id: 'lifetime',
@@ -44,13 +39,7 @@ const VIP_PRODUCTS: VipProductDto[] = [
     description: '一次购买，永久有效',
     price: 60,
     badge: '永久',
-    features: [
-      '永久会员特权',
-      '无限书籍阅读',
-      '优先客服支持',
-      '新功能抢先体验',
-      '去除广告',
-    ],
+    features: ['扫码登录', '桌面小组件', '优先客服', '声仓会员'],
   },
 ];
 

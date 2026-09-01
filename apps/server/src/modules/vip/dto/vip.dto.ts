@@ -72,7 +72,7 @@ export class VipProductDto {
   @ApiProperty({ example: '1年' })
   badge: string;
 
-  @ApiProperty({ example: ['无限书籍', '优先客服', '新功能体验'] })
+  @ApiProperty({ example: ['扫码登录', '桌面小组件', '优先客服', '声仓会员'] })
   features: string[];
 }
 
