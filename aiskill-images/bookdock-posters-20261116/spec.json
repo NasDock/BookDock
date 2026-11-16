@@ -1,0 +1,163 @@
+{
+  "_scene": "招聘海报 / Recruiting poster",
+  "_usage": "刻意不使用背景图：纯色 + 渐变即可成稿，因此在没有本地文生图能力的机器上也能完整交付。若确实要配图，再自行加 background。岗位职责/要求写进 text-6 的多行文本，每行以「· 」起头；该文本在卡片内垂直居中，4-6 行都无需调整坐标，超过 6 行再加大 rect-5 的 h 并同步下移后续元素。换行用 --set 时值要写成 JSON 字符串（外层带双引号）才会解析成真换行。Logo 与二维码用原图合成，二维码必须 fit=contain 且保留白边；不需要 Logo 时保持 logo.visible=false。",
+  "output": "recruit-notice.png",
+  "size": [
+    1080,
+    1440
+  ],
+  "canvas_color": "#131A2B",
+  "keep_original": true,
+  "elements": [
+    {
+      "type": "gradient",
+      "from": "#1E2B4A",
+      "to": "#0E1422",
+      "direction": "vertical",
+      "box": [
+        0,
+        0,
+        1,
+        1
+      ],
+      "id": "gradient-0"
+    },
+    {
+      "type": "image",
+      "src": "logo.png",
+      "x": 0.09,
+      "y": 0.075,
+      "h": 0.045,
+      "anchor": "lm",
+      "fit": "contain",
+      "id": "logo",
+      "visible": false
+    },
+    {
+      "type": "text",
+      "text": "WE ARE HIRING",
+      "x": 0.5,
+      "y": 0.155,
+      "w": 0.86,
+      "size": 30,
+      "font": "微软雅黑",
+      "color": "#F5A623",
+      "align": "center",
+      "letter_spacing": 10,
+      "id": "text-2",
+      "anchor": "mt"
+    },
+    {
+      "type": "text",
+      "text": "[岗位名称]",
+      "x": 0.5,
+      "y": 0.235,
+      "w": 0.86,
+      "max_width": 0.86,
+      "max_height": 0.13,
+      "size": 92,
+      "min_size": 56,
+      "font": "微软雅黑",
+      "bold": true,
+      "color": "#FFFFFF",
+      "align": "center",
+      "letter_spacing": 4,
+      "line_height": 1.25,
+      "id": "title",
+      "anchor": "mt"
+    },
+    {
+      "type": "line",
+      "x": 0.36,
+      "y": 0.335,
+      "x2": 0.64,
+      "y2": 0.335,
+      "color": "#F5A623",
+      "width": 4,
+      "id": "line-4"
+    },
+    {
+      "type": "rect",
+      "x": 0.09,
+      "y": 0.385,
+      "w": 0.82,
+      "h": 0.245,
+      "radius": 18,
+      "fill": "#FFFFFF0F",
+      "outline": "#F5A62366",
+      "outline_width": 2,
+      "id": "rect-5"
+    },
+    {
+      "type": "text",
+      "text": "· [职责或要求第一条]\n· [职责或要求第二条]\n· [职责或要求第三条]\n· [职责或要求第四条]\n· [职责或要求第五条]",
+      "x": 0.13,
+      "y": 0.5075,
+      "w": 0.74,
+      "max_width": 0.74,
+      "max_height": 0.2,
+      "size": 30,
+      "min_size": 22,
+      "font": "微软雅黑",
+      "color": "#DCE4F2",
+      "align": "left",
+      "line_height": 1.95,
+      "id": "text-6",
+      "anchor": "lm"
+    },
+    {
+      "type": "text",
+      "text": "[工作地点]  ·  [薪资范围]",
+      "x": 0.5,
+      "y": 0.7,
+      "w": 0.86,
+      "size": 32,
+      "font": "微软雅黑",
+      "bold": true,
+      "color": "#F5A623",
+      "align": "center",
+      "letter_spacing": 2,
+      "id": "text-7",
+      "anchor": "mt"
+    },
+    {
+      "type": "text",
+      "text": "简历投递：[邮箱]\n扫码了解岗位详情",
+      "x": 0.09,
+      "y": 0.83,
+      "w": 0.52,
+      "size": 26,
+      "font": "微软雅黑",
+      "color": "#AFBBD2",
+      "align": "left",
+      "line_height": 1.75,
+      "id": "text-8",
+      "anchor": "lm"
+    },
+    {
+      "type": "image",
+      "src": "qrcode.png",
+      "x": 0.91,
+      "y": 0.83,
+      "h": 0.105,
+      "anchor": "rm",
+      "fit": "contain",
+      "id": "qrcode"
+    },
+    {
+      "type": "text",
+      "text": "[公司名称]",
+      "x": 0.5,
+      "y": 0.945,
+      "w": 0.86,
+      "size": 24,
+      "font": "微软雅黑",
+      "color": "#7C89A6",
+      "align": "center",
+      "letter_spacing": 2,
+      "id": "text-10",
+      "anchor": "mm"
+    }
+  ],
+  "dpi": 96
+}

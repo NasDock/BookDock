@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "output": "/Users/ctjj/Documents/projects/BookDock/aiskill-images/bookdock-posters-20261116/BookDock-01-推荐.png",
+  "requested_output": "/Users/ctjj/Documents/projects/BookDock/aiskill-images/bookdock-posters-20261116/BookDock-01-推荐.png",
+  "renamed": false,
+  "size": [
+    1080,
+    1920
+  ],
+  "elements": 10,
+  "bytes": 523299,
+  "dpi": 96.0,
+  "fonts": [
+    {
+      "requested": "Hiragino Sans GB",
+      "actual": "Hiragino Sans GB.ttc",
+      "actual_path": "/System/Library/Fonts/Hiragino Sans GB.ttc",
+      "fallback": false
+    }
+  ],
+  "warnings": []
+}
