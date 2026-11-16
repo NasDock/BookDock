@@ -71,6 +71,7 @@ import {
   User,
   VoicesQuery
 } from '../model/ApiModels';
+import { applyMockData } from './MockData';
 
 const DOMAIN = 0x0001;
 const TAG = 'ApiClient';
@@ -219,7 +220,9 @@ export class ApiClient {
         return empty;
       }
       try {
-        return JSON.parse(raw) as ApiResponse<T>;
+        // [feat/mock] 统一在这里把真实书籍数据换成本地 mock 数据，覆盖所有页面。
+        const parsed: Object = JSON.parse(raw) as Object;
+        return applyMockData(parsed) as ApiResponse<T>;
       } catch {
         const bad: ApiResponse<T> = { success: false, error: 'Invalid JSON: ' + raw.slice(0, 200) };
         return bad;
@@ -231,7 +234,7 @@ export class ApiClient {
       return empty;
     }
     if (raw && typeof raw === 'object') {
-      return raw as ApiResponse<T>;
+      return applyMockData(raw as Object) as ApiResponse<T>;
     }
     const empty: ApiResponse<T> = { success: false, error: 'Unknown response' };
     return empty;

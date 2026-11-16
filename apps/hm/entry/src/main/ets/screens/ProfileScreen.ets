@@ -474,7 +474,7 @@ export struct ProfileScreen {
   private BookCard(book: Book) {
     Row() {
       if (book.coverUrl) {
-        Image(book.coverUrl)
+        Image(getApiClient().toAbsoluteUrl(book.coverUrl))
           .width(60).height(90)
           .borderRadius(borderRadius.sm)
           .objectFit(ImageFit.Cover)
