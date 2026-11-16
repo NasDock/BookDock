@@ -1,42 +1,38 @@
 import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Delete,
-  Body,
-  Param,
-  Query,
-  UseGuards,
-  UseInterceptors,
-  UploadedFile,
-  StreamableFile,
-  Res,
-  ParseUUIDPipe,
-  ParseFilePipe,
-  MaxFileSizeValidator,
+    Body,
+    Controller,
+    Delete,
+    Get,
+    MaxFileSizeValidator,
+    Param,
+    ParseFilePipe,
+    ParseUUIDPipe,
+    Post,
+    Put,
+    Query,
+    Res,
+    StreamableFile,
+    UploadedFile,
+    UseGuards,
+    UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiBearerAuth, ApiConsumes, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
-import { BooksService } from './books.service';
-import {
-  CreateBookDto,
-  UpdateBookDto,
-  BookQueryDto,
-  BookResponseDto,
-  PaginatedBooksDto,
-  BookStatsDto,
-  UploadBookDto,
-  AddTagDto,
-} from './dto/books.dto';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { JwtAuthGuard, OptionalJwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
-import { v4 as uuidv4 } from 'uuid';
+import { BooksService } from './books.service';
+import {
+    AddTagDto,
+    BookQueryDto,
+    BookResponseDto,
+    BookStatsDto,
+    CreateBookDto,
+    PaginatedBooksDto,
+    UpdateBookDto
+} from './dto/books.dto';
 
 @ApiTags('Books')
 @Controller('books')
@@ -161,6 +157,16 @@ export class BooksController {
   ) {
     const index = parseInt(chapter || '0', 10);
     return this.booksService.getChapterContent(id, index);
+  }
+
+  @Get(':id/paragraphs')
+  @ApiOperation({ summary: 'Get chapter paragraphs (TTS-friendly, returns Paragraph[])' })
+  async getChapterParagraphs(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('chapter') chapter: string,
+  ) {
+    const index = parseInt(chapter || '0', 10);
+    return this.booksService.getChapterParagraphs(id, index);
   }
 
   @Get(':id/download')

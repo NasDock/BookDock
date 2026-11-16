@@ -5,6 +5,29 @@ import { getApiClient, type Book, type Author } from "@bookdock/api-client";
 import { getCoverImageUrl } from "../utils/network";
 import { ArrowLeft, BookOpen } from "lucide-react";
 
+function BookCover({ book, className = "" }: { book: Book; className?: string }) {
+  const [coverError, setCoverError] = useState(false);
+  const coverSrc = getCoverImageUrl(book.coverUrl);
+  return (
+    <div className={`aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow ${className}`}>
+      {coverSrc && !coverError ? (
+        <img
+          src={coverSrc}
+          alt={book.title}
+          className="w-full h-full object-cover"
+          onError={() => setCoverError(true)}
+        />
+      ) : (
+        <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}>
+          <span className="text-5xl text-white font-bold">
+            {book.title.charAt(0)}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function getBookGradient(title: string): string {
   const gradients = [
     "from-blue-400 to-purple-500",
@@ -146,23 +169,7 @@ export default function AuthorDetail() {
                   className="w-36 cursor-pointer"
                   onClick={() => handleBookSelect(book)}
                 >
-                  <div className="aspect-[2/3] bg-gray-100 dark:bg-gray-700 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow">
-                    {book.coverUrl ? (
-                      <img
-                        src={getCoverImageUrl(book.coverUrl)}
-                        alt={book.title}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div
-                        className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}
-                      >
-                        <span className="text-5xl text-white font-bold">
-                          {book.title.charAt(0)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
+                  <BookCover book={book} />
                   <p className="mt-2 text-sm font-medium text-gray-900 dark:text-white truncate">
                     {book.title}
                   </p>

@@ -5,6 +5,27 @@ import { getApiClient, Book, Collection } from "@bookdock/api-client";
 import { getCoverImageUrl } from "../utils/network";
 import { ArrowLeft, X, Trash2 } from "lucide-react";
 
+function BookCover({ book, className = "", onClick }: { book: Book; className?: string; onClick?: () => void }) {
+  const [coverError, setCoverError] = useState(false);
+  const coverSrc = getCoverImageUrl(book.coverUrl);
+  return (
+    <div className={`rounded overflow-hidden flex-shrink-0 ${className}`} onClick={onClick}>
+      {coverSrc && !coverError ? (
+        <img
+          src={coverSrc}
+          alt={book.title}
+          className="w-full h-full object-cover"
+          onError={() => setCoverError(true)}
+        />
+      ) : (
+        <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}>
+          <span className="text-xl text-white font-bold">{book.title.charAt(0)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function getBookGradient(title: string): string {
   const gradients = [
     "from-blue-400 to-purple-500",
@@ -107,24 +128,11 @@ export default function CollectionDetail() {
                 key={book.id}
                 className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg group"
               >
-                <div
-                  className="w-12 h-18 rounded overflow-hidden flex-shrink-0 cursor-pointer"
+                <BookCover
+                  book={book}
+                  className="w-12 h-18 cursor-pointer"
                   onClick={() => navigate(`/book/${book.id}/detail`)}
-                >
-                  {book.coverUrl ? (
-                    <img
-                      src={getCoverImageUrl(book.coverUrl)}
-                      alt={book.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div
-                      className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}
-                    >
-                      <span className="text-xl text-white font-bold">{book.title.charAt(0)}</span>
-                    </div>
-                  )}
-                </div>
+                />
                 <div
                   className="flex-1 min-w-0 cursor-pointer"
                   onClick={() => navigate(`/book/${book.id}/detail`)}

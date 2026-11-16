@@ -1,7 +1,7 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import { protocol, app, net, BrowserWindow, ipcMain, dialog } from "electron";
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 const __filename$1 = fileURLToPath(import.meta.url);
 const __dirname$1 = path.dirname(__filename$1);
 process.env.DIST_ELECTRON = path.join(__dirname$1, "../dist-electron");
@@ -10,7 +10,6 @@ process.env.VITE_PUBLIC = process.env.VITE_DEV_SERVER_URL ? path.join(__dirname$
 let win = null;
 const preload = path.join(__dirname$1, "preload.mjs");
 const url = process.env.VITE_DEV_SERVER_URL;
-const indexHtml = path.join(process.env.DIST, "index.html");
 let books = [];
 let windowStates = {};
 let settings = {
@@ -42,11 +41,36 @@ function createWindow() {
     win.loadURL(url);
     win.webContents.openDevTools();
   } else {
-    console.log("Main process loading file:", indexHtml);
-    win.loadFile(indexHtml);
+    console.log("Main process loading app://./index.html");
+    win.loadURL("app://./index.html");
   }
 }
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "app",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      bypassCSP: false,
+      corsEnabled: true
+    }
+  }
+]);
 app.whenReady().then(() => {
+  protocol.handle("app", (request) => {
+    try {
+      const url2 = new URL(request.url);
+      let pathname = decodeURIComponent(url2.pathname);
+      if (pathname.startsWith("/")) pathname = pathname.slice(1);
+      const filePath = path.join(process.env.DIST, pathname || "index.html");
+      console.log(`[Main] App Protocol: url=${request.url} -> filePath=${filePath}`);
+      return net.fetch(pathToFileURL(filePath).href);
+    } catch (e) {
+      console.error("[Main] App protocol error:", e);
+      return new Response("Internal error", { status: 500 });
+    }
+  });
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

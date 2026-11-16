@@ -1,7 +1,7 @@
 import { registerAs } from '@nestjs/config';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { randomBytes } from 'crypto';
-import { join, dirname } from 'path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { dirname } from 'path';
 
 const DEFAULT_JWT_SECRET = 'bookdock-dev-secret-change-in-production';
 const JWT_SECRET_FILE = process.env.JWT_SECRET_FILE || '/data/db/.jwt_secret';
@@ -35,6 +35,25 @@ function resolveJwtSecret(): string {
   return generated;
 }
 
+/**
+ * Parse NAS_EBOOK_PATH into a deduplicated, ordered list of absolute
+ * filesystem paths. Accepts both `:` (POSIX standard, recommended)
+ * and `,` (more familiar to .env authors on Windows) as separators
+ * so existing single-path deployments keep working unchanged.
+ */
+function parseEbookPaths(raw: string | undefined): string[] {
+  const fallback = '/data/ebooks';
+  if (!raw) return [fallback];
+  return Array.from(
+    new Set(
+      raw
+        .split(/[:,]/)
+        .map((p) => p.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
 export const AppConfig = registerAs('app', () => ({
   nodeEnv: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '8088', 10),
@@ -43,8 +62,18 @@ export const AppConfig = registerAs('app', () => ({
   jwtRefreshExpiry: process.env.JWT_REFRESH_EXPIRY || '30d',
   apiBaseUrl: process.env.API_BASE_URL || 'http://localhost:8088',
   corsOrigins: process.env.CORS_ORIGINS || '*',
-  nasEbookPath: process.env.NAS_EBOOK_PATH || '/data/ebooks',
+  // NAS_EBOOK_PATH accepts a single path or a colon/comma-separated
+  // list. Internally we always treat it as an array; the first entry
+  // is the "primary" root used for new uploads and as the cover
+  // directory fallback.
+  nasEbookPaths: parseEbookPaths(process.env.NAS_EBOOK_PATH),
   nasAudioPath: process.env.NAS_AUDIO_PATH || '/data/audio',
   sourceLocalPath: process.env.SOURCE_LOCAL_PATH || '/data/sources',
   cachePath: process.env.CACHE_PATH || '',
+  // TTS service integration
+  ttsServiceUrl: process.env.TTS_SERVICE_URL || 'http://localhost:5000',
+  ttsDefaultProvider: process.env.TTS_DEFAULT_PROVIDER || 'edge',
+  ttsAudioCacheDir: process.env.TTS_AUDIO_CACHE_DIR || '/data/audio',
+  ttsMaxTextLength: parseInt(process.env.TTS_MAX_TEXT_LENGTH || '3000', 10),
+  ttsMaxRequestTimeoutMs: parseInt(process.env.TTS_MAX_REQUEST_TIMEOUT_MS || '30000', 10),
 }));

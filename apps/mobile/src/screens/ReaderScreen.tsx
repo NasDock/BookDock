@@ -216,6 +216,19 @@ function generatePdfViewerHtml(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
   <title>PDF Viewer</title>
+  <script>
+    // Polyfill for Promise.withResolvers (missing on older WebView JS engines)
+    if (typeof Promise.withResolvers !== 'function') {
+      Promise.withResolvers = function () {
+        var resolve, reject;
+        var promise = new Promise(function (res, rej) {
+          resolve = res;
+          reject = rej;
+        });
+        return { promise: promise, resolve: resolve, reject: reject };
+      };
+    }
+  </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs" type="module"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -285,7 +298,18 @@ function generatePdfViewerHtml(
 
   <script type="module">
     import * as pdfjsLib from 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs';
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+    async function loadWorkerWithPolyfill() {
+      var WORKER_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+      var polyfill = 'if(typeof Promise.withResolvers!=="function"){Promise.withResolvers=function(){var r,e,t=new Promise(function(n,o){r=n,e=o});return{promise:t,resolve:r,reject:e}};}';
+      try {
+        var workerCode = await (await fetch(WORKER_URL)).text();
+        var blob = new Blob([polyfill + '\n' + workerCode], { type: 'application/javascript' });
+        return URL.createObjectURL(blob);
+      } catch (e) {
+        console.warn('Failed to patch worker, falling back to direct URL', e);
+        return WORKER_URL;
+      }
+    }
 
     const pdfDataUrl = ${JSON.stringify(pdfDataUrl)};
     const initialPage = ${initialPage};
@@ -336,6 +360,7 @@ function generatePdfViewerHtml(
     async function loadPdf() {
       try {
         // Fetch the data URL and convert to ArrayBuffer for PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = await loadWorkerWithPolyfill();
         const response = await fetch(pdfDataUrl);
         const pdfData = new Uint8Array(await response.arrayBuffer());
         pdfDoc = await pdfjsLib.getDocument({ data: pdfData }).promise;
@@ -1187,6 +1212,99 @@ export function ReaderScreen() {
   useEffect(() => {
     showBarsRef.current = showBars;
   }, [showBars]);
+
+  // ── Reading Timer ─────────────────────────────────────────────────────
+  const readingStartTimeRef = useRef<number>(0);
+  const accumulatedReadingTimeRef = useRef<number>(0);
+  const isReadingActiveRef = useRef<boolean>(false);
+  const readingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const REPORT_INTERVAL = 3; // Report every 3 seconds
+
+  const startReadingTimer = useCallback(() => {
+    if (!isReadingActiveRef.current) {
+      isReadingActiveRef.current = true;
+      readingStartTimeRef.current = Date.now();
+    }
+  }, []);
+
+  const pauseReadingTimer = useCallback(() => {
+    if (isReadingActiveRef.current && readingStartTimeRef.current > 0) {
+      const elapsed = Math.floor((Date.now() - readingStartTimeRef.current) / 1000);
+      accumulatedReadingTimeRef.current += elapsed;
+      isReadingActiveRef.current = false;
+      readingStartTimeRef.current = 0;
+    }
+  }, []);
+
+  const flushReadingTimer = useCallback(async () => {
+    pauseReadingTimer();
+    const total = accumulatedReadingTimeRef.current;
+    if (total >= 10) { // Minimum 10 seconds to report
+      try {
+        const hour = new Date().getHours();
+        await getApiClient().recordReadingSession(book.id, total, hour);
+      } catch (err) {
+        console.warn('Failed to report reading session:', err);
+      }
+    }
+    accumulatedReadingTimeRef.current = 0;
+  }, [pauseReadingTimer, book.id]);
+
+  const startPeriodicReport = useCallback(() => {
+    if (readingIntervalRef.current) return;
+    readingIntervalRef.current = setInterval(() => {
+      if (isReadingActiveRef.current && readingStartTimeRef.current > 0) {
+        const elapsed = Math.floor((Date.now() - readingStartTimeRef.current) / 1000);
+        accumulatedReadingTimeRef.current += elapsed;
+        readingStartTimeRef.current = Date.now();
+
+        // Report accumulated time every interval
+        const total = accumulatedReadingTimeRef.current;
+        accumulatedReadingTimeRef.current = 0;
+        if (total >= 1) {
+          getApiClient().recordReadingSession(book.id, total, new Date().getHours())
+            .catch((err) => console.warn('Failed to report reading session:', err));
+        }
+      }
+    }, REPORT_INTERVAL * 1000);
+  }, [book.id]);
+
+  const stopPeriodicReport = useCallback(() => {
+    if (readingIntervalRef.current) {
+      clearInterval(readingIntervalRef.current);
+      readingIntervalRef.current = null;
+    }
+  }, []);
+
+  // Handle AppState changes for reading timer
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === 'active') {
+        startReadingTimer();
+        startPeriodicReport();
+      } else {
+        pauseReadingTimer();
+        stopPeriodicReport();
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => {
+      subscription.remove();
+    };
+  }, [startReadingTimer, pauseReadingTimer, startPeriodicReport, stopPeriodicReport]);
+
+  // Start timer when screen is focused, flush when unfocused
+  useFocusEffect(
+    useCallback(() => {
+      startReadingTimer();
+      startPeriodicReport();
+      return () => {
+        stopPeriodicReport();
+        flushReadingTimer();
+      };
+    }, [startReadingTimer, flushReadingTimer, startPeriodicReport, stopPeriodicReport])
+  );
 
   // Stable WebView source object. The scroll-mode WebView re-renders
   // frequently as scroll progress updates; without this memo the inline
@@ -2254,16 +2372,6 @@ export function ReaderScreen() {
   }, [book.fileType, currentChapter, chapters.length, loadChapter, pdfCurrentPage, pdfTotalPages]);
 
   const handleTTS = useCallback(async () => {
-    const token = await AsyncStorage.getItem('bookdock_plus_token');
-    if (!token) {
-      navigation.navigate('MemberLogin');
-      return;
-    }
-    const vip = await useAuthStore.getState().refreshVipStatus();
-    if (!vip) {
-      navigation.navigate('MemberBenefits');
-      return;
-    }
     navigation.navigate('TTSScreen', { book });
   }, [navigation, book]);
 

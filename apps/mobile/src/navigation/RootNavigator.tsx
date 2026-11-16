@@ -15,6 +15,7 @@ import { BookDetailScreen } from "../screens/BookDetailScreen";
 import { AuthorDetailScreen } from "../screens/AuthorDetailScreen";
 import { NotesScreen } from "../screens/NotesScreen";
 import { SearchScreen } from "../screens/SearchScreen";
+import StatsScreen from "../screens/StatsScreen";
 import { useAuthStore, useThemeStore } from "../stores";
 import { getTheme } from "../utils/theme";
 import { setNavigationBarAuto } from "../utils/navigationBar";
@@ -98,10 +99,7 @@ export function RootNavigator() {
             <Stack.Screen
               name="TTSScreen"
               component={TTSScreen}
-              options={{
-                title: "听书",
-                headerBackTitle: "返回",
-              }}
+              options={{ headerShown: false, animation: 'slide_from_bottom' }}
             />
             <Stack.Screen
               name="Settings"
@@ -142,6 +140,11 @@ export function RootNavigator() {
             <Stack.Screen
               name="Notes"
               component={NotesScreen}
+              options={{ headerShown: false }}
+            />
+            <Stack.Screen
+              name="Stats"
+              component={StatsScreen}
               options={{ headerShown: false }}
             />
           </>

@@ -1,29 +1,37 @@
 import {
-  Injectable,
-  Inject,
-  NotFoundException,
-  ForbiddenException,
-  OnModuleInit,
+    Inject,
+    Injectable,
+    Logger,
+    NotFoundException,
+    OnModuleInit
 } from '@nestjs/common';
-import { PrismaClient, Book } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
+import { PrismaClient } from '@prisma/client';
 import { BookMetadataService } from '../book-metadata/book-metadata.service';
 
-import { createReadStream, statSync, existsSync } from 'fs';
-import { readdir, stat, readFile, rename } from 'fs/promises';
-import { join } from 'path';
+import { EPub } from 'epub';
+import { createReadStream, existsSync, statSync } from 'fs';
+import { copyFile, readdir, readFile, rename, stat, unlink } from 'fs/promises';
 import * as iconv from 'iconv-lite';
+import { join } from 'path';
 import { BookFormat } from '../../common/types/prisma-compat';
 import { PRISMA_CLIENT } from '../../config/database.module';
 import {
-  CreateBookDto,
-  UpdateBookDto,
-  BookQueryDto,
-  BookResponseDto,
-  PaginatedBooksDto,
-  BookStatsDto,
+    BookQueryDto,
+    BookResponseDto,
+    BookStatsDto,
+    CreateBookDto,
+    PaginatedBooksDto,
+    UpdateBookDto,
 } from './dto/books.dto';
-import { EPub } from 'epub';
+
+export interface BookParagraph {
+  id: string;
+  index: number;
+  text: string;
+  charStart: number;
+  charEnd: number;
+}
 
 // MOBI parser is ESM-only, use dynamic import
 let mobiParser: typeof import('@lingo-reader/mobi-parser') | null = null;
@@ -36,7 +44,9 @@ async function getMobiParser() {
 
 @Injectable()
 export class BooksService implements OnModuleInit {
-  private readonly nasEbookPath: string;
+  private readonly logger = new Logger(BooksService.name);
+  private readonly nasEbookPaths: string[];
+  private readonly primaryEbookPath: string;
   private readonly apiBaseUrl: string;
 
   constructor(
@@ -44,8 +54,59 @@ export class BooksService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly metadataService?: BookMetadataService, // T7: optional metadata service
   ) {
-    this.nasEbookPath = this.configService.get<string>('app.nasEbookPath') || '/data/ebooks';
+    // NAS_EBOOK_PATH may be a single path or a colon/comma-separated
+    // list. We always treat it as an array; the first entry is the
+    // "primary" root used for new uploads.
+    const configured =
+      this.configService.get<string[]>('app.nasEbookPaths') ||
+      this.configService.get<string>('app.nasEbookPath') || // legacy single-string form
+      '/data/ebooks';
+    this.nasEbookPaths = Array.isArray(configured)
+      ? (configured.length > 0 ? configured : ['/data/ebooks'])
+      : [configured];
+    this.primaryEbookPath = this.nasEbookPaths[0];
     this.apiBaseUrl = this.configService.get<string>('app.apiBaseUrl') || 'http://localhost:3000';
+
+    // Log the parsed roots so misconfigurations (typo, missing
+    // volume mount) are immediately visible in `docker logs`.
+    this.logger.log(
+      `NAS_EBOOK_PATH resolved to ${this.nasEbookPaths.length} root(s): ${JSON.stringify(this.nasEbookPaths)}`,
+    );
+    for (const root of this.nasEbookPaths) {
+      if (existsSync(root)) {
+        this.logger.log(`  [ok]    ${root}`);
+      } else {
+        this.logger.warn(
+          `  [MISS]  ${root} — directory not found, scan will skip it. ` +
+            `If this is unexpected, check the volume mount in docker-compose.yml: ` +
+            `for multi-root setups you need a separate host→container bind per root.`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Resolve a relative `filePath` (as stored on the Book row) to an
+   * absolute path on disk. Order of resolution:
+   *   1. filePath → root cache populated by the most recent scan.
+   *   2. First configured root where `filePath` exists.
+   *   3. `join(primaryEbookPath, filePath)` — used so callers can
+   *      surface a clear "file not found" error from a stable path.
+   */
+  private resolveEbookPath(filePath: string): string {
+    const cached = this.filePathRootCache.get(filePath);
+    if (cached) {
+      const candidate = join(cached, filePath);
+      if (existsSync(candidate)) return candidate;
+    }
+    for (const root of this.nasEbookPaths) {
+      const candidate = join(root, filePath);
+      if (existsSync(candidate)) {
+        this.filePathRootCache.set(filePath, root);
+        return candidate;
+      }
+    }
+    return join(this.primaryEbookPath, filePath);
   }
 
   onModuleInit() {
@@ -59,7 +120,7 @@ export class BooksService implements OnModuleInit {
     let fileHash: string | undefined;
     let fileSize: bigint | undefined;
 
-    const fullPath = join(this.nasEbookPath, dto.filePath);
+    const fullPath = this.resolveEbookPath(dto.filePath);
     if (existsSync(fullPath)) {
       try {
         const crypto = await import('crypto');
@@ -113,7 +174,7 @@ export class BooksService implements OnModuleInit {
       throw new Error(`不支持的文件格式: ${ext}`);
     }
 
-    const destPath = join(this.nasEbookPath, originalname);
+    const destPath = join(this.primaryEbookPath, originalname);
 
     // If file already exists, append a number
     let finalFileName = originalname;
@@ -122,11 +183,21 @@ export class BooksService implements OnModuleInit {
     while (existsSync(finalDestPath)) {
       const nameWithoutExt = originalname.replace(/\.[^/.]+$/, '');
       finalFileName = `${nameWithoutExt} (${counter}).${ext}`;
-      finalDestPath = join(this.nasEbookPath, finalFileName);
+      finalDestPath = join(this.primaryEbookPath, finalFileName);
       counter++;
     }
 
-    await rename(file.path, finalDestPath);
+    try {
+      await rename(file.path, finalDestPath);
+    } catch (err: any) {
+      // EXDEV: cross-device link not permitted — fall back to copy + unlink
+      if (err.code === 'EXDEV') {
+        await copyFile(file.path, finalDestPath);
+        await unlink(file.path);
+      } else {
+        throw err;
+      }
+    }
 
     const fileStat = statSync(finalDestPath);
     const title = finalFileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
@@ -178,20 +249,39 @@ export class BooksService implements OnModuleInit {
     return this.toBookResponse(book);
   }
 
+  /**
+   * Map of `filePath` (as stored on Book) → root directory that first
+   * surfaced that path during the most recent scan. Used by
+   * `resolveEbookPath` to look up the correct absolute path on disk
+   * even after server restarts. Entries are written by
+   * `collectEbookFilesRecursively` and read by `resolveEbookPath`.
+   *
+   * On a server restart the map starts empty; missing entries fall
+   * through to "first existing root" / primary root, which is
+   * correct for the common single-root deployment and still works
+   * when the user has multiple roots with non-overlapping file names.
+   */
+  private readonly filePathRootCache = new Map<string, string>();
+
   async scanLocalBooks(): Promise<number> {
     const ebookExts = ['txt', 'epub', 'pdf', 'mobi', 'azw3', 'fb2', 'djvu'];
     let added = 0;
 
     try {
-      const entries = await this.collectEbookFilesRecursively(this.nasEbookPath, ebookExts);
-      for (const filePath of entries) {
+      const entries = await this.collectEbookFilesRecursively(ebookExts);
+      for (const { filePath, rootPath } of entries) {
         const ext = filePath.split('.').pop()?.toLowerCase() || '';
         const existing = await this.prisma.book.findFirst({
           where: { filePath, isDeleted: false },
         });
-        if (existing) continue;
+        if (existing) {
+          // Refresh root cache from re-scan results (e.g. user moved
+          // the file to a different root and restarted the server).
+          this.filePathRootCache.set(filePath, rootPath);
+          continue;
+        }
 
-        const fullPath = join(this.nasEbookPath, filePath);
+        const fullPath = join(rootPath, filePath);
         const fileStat = await stat(fullPath);
         const fileName = filePath.split(/[\\/]/).pop() || filePath;
         const title = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
@@ -207,6 +297,7 @@ export class BooksService implements OnModuleInit {
             metadata: '{}',
           },
         });
+        this.filePathRootCache.set(filePath, rootPath);
 
         // T7: auto metadata fetch
         if (this.metadataService) {
@@ -222,28 +313,62 @@ export class BooksService implements OnModuleInit {
     return added;
   }
 
-  private async collectEbookFilesRecursively(basePath: string, ebookExts: string[], relativePath = ''): Promise<string[]> {
-    const currentPath = relativePath ? join(basePath, relativePath) : basePath;
-    const entries = await readdir(currentPath, { withFileTypes: true });
-    const files: string[] = [];
+  /**
+   * Walk every configured NAS root in priority order and return the
+   * list of ebook files (with the root that surfaced each one). On
+   * collisions — same relative path in two roots — the earlier root
+   * wins and the later one is skipped, so the on-disk canonical
+   * location is deterministic and matches the user's primary root.
+   */
+  private async collectEbookFilesRecursively(
+    ebookExts: string[],
+    rootOverride?: string,
+    relativePath = '',
+  ): Promise<{ filePath: string; rootPath: string }[]> {
+    const roots = rootOverride ? [rootOverride] : this.nasEbookPaths;
+    const seen = new Set<string>();
+    const out: { filePath: string; rootPath: string }[] = [];
 
-    for (const entry of entries) {
-      const nextRelativePath = relativePath ? join(relativePath, entry.name) : entry.name;
-      if (entry.isDirectory()) {
-        const nestedFiles = await this.collectEbookFilesRecursively(basePath, ebookExts, nextRelativePath);
-        files.push(...nestedFiles);
+    for (const root of roots) {
+      let entries: import('fs').Dirent[];
+      try {
+        const currentPath = relativePath ? join(root, relativePath) : root;
+        entries = await readdir(currentPath, { withFileTypes: true });
+      } catch {
+        // Root doesn't exist or isn't readable; skip it. Single-root
+        // setups keep working because the default '/data/ebooks' is
+        // the only entry and is allowed to be missing in dev.
         continue;
       }
 
-      if (!entry.isFile()) continue;
+      for (const entry of entries) {
+        const nextRelativePath = relativePath
+          ? join(relativePath, entry.name)
+          : entry.name;
+        if (entry.isDirectory()) {
+          const nested = await this.collectEbookFilesRecursively(
+            ebookExts,
+            root,
+            nextRelativePath,
+          );
+          for (const f of nested) {
+            if (seen.has(f.filePath)) continue;
+            seen.add(f.filePath);
+            out.push(f);
+          }
+          continue;
+        }
 
-      const ext = entry.name.split('.').pop()?.toLowerCase() || '';
-      if (ebookExts.includes(ext)) {
-        files.push(nextRelativePath);
+        if (!entry.isFile()) continue;
+        const ext = entry.name.split('.').pop()?.toLowerCase() || '';
+        if (!ebookExts.includes(ext)) continue;
+        if (seen.has(nextRelativePath)) continue;
+        seen.add(nextRelativePath);
+        out.push({ filePath: nextRelativePath, rootPath: root });
       }
     }
 
-    return files;
+    return out;
   }
 
 
@@ -264,7 +389,7 @@ export class BooksService implements OnModuleInit {
   }
 
   private async parseTxtChapters(filePath: string): Promise<{ title: string; startLine: number }[]> {
-    const fullPath = join(this.nasEbookPath, filePath);
+    const fullPath = this.resolveEbookPath(filePath);
     if (!existsSync(fullPath)) return [];
 
     const text = await this.readTextFile(fullPath);
@@ -272,26 +397,36 @@ export class BooksService implements OnModuleInit {
 
     // Patterns for chapter detection (Chinese novels)
     const chapterPatterns = [
-      /^\s*前言\s*$/i,
-      /^\s*引子\s*$/i,
-      /^\s*楔子\s*$/i,
-      /^\s*序[章言]?\s*$/i,
+      // Front/back matter as a standalone short line. Matches bare "序" / "前言"
+      // and titled variants like "金庸作品集“三联版”序". Rejects lines with
+      // sentence punctuation so a prose sentence ending in e.g. "…的序。" won't match.
+      /^\s*[^\s。，！？、；：,.!?;:]{0,15}(序[言章]?|前言|引子|楔子|后记|跋|尾声|终章)\s*$/,
       /^\s*第[一二三四五六七八九十百千万零\d]+[章回节卷部集]\s*.*/,
       /^\s*第\d+[章回节卷部集]\s*.*/,
+      // Bare Chinese-numeral chapter title, e.g. "二十二 群雄归心约三章" (no "第…回").
+      // Requires the numeral be followed by a separator (space) and a title,
+      // so prose like "二十二岁他离开了家乡" won't match.
+      /^\s*[一二三四五六七八九十]{1,3}\s+\S.{0,25}$/,
       /^\s*[\d零一二三四五六七八九十百千万]+\s*[、.．]\s*.*/,
       /^\s*附录[一二三四五六七八九十]?\s*$/i,
-      /^\s*后记\s*$/i,
-      /^\s*尾声\s*$/i,
     ];
 
-    const chapters: { title: string; startLine: number }[] = [];
+    const raw: { title: string; startLine: number }[] = [];
     lines.forEach((line, index) => {
       for (const pattern of chapterPatterns) {
         if (pattern.test(line)) {
-          chapters.push({ title: line.trim(), startLine: index });
+          raw.push({ title: line.trim(), startLine: index });
           break;
         }
       }
+    });
+
+    // Drop chapters whose body (until the next chapter / EOF) is empty.
+    // This removes stray title-only lines and duplicate/blank headers.
+    const chapters = raw.filter((chapter, i) => {
+      const endLine = i + 1 < raw.length ? raw[i + 1].startLine : lines.length;
+      const body = lines.slice(chapter.startLine + 1, endLine).join('\n').trim();
+      return body.length > 0;
     });
 
     // If no chapters found, treat whole file as one chapter
@@ -354,7 +489,7 @@ export class BooksService implements OnModuleInit {
       throw new NotFoundException('Chapter not found');
     }
 
-    const fullPath = join(this.nasEbookPath, filePath);
+    const fullPath = this.resolveEbookPath(filePath);
     const text = await this.readTextFile(fullPath);
     const lines = text.split(/\r?\n/);
 
@@ -375,7 +510,7 @@ export class BooksService implements OnModuleInit {
   // ─── EPUB Parsing ────────────────────────────────────────────────────────
 
   private async parseEpubChapters(filePath: string): Promise<{ title: string; id: string; index: number }[]> {
-    const fullPath = join(this.nasEbookPath, filePath);
+    const fullPath = this.resolveEbookPath(filePath);
     if (!existsSync(fullPath)) return [];
 
     try {
@@ -407,8 +542,189 @@ export class BooksService implements OnModuleInit {
     }
   }
 
+  // ─── Paragraph Extraction (TTS-friendly) ────────────────────────────────
+
+  /**
+   * Extract paragraphs from a chapter's HTML.
+   * - splits the HTML on <p>, <h1>..<h6>, <li>, <blockquote>
+   * - strips any remaining tags from each block
+   * - skips blocks with empty / whitespace-only text
+   * - returns stable ids of the form "p-<n>" and char offsets so the
+   *   client can compute a progress bar.
+   */
+  private extractParagraphs(html: string): BookParagraph[] {
+    if (!html) return [];
+    const blockTag = '(?:p|h[1-6]|li|blockquote|div)';
+    const re = new RegExp(`<${blockTag}\\b[^>]*>([\\s\\S]*?)<\\/${blockTag}>`, 'gi');
+    const out: BookParagraph[] = [];
+    let cursor = 0;
+    let idx = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+      const inner = m[1]
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!inner) continue;
+      out.push({
+        id: `p-${idx}`,
+        index: idx,
+        text: inner,
+        charStart: cursor,
+        charEnd: cursor + inner.length,
+      });
+      cursor += inner.length + 1;
+      idx += 1;
+    }
+    return out;
+  }
+
+  /** Public entry point used by Reader-TTS. */
+  async getChapterParagraphs(
+    id: string,
+    chapterIndex: number,
+  ): Promise<{ title: string; paragraphs: BookParagraph[] }> {
+    const book = await this.prisma.book.findUnique({ where: { id, isDeleted: false } });
+    if (!book) throw new NotFoundException('Book not found');
+
+    if (book.format === 'txt') {
+      return this.getTxtChapterParagraphs(book.filePath, chapterIndex);
+    }
+    if (book.format === 'epub') {
+      return this.getEpubChapterParagraphs(book.filePath, chapterIndex);
+    }
+    if (book.format === 'mobi' || book.format === 'azw3') {
+      return this.getMobiChapterParagraphs(book.filePath, chapterIndex);
+    }
+    // Fallback: legacy content endpoint, split on blank lines.
+    const { title, content } = await this.getChapterContent(id, chapterIndex);
+    return {
+      title,
+      paragraphs: content
+        .split(/\n\s*\n+/)
+        .map((para, i) => ({ id: `p-${i}`, index: i, text: para.trim(), charStart: 0, charEnd: para.length }))
+        .filter((p) => p.text.length > 0),
+    };
+  }
+
+  private async getEpubChapterParagraphs(
+    filePath: string,
+    chapterIndex: number,
+  ): Promise<{ title: string; paragraphs: BookParagraph[] }> {
+    const fullPath = this.resolveEbookPath(filePath);
+    if (!existsSync(fullPath)) {
+      throw new NotFoundException('EPUB file not found');
+    }
+    try {
+      const epub = new EPub(fullPath);
+      await epub.parse();
+      if (chapterIndex < 0 || chapterIndex >= epub.flow.length) {
+        throw new NotFoundException('Chapter not found');
+      }
+      const item = epub.flow[chapterIndex];
+      const rawHtml = await epub.getChapterRaw(item.id);
+      const withImages = await this.inlineEpubImages(epub, rawHtml, item.href);
+      const cleanContent = this.cleanEpubHtml(withImages, item.href);
+      const paragraphs = this.extractParagraphs(cleanContent);
+      let title = (item.title as string) || `第 ${chapterIndex + 1} 章`;
+      const tocItem = epub.toc.find((t) => t.href.split('#')[0] === item.href);
+      if (tocItem) title = tocItem.title as string;
+      return { title, paragraphs };
+    } catch (err) {
+      if (err instanceof NotFoundException) throw err;
+      console.error('Failed to get EPUB paragraphs:', err);
+      throw new NotFoundException('Failed to read EPUB chapter');
+    }
+  }
+
+  private async getTxtChapterParagraphs(
+    filePath: string,
+    chapterIndex: number,
+  ): Promise<{ title: string; paragraphs: BookParagraph[] }> {
+    const chapters = await this.parseTxtChapters(filePath);
+    if (chapterIndex < 0 || chapterIndex >= chapters.length) {
+      throw new NotFoundException('Chapter not found');
+    }
+    const fullPath = this.resolveEbookPath(filePath);
+    const text = await this.readTextFile(fullPath);
+    const lines = text.split(/\r?\n/);
+    const startLine = chapters[chapterIndex].startLine;
+    const endLine =
+      chapterIndex + 1 < chapters.length ? chapters[chapterIndex + 1].startLine : lines.length;
+    const contentLines = lines.slice(startLine + 1, endLine);
+    const body = contentLines.join('\n').trim();
+    const blocks = body
+      .split(/\n\s*\n+/)
+      .map((b) => b.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    const paragraphs: BookParagraph[] = [];
+    let cursor = 0;
+    blocks.forEach((b, i) => {
+      paragraphs.push({ id: `p-${i}`, index: i, text: b, charStart: cursor, charEnd: cursor + b.length });
+      cursor += b.length + 1;
+    });
+    return { title: chapters[chapterIndex].title, paragraphs };
+  }
+
+  private async getMobiChapterParagraphs(
+    filePath: string,
+    chapterIndex: number,
+  ): Promise<{ title: string; paragraphs: BookParagraph[] }> {
+    let mobi: any;
+    const fullPath = this.resolveEbookPath(filePath);
+    if (!existsSync(fullPath)) throw new NotFoundException('MOBI/AZW3 file not found');
+    try {
+      const parser = await getMobiParser();
+      mobi = await parser.initMobiFile(fullPath);
+      const spine = mobi.getSpine();
+      if (chapterIndex < 0 || chapterIndex >= spine.length) {
+        throw new NotFoundException('Chapter not found');
+      }
+      const chapterId = spine[chapterIndex].id;
+      const chapter = mobi.loadChapter(chapterId);
+      if (!chapter) throw new NotFoundException('Failed to load chapter');
+      const cleanContent = this.cleanEpubHtml(chapter.html, '');
+      const paragraphs = this.extractParagraphs(cleanContent);
+      let title = `第 ${chapterIndex + 1} 章`;
+      const toc = mobi.getToc();
+      const resolved = mobi.resolveHref(chapterId);
+      if (resolved) {
+        const baseId = resolved.id;
+        const findTitle = (items: any[]): string | undefined => {
+          for (const item of items) {
+            const itemBase = item.href.split('#')[0];
+            if (itemBase === baseId || item.href === baseId) return item.label;
+            if (item.children?.length) {
+              const found = findTitle(item.children);
+              if (found) return found;
+            }
+          }
+          return undefined;
+        };
+        const tocTitle = findTitle(toc);
+        if (tocTitle) title = tocTitle;
+      }
+      return { title, paragraphs };
+    } catch (err) {
+      if (err instanceof NotFoundException) throw err;
+      console.error('Failed to get MOBI paragraphs:', err);
+      throw new NotFoundException('Failed to read MOBI/AZW3 chapter');
+    } finally {
+      if (mobi) {
+        try { mobi.destroy(); } catch { /* ignore */ }
+      }
+    }
+  }
+
   private async getEpubChapterContent(filePath: string, chapterIndex: number): Promise<{ title: string; content: string }> {
-    const fullPath = join(this.nasEbookPath, filePath);
+    const fullPath = this.resolveEbookPath(filePath);
     if (!existsSync(fullPath)) {
       throw new NotFoundException('EPUB file not found');
     }
@@ -600,7 +916,7 @@ export class BooksService implements OnModuleInit {
   // ─── MOBI / AZW3 Parsing ─────────────────────────────────────────────────
 
   private async parseMobiChapters(filePath: string): Promise<{ title: string; id: string; index: number }[]> {
-    const fullPath = join(this.nasEbookPath, filePath);
+    const fullPath = this.resolveEbookPath(filePath);
     if (!existsSync(fullPath)) return [];
 
     let mobi: any;
@@ -655,7 +971,7 @@ export class BooksService implements OnModuleInit {
   }
 
   private async getMobiChapterContent(filePath: string, chapterIndex: number): Promise<{ title: string; content: string }> {
-    const fullPath = join(this.nasEbookPath, filePath);
+    const fullPath = this.resolveEbookPath(filePath);
     if (!existsSync(fullPath)) {
       throw new NotFoundException('MOBI/AZW3 file not found');
     }
@@ -845,9 +1161,9 @@ export class BooksService implements OnModuleInit {
     let updated = 0;
 
     try {
-      // 1. Collect all files on disk
-      const entries = await this.collectEbookFilesRecursively(this.nasEbookPath, ebookExts);
-      const filePathsOnDisk = new Set(entries);
+      // 1. Collect all files on disk (across every configured NAS root)
+      const entries = await this.collectEbookFilesRecursively(ebookExts);
+      const filePathsOnDisk = new Set(entries.map((e) => e.filePath));
 
       // 2. Get all existing books from DB
       const existingBooks = await this.prisma.book.findMany({
@@ -857,11 +1173,11 @@ export class BooksService implements OnModuleInit {
       const existingPaths = new Map(existingBooks.map((b) => [b.filePath, b]));
 
       // 3. Add new books
-      for (const filePath of entries) {
+      for (const { filePath, rootPath } of entries) {
         if (existingPaths.has(filePath)) continue;
 
         const ext = filePath.split('.').pop()?.toLowerCase() || '';
-        const fullPath = join(this.nasEbookPath, filePath);
+        const fullPath = join(rootPath, filePath);
         const fileStat = await stat(fullPath);
         const fileName = filePath.split(/[\\/]/).pop() || filePath;
         const title = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
@@ -877,6 +1193,7 @@ export class BooksService implements OnModuleInit {
             metadata: '{}',
           },
         });
+        this.filePathRootCache.set(filePath, rootPath);
 
         if (this.metadataService) {
           this.metadataService.fetchAndUpdateBook(createdBook.id).catch(() => {});
@@ -917,16 +1234,19 @@ export class BooksService implements OnModuleInit {
     let added = 0;
 
     try {
-      const entries = await this.collectEbookFilesRecursively(this.nasEbookPath, ebookExts);
+      const entries = await this.collectEbookFilesRecursively(ebookExts);
 
-      for (const filePath of entries) {
+      for (const { filePath, rootPath } of entries) {
         const existing = await this.prisma.book.findFirst({
           where: { filePath, isDeleted: false },
         });
-        if (existing) continue;
+        if (existing) {
+          this.filePathRootCache.set(filePath, rootPath);
+          continue;
+        }
 
         const ext = filePath.split('.').pop()?.toLowerCase() || '';
-        const fullPath = join(this.nasEbookPath, filePath);
+        const fullPath = join(rootPath, filePath);
         const fileStat = await stat(fullPath);
         const fileName = filePath.split(/[\\/]/).pop() || filePath;
         const title = fileName.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
@@ -942,6 +1262,7 @@ export class BooksService implements OnModuleInit {
             metadata: '{}',
           },
         });
+        this.filePathRootCache.set(filePath, rootPath);
 
         if (this.metadataService) {
           this.metadataService.fetchAndUpdateBook(createdBook.id).catch(() => {});
@@ -1003,7 +1324,7 @@ export class BooksService implements OnModuleInit {
     };
 
     return {
-      path: join(this.nasEbookPath, book.filePath),
+      path: this.resolveEbookPath(book.filePath),
       filename: `${book.title}.${book.format}`,
       contentType: formatMimeTypes[book.format as BookFormat],
     };

@@ -169,18 +169,6 @@ export function LibraryScreen() {
   }, [navigation]);
 
   const handleTTSPress = useCallback(async (book: Book) => {
-    const token = await AsyncStorage.getItem('bookdock_plus_token');
-    if (!token) {
-      navigation.navigate('MemberLogin');
-      return;
-    }
-
-    const vip = await useAuthStore.getState().refreshVipStatus();
-    if (!vip) {
-      navigation.navigate('MemberBenefits');
-      return;
-    }
-
     navigation.navigate('TTSScreen', { book });
   }, [navigation]);
 

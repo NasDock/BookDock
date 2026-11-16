@@ -462,7 +462,7 @@ export function LoginScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.logoContainer}>
-            <Image source={require('../../assets/logo.png')} style={{ width: 64, height: 64 }} resizeMode="contain" />
+            <Image source={require('../../assets/logo.webp')} style={{ width: 64, height: 64 }} resizeMode="contain" />
             <Text style={[styles.title, { color: theme.colors.text }]}>
               BookDock
             </Text>

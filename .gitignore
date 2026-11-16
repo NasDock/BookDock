@@ -32,8 +32,6 @@ credentials.json
 # Docker
 .docker/
 
-# Prisma
-apps/server/prisma/migrations/
 
 # Test
 coverage/
@@ -43,3 +41,20 @@ my-release-key.jks
 
 ebooks/
 covers/
+
+.claude
+
+.tts-cache
+
+# Python bytecode / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+venv/
+.venv/

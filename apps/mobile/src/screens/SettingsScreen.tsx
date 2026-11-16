@@ -20,6 +20,7 @@ import { notificationService, fileSystemService } from '../services';
 import { getApiClient } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { participateInternalTest } from '../services/plus';
 
 export function SettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -34,6 +35,7 @@ export function SettingsScreen() {
   const [readingReminder, setReadingReminder] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [themeModalVisible, setThemeModalVisible] = useState(false);
+  const [redeemingInternalTest, setRedeemingInternalTest] = useState(false);
 
   const theme = getTheme(actualTheme === 'dark');
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -121,6 +123,62 @@ export function SettingsScreen() {
       ]
     );
   }, [user]);
+
+  const handleJoinInternalTest = useCallback(async () => {
+    if (isVip) {
+      Alert.alert('已是内测用户', '您已经参与内测，无需重复申请');
+      return;
+    }
+
+    const plusUserId = await AsyncStorage.getItem('bookdock_plus_user_id');
+    if (!plusUserId) {
+      Alert.alert('需要登录', '请先登录会员账号', [
+        { text: '取消', style: 'cancel' },
+        { text: '去登录', onPress: () => navigation.navigate('MemberLogin') },
+      ]);
+      return;
+    }
+
+    try {
+      setRedeemingInternalTest(true);
+      const vipStartsAt = new Date();
+      const vipEndsAt = new Date(vipStartsAt);
+      vipEndsAt.setMonth(vipEndsAt.getMonth() + 1);
+
+      const res = await participateInternalTest({
+        vipStartsAt: vipStartsAt.toISOString(),
+        vipEndsAt: vipEndsAt.toISOString(),
+      });
+
+      const payload = res.data?.data;
+      if (res.data?.code !== 200 || !payload?.ok) {
+        throw new Error(res.data?.message || '参与内测失败');
+      }
+
+      await AsyncStorage.setItem('bookdock_vip_status', 'true');
+      await AsyncStorage.setItem(
+        'bookdock_vip_data',
+        JSON.stringify({
+          ...payload,
+          vipExpiresAt: payload.vipEndsAt,
+        })
+      );
+      await AsyncStorage.setItem('bookdock_vip_updated_at', Date.now().toString());
+
+      // 更新全局状态
+      useAuthStore.setState({ isVip: true, vipTier: payload.vipTier || 'BASIC' });
+
+      Alert.alert('成功', '恭喜！您已成功参与内测，获得1个月会员体验');
+    } catch (error) {
+      console.error('参与内测失败:', error);
+      Alert.alert(
+        '失败',
+        error instanceof Error ? error.message : '参与内测失败，请稍后重试'
+      );
+    } finally {
+      setRedeemingInternalTest(false);
+    }
+  }, [isVip, navigation]);
 
   const renderSection = (title: string, children: React.ReactNode) => (
     <View style={styles.section}>
@@ -223,6 +281,23 @@ export function SettingsScreen() {
         </>
       )}
 
+      {/* 内测计划 */}
+      {renderSection('内测计划',
+        <>
+          {renderRow(
+            'flask-outline',
+            '参与内测',
+            <View style={styles.rowValueRow}>
+              <Text style={styles.rowValueText}>
+                {isVip ? '已参与' : redeemingInternalTest ? '申请中...' : '点击参与'}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+            </View>,
+            handleJoinInternalTest
+          )}
+        </>
+      )}
+
       {/* About */}
       {renderSection('关于',
         <>
@@ -260,10 +335,23 @@ export function SettingsScreen() {
         </Pressable>
       </Modal>
 
-      {/* Logout */}
-      <TouchableOpacity style={styles.logoutButton} onPress={useAuthStore.getState().logout}>
-        <Text style={styles.logoutText}>退出登录</Text>
-      </TouchableOpacity>
+
+      {/* Action Buttons */}
+      <View style={styles.actionButtonsContainer}>
+        <TouchableOpacity
+          style={[styles.actionButton, { backgroundColor: theme.colors.error }]}
+          onPress={useAuthStore.getState().logout}
+        >
+          <Text style={[styles.actionButtonText, { color: '#fff' }]}>退出登录</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.actionButton, { backgroundColor: theme.colors.error + '20', borderWidth: 1, borderColor: theme.colors.error }]}
+          onPress={handleDeleteAccount}
+        >
+          <Text style={[styles.actionButtonText, { color: theme.colors.error }]}>注销会员账号</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
@@ -319,14 +407,19 @@ function createStyles(theme: ReturnType<typeof getTheme>) {
       height: 1,
       marginLeft: spacing.md + 28,
     },
-    logoutButton: {
+    actionButtonsContainer: {
       marginTop: spacing.lg,
-      paddingVertical: spacing.md,
-      alignItems: 'center',
+      paddingHorizontal: spacing.md,
+      gap: spacing.md,
     },
-    logoutText: {
+    actionButton: {
+      paddingVertical: spacing.md,
+      borderRadius: borderRadius.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    actionButtonText: {
       fontSize: fontSizes.md,
-      color: theme.colors.error,
       fontWeight: '500',
     },
     themeModal: {

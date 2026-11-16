@@ -1,7 +1,7 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, net, protocol } from 'electron';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,7 +16,6 @@ process.env.VITE_PUBLIC = process.env.VITE_DEV_SERVER_URL
 let win: BrowserWindow | null = null;
 const preload = path.join(__dirname, 'preload.mjs');
 const url = process.env.VITE_DEV_SERVER_URL;
-const indexHtml = path.join(process.env.DIST, 'index.html');
 
 // Simple state management for demo
 let books: any[] = [];
@@ -32,14 +31,14 @@ let settings = {
 
 function createWindow() {
   console.log('Main process using preload script at:', preload);
-  
+
   win = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 800,
     minHeight: 600,
     title: 'BookDock - 书仓',
-    icon: path.join(process.env.VITE_PUBLIC, 'logo.png'),
+    icon: path.join(process.env.VITE_PUBLIC!, 'logo.png'),
     webPreferences: {
       preload,
       nodeIntegration: false,
@@ -53,13 +52,43 @@ function createWindow() {
     win.loadURL(url);
     win.webContents.openDevTools();
   } else {
-    console.log('Main process loading file:', indexHtml);
-    win.loadFile(indexHtml);
+    console.log('Main process loading app://./index.html');
+    win.loadURL('app://./index.html');
   }
 }
 
+// Register custom protocol before app is ready
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'app',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      bypassCSP: false,
+      corsEnabled: true,
+    },
+  },
+]);
 
 app.whenReady().then(() => {
+  // Register app protocol handler
+  protocol.handle('app', (request) => {
+    try {
+      const url = new URL(request.url);
+      let pathname = decodeURIComponent(url.pathname);
+      if (pathname.startsWith('/')) pathname = pathname.slice(1);
+
+      const filePath = path.join(process.env.DIST!, pathname || 'index.html');
+      console.log(`[Main] App Protocol: url=${request.url} -> filePath=${filePath}`);
+
+      return net.fetch(pathToFileURL(filePath).href);
+    } catch (e) {
+      console.error('[Main] App protocol error:', e);
+      return new Response('Internal error', { status: 500 });
+    }
+  });
+
   createWindow();
 
   app.on('activate', () => {

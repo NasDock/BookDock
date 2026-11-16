@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { getApiClient, Book, Collection } from "@bookdock/api-client";
 import { useAuthStore } from "../stores/authStore";
 import { getCoverImageUrl } from "../utils/network";
@@ -17,6 +17,12 @@ import {
   Search,
   Clock,
   User,
+  Settings,
+  Crown,
+  RefreshCw,
+  Shield,
+  LogOut,
+  BarChart3,
 } from "lucide-react";
 
 function formatDate(dateStr: string): string {
@@ -53,7 +59,7 @@ type TabKey = "collections" | "reading" | "favorites" | "downloads" | "notes";
 
 export default function Profile() {
   const navigate = useNavigate();
-  const { user } = useAuthStore();
+  const { user, logout, isVip, plusUser } = useAuthStore();
   const [activeTab, setActiveTab] = useState<TabKey>("collections");
   const [collections, setCollections] = useState<Collection[]>([]);
   const [favorites, setFavorites] = useState<Book[]>([]);
@@ -67,6 +73,45 @@ export default function Profile() {
   const noteLimit = 20;
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [readingSummary, setReadingSummary] = useState<{
+    todaySecs: number;
+    weekSecs: number;
+    monthSecs: number;
+    yearSecs: number;
+    totalSecs: number;
+  } | null>(null);
+
+  // Fetch reading time summary
+  useEffect(() => {
+    const fetchSummary = async () => {
+      try {
+        const api = getApiClient();
+        const res = await api.getReadingTimeSummary();
+        if (res.success && res.data) {
+          setReadingSummary(res.data);
+        }
+      } catch (err) {
+        console.error("Failed to fetch reading summary:", err);
+      }
+    };
+    fetchSummary();
+  }, []);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+    if (showDropdown) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showDropdown]);
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
@@ -153,6 +198,31 @@ export default function Profile() {
 
   const downloadedBooks: Book[] = [];
 
+  const handleSync = async (type: "full" | "incremental") => {
+    const title = type === "full" ? "全量更新" : "增量更新";
+    const message =
+      type === "full"
+        ? "扫描所有本地书籍，新增数据库不存在的，标记已删除的，重新抓取所有现有书籍的元数据。"
+        : "仅扫描新数据，现有数据不做处理。";
+
+    if (!window.confirm(`${title}\n\n${message}\n\n确认开始更新吗？`)) {
+      return;
+    }
+
+    setSyncing(type);
+    try {
+      const { getApiClient } = await import("@bookdock/api-client");
+      const api = getApiClient();
+      const res = await api.syncBooks(type);
+      alert(res.data?.message || `${type === "full" ? "全量" : "增量"}更新成功`);
+    } catch (e: any) {
+      alert(e?.response?.data?.message || "同步失败");
+    } finally {
+      setSyncing(null);
+      setShowDropdown(false);
+    }
+  };
+
   const handleCreateCollection = useCallback(async () => {
     if (!newCollectionName.trim()) return;
     try {
@@ -176,27 +246,30 @@ export default function Profile() {
     { key: "downloads", label: "下载", icon: Download },
   ];
 
-  const renderBookCard = (book: Book) => (
-    <div
-      key={book.id}
-      className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-      onClick={() => navigate(`/book/${book.id}/detail`)}
-    >
-      <div className="w-12 h-18 rounded overflow-hidden flex-shrink-0">
-        {book.coverUrl ? (
-          <img src={getCoverImageUrl(book.coverUrl)} alt={book.title} className="w-full h-full object-cover" />
-        ) : (
-          <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}>
-            <span className="text-xl text-white font-bold">{book.title.charAt(0)}</span>
-          </div>
-        )}
+  function BookCard({ book }: { book: Book }) {
+    const [coverError, setCoverError] = useState(false);
+    const coverSrc = getCoverImageUrl(book.coverUrl);
+    return (
+      <div
+        className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        onClick={() => navigate(`/book/${book.id}/detail`)}
+      >
+        <div className="w-12 h-16 rounded overflow-hidden flex-shrink-0">
+          {coverSrc && !coverError ? (
+            <img src={coverSrc} alt={book.title} className="w-full h-full object-cover" onError={() => setCoverError(true)} />
+          ) : (
+            <div className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${getBookGradient(book.title)}`}>
+              <span className="text-xl text-white font-bold">{book.title.charAt(0)}</span>
+            </div>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{book.title}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{book.author || "未知作者"}</p>
+        </div>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{book.title}</p>
-        <p className="text-xs text-gray-500 dark:text-gray-400">{book.author || "未知作者"}</p>
-      </div>
-    </div>
-  );
+    );
+  }
 
   const renderNotesContent = () => {
     const totalPages = Math.ceil(noteTotal / noteLimit);
@@ -406,7 +479,7 @@ export default function Profile() {
             {inProgressBooks.length === 0 ? (
               <p className="text-center text-gray-500 dark:text-gray-400 py-8">暂无在读书籍</p>
             ) : (
-              inProgressBooks.map(renderBookCard)
+              inProgressBooks.map((book) => <BookCard key={book.id} book={book} />)
             )}
           </div>
         );
@@ -416,7 +489,7 @@ export default function Profile() {
             {favorites.length === 0 ? (
               <p className="text-center text-gray-500 dark:text-gray-400 py-8">暂无收藏</p>
             ) : (
-              favorites.map(renderBookCard)
+              favorites.map((book) => <BookCard key={book.id} book={book} />)
             )}
           </div>
         );
@@ -426,7 +499,7 @@ export default function Profile() {
             {downloadedBooks.length === 0 ? (
               <p className="text-center text-gray-500 dark:text-gray-400 py-8">暂无下载</p>
             ) : (
-              downloadedBooks.map((b) => renderBookCard(b as unknown as Book))
+              downloadedBooks.map((b) => <BookCard key={b.id} book={b as unknown as Book} />)
             )}
           </div>
         );
@@ -439,14 +512,85 @@ export default function Profile() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">我的</h1>
+        <div className="flex items-center gap-2">
+          <div className="relative md:hidden" ref={dropdownRef}>
+            <button
+              onClick={() => setShowDropdown(!showDropdown)}
+              className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+            {showDropdown && (
+              <div className="absolute left-0 top-full mt-1 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 z-50 py-1">
+                <button
+                  onClick={() => { setShowCreateModal(true); setShowDropdown(false); }}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>新建书单</span>
+                </button>
+                <button
+                  onClick={() => { handleSync("incremental"); setShowDropdown(false); }}
+                  disabled={!!syncing}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>增量更新</span>
+                </button>
+                <button
+                  onClick={() => { handleSync("full"); setShowDropdown(false); }}
+                  disabled={!!syncing}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>全量更新</span>
+                </button>
+                <Link
+                  to="/membership"
+                  onClick={() => setShowDropdown(false)}
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <Crown className="w-4 h-4" />
+                  <span>会员中心</span>
+                </Link>
+                <Link
+                  to="/notes"
+                  onClick={() => setShowDropdown(false)}
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <StickyNote className="w-4 h-4" />
+                  <span>笔记</span>
+                </Link>
+                {user?.role === "admin" && (
+                  <Link
+                    to="/admin"
+                    onClick={() => setShowDropdown(false)}
+                    className="flex items-center gap-2 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    <Shield className="w-4 h-4" />
+                    <span>后台管理</span>
+                  </Link>
+                )}
+                <div className="mx-3 my-1 border-t border-gray-100 dark:border-gray-700" />
+                <button
+                  onClick={() => { logout(); setShowDropdown(false); }}
+                  className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>退出登录</span>
+                </button>
+              </div>
+            )}
+          </div>
+          <h1 className="hidden md:block text-3xl font-bold text-gray-900 dark:text-white">我的</h1>
+        </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-1 px-3 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 transition-colors"
+            onClick={() => navigate("/settings")}
+            className="md:hidden p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            title="设置"
           >
-            <Plus className="w-4 h-4" />
-            新建书单
+            <Settings className="w-5 h-5" />
           </button>
         </div>
       </div>
@@ -461,10 +605,83 @@ export default function Profile() {
           </div>
           <div>
             <p className="text-lg font-semibold text-gray-900 dark:text-white">{user?.username || "用户"}</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400">{user?.role === "admin" ? "管理员" : "普通用户"}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {(() => {
+                if (user?.role === "admin") return "管理员";
+                if (!isVip) return "普通用户";
+                const level = plusUser?.level;
+                if (level === "lifetime") return "永久会员";
+                if (level === "year") return "年会员";
+                return "会员";
+              })()}
+            </p>
           </div>
         </div>
       </div>
+
+      {/* Reading Time Card */}
+      {isVip ? (
+        readingSummary && (
+          <Link
+            to="/stats"
+            className="block bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl p-4 text-white hover:from-blue-600 hover:to-indigo-700 transition-all shadow-md"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm text-blue-100">阅读时长</p>
+                  <p className="text-lg font-bold">
+                    {(() => {
+                      const format = (secs: number) => {
+                        if (secs < 60) return `${secs}秒`;
+                        if (secs < 3600) return `${Math.floor(secs / 60)}分钟`;
+                        const h = Math.floor(secs / 3600);
+                        const m = Math.floor((secs % 3600) / 60);
+                        return m > 0 ? `${h}小时${m}分钟` : `${h}小时`;
+                      };
+                      if (readingSummary.todaySecs > 0) {
+                        return `今日阅读 ${format(readingSummary.todaySecs)}`;
+                      }
+                      if (readingSummary.weekSecs > 0) {
+                        return `本周阅读 ${format(readingSummary.weekSecs)}`;
+                      }
+                      if (readingSummary.monthSecs > 0) {
+                        return `本月阅读 ${format(readingSummary.monthSecs)}`;
+                      }
+                      if (readingSummary.yearSecs > 0) {
+                        return `今年阅读 ${format(readingSummary.yearSecs)}`;
+                      }
+                      return "今日还没有阅读";
+                    })()}
+                  </p>
+                </div>
+              </div>
+              <BarChart3 className="w-5 h-5 text-blue-200" />
+            </div>
+          </Link>
+        )
+      ) : (
+        <Link
+          to="/membership"
+          className="block bg-gradient-to-r from-gray-400 to-gray-500 rounded-xl p-4 text-white hover:from-gray-500 hover:to-gray-600 transition-all shadow-md"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-white/20 rounded-lg">
+                <Crown className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-100">阅读时长</p>
+                <p className="text-lg font-bold">开通会员解锁阅读时长统计</p>
+              </div>
+            </div>
+            <BarChart3 className="w-5 h-5 text-gray-200" />
+          </div>
+        </Link>
+      )}
 
       {/* Tabs */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-1 flex">

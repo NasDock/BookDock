@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import { mockData } from './mockUtils';
 
 export interface ApiResponse<T = unknown> {
@@ -82,11 +82,127 @@ export interface ReadingSession {
   endedAt?: string;
 }
 
+export interface ReadingTimeSummary {
+  todaySecs: number;
+  weekSecs: number;
+  monthSecs: number;
+  yearSecs: number;
+  totalSecs: number;
+}
+
+export interface PeriodReadingStats {
+  period: 'day' | 'week' | 'month' | 'year';
+  totalDurationSecs: number;
+  bookCount: number;
+  breakdown: Array<{
+    label: string;
+    durationSecs: number;
+    date: string;
+  }>;
+}
+
+export interface DailyHourStats {
+  date: string;
+  hours: Array<{
+    hour: number;
+    durationSecs: number;
+  }>;
+}
+
 export interface TTSVoice {
   id: string;
   name: string;
-  lang: string;
-  local: boolean;
+  /** BCP-47 locale e.g. "en-US" */
+  language: string;
+  /** @deprecated alias for language, kept for backwards compatibility */
+  lang?: string;
+  gender: string;
+  description?: string;
+  sample_rate?: number;
+  /** @deprecated legacy field, always false on the new path */
+  local?: boolean;
+}
+
+export interface TTSProvider {
+  name: string;
+  enabled: boolean;
+  status: string;
+  configured?: boolean;
+}
+
+export interface Paragraph {
+  id: string;
+  index: number;
+  text: string;
+  charStart: number;
+  charEnd: number;
+}
+
+export interface ChapterParagraphs {
+  title: string;
+  paragraphs: Paragraph[];
+}
+
+export interface SynthesizeParagraphRequest {
+  bookId?: string;
+  paragraphId?: string;
+  text: string;
+  provider?: string;
+  voice?: string;
+  rate?: number;
+  pitch?: number;
+  volume?: number;
+}
+
+export interface SynthesizeParagraphResult {
+  url: string;
+  contentHash: string;
+  provider: string;
+  voice: string;
+  bytes: number;
+  cached: boolean;
+}
+
+export interface TtsProgressPayload {
+  bookId: string;
+  chapterIndex: number;
+  paragraphIndex: number;
+  charOffset?: number;
+  audioOffsetMs?: number;
+  voice?: string;
+  provider?: string;
+  totalParagraphs?: number;
+}
+
+export interface TtsProgressRecord {
+  id: string;
+  userId: string;
+  bookId: string;
+  chapterIndex: number;
+  paragraphIndex: number;
+  charOffset: number;
+  audioOffsetMs: number;
+  voice?: string;
+  provider?: string;
+  totalParagraphs: number;
+  updatedAt: string;
+}
+
+export interface BookLastReadPayload {
+  bookId: string;
+  chapterIndex: number;
+  paragraphIndex?: number;
+  audioOffsetMs?: number;
+}
+
+export interface BookLastReadRecord {
+  id: string;
+  userId: string;
+  bookId: string;
+  chapterIndex: number;
+  paragraphIndex: number;
+  audioOffsetMs: number;
+  updatedAt: string;
 }
 
 export interface EbookSource {
@@ -143,6 +259,23 @@ class ApiClient {
   private getAuthToken?: () => string | null;
   private onAuthError?: () => void;
   public readonly baseURL: string;
+
+  /** Server base URL without /api suffix, for static assets (audio, covers, etc.) */
+  get serverBaseURL(): string {
+    return this.baseURL.replace(/\/api$/, '');
+  }
+
+  /**
+   * Convert a server-relative path (e.g. "/covers/abc.jpg") into an
+   * absolute URL pointing at the current server. Pass-through if the
+   * input is already an http(s)/data URL or empty.
+   */
+  toAbsoluteUrl(path?: string | null): string | undefined {
+    if (!path) return undefined;
+    if (/^(https?:|data:|blob:)/i.test(path)) return path;
+    if (!path.startsWith('/')) return path;
+    return `${this.serverBaseURL}${path}`;
+  }
 
   constructor(config: ApiClientConfig) {
     this.getAuthToken = config.getAuthToken;
@@ -267,11 +400,12 @@ class ApiClient {
   }
 
   // Reading progress
-  async updateReadingProgress(bookId: string, progressPct: number, currentChapter?: number, scrollOffset?: number): Promise<ApiResponse> {
+  async updateReadingProgress(bookId: string, progressPct: number, currentChapter?: number, scrollOffset?: number, durationSecs?: number): Promise<ApiResponse> {
     const { data } = await this.client.post(`/reading-progress/books/${bookId}`, {
       progressPct,
       currentChapter,
       scrollOffset,
+      durationSecs,
     });
     return data;
   }
@@ -286,14 +420,83 @@ class ApiClient {
     return data;
   }
 
-  // TTS endpoints
-  async getVoices(): Promise<ApiResponse<TTSVoice[]>> {
-    const { data } = await this.client.get('/tts/voices');
+  // ── Reading Time Tracking ───────────────────────────────────────────
+
+  async recordReadingSession(bookId: string, durationSecs: number, hour?: number): Promise<ApiResponse> {
+    const { data } = await this.client.post('/reading-progress/session', { bookId, durationSecs, hour });
     return data;
   }
 
+  async getReadingTimeSummary(): Promise<ApiResponse<ReadingTimeSummary>> {
+    const { data } = await this.client.get('/reading-progress/time-summary');
+    return data;
+  }
+
+  async getPeriodReadingStats(period: 'day' | 'week' | 'month' | 'year', date?: string): Promise<ApiResponse<PeriodReadingStats>> {
+    const { data } = await this.client.get('/reading-progress/period-stats', { params: { period, date } });
+    return data;
+  }
+
+  async getDailyReadingHours(date?: string): Promise<ApiResponse<DailyHourStats>> {
+    const { data } = await this.client.get('/reading-progress/daily-hours', { params: { date } });
+    return data;
+  }
+
+  // TTS endpoints
+  async getTtsProviders(): Promise<ApiResponse<{ providers: TTSProvider[]; default?: string }>> {
+    const { data } = await this.client.get('/tts/providers');
+    return data;
+  }
+
+  async getVoices(provider = 'edge', language?: string): Promise<ApiResponse<TTSVoice[]>> {
+    const { data } = await this.client.get('/tts/voices', {
+      params: { provider, ...(language ? { language } : {}) },
+    });
+    return data;
+  }
+
+  async synthesizeParagraph(req: SynthesizeParagraphRequest): Promise<ApiResponse<SynthesizeParagraphResult>> {
+    const { data } = await this.client.post('/tts/synthesize', req);
+    return data;
+  }
+
+  // Backwards-compatible raw-blob endpoint
   async convertToSpeech(text: string, voiceId?: string): Promise<Blob> {
-    const { data } = await this.client.post('/tts/synthesize', { text, voice: voiceId }, { responseType: 'blob' });
+    const { data } = await this.client.post(
+      '/tts/synthesize-blob',
+      { text, voice: voiceId },
+      { responseType: 'blob' },
+    );
+    return data;
+  }
+
+  // Reading progress for TTS
+  async saveTtsProgress(p: TtsProgressPayload): Promise<ApiResponse<TtsProgressRecord>> {
+    const { data } = await this.client.post('/tts/progress', p);
+    return data;
+  }
+
+  async getTtsProgress(bookId: string, chapterIndex?: number): Promise<ApiResponse<TtsProgressRecord | TtsProgressRecord[] | null>> {
+    const { data } = await this.client.get('/tts/progress', {
+      params: chapterIndex !== undefined ? { bookId, chapterIndex } : { bookId },
+    });
+    return data;
+  }
+
+  // ── Global "last listened" pointer ──────────────────────────────────
+  async saveBookLastRead(p: BookLastReadPayload): Promise<ApiResponse<BookLastReadRecord>> {
+    const { data } = await this.client.post(`/books/${p.bookId}/last-read`, p);
+    return data;
+  }
+
+  async getBookLastRead(bookId: string): Promise<ApiResponse<BookLastReadRecord | null>> {
+    const { data } = await this.client.get(`/books/${bookId}/last-read`);
+    return data;
+  }
+
+  // Chapter paragraphs (the TTS-friendly chapter payload)
+  async getChapterParagraphs(id: string, chapterIndex: number): Promise<ApiResponse<ChapterParagraphs>> {
+    const { data } = await this.client.get(`/books/${id}/paragraphs`, { params: { chapter: chapterIndex } });
     return data;
   }
 

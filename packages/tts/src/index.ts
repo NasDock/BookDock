@@ -1,19 +1,54 @@
-import { TTSVoice, getApiClient } from '@bookdock/api-client';
-export type { TTSVoice } from '@bookdock/api-client';
+/**
+ * @bookdock/tts — paragraph-level TTS manager for the desktop app.
+ *
+ * Replaces the previous single-blob ServerTTS implementation. This version
+ * operates on a list of paragraphs (not free text) and exposes
+ * paragraph-aware seek + progress callbacks.
+ *
+ * Key behaviour:
+ *   - On `play()`, fetches audio URL for paragraph[i], plays it.
+ *   - On `ended`, automatically advances to i+1 (after prefetching it).
+ *   - Prefetches the next paragraph's audio while the current one plays.
+ *   - Persists progress to the server (debounced).
+ *   - `seek(globalProgress)` finds the paragraph + audio offset for any
+ *     0..1 position and jumps there.
+ */
+import type { BookLastReadPayload } from '@bookdock/api-client';
+import {
+    getApiClient,
+    Paragraph,
+    SynthesizeParagraphRequest,
+    TtsProgressPayload,
+    TTSProvider,
+    TTSVoice
+} from '@bookdock/api-client';
+
+export type { Paragraph, TTSProvider, TTSVoice } from '@bookdock/api-client';
 
 export interface TTSConfig {
+  provider?: string;
   voiceId?: string;
   rate?: number;
   pitch?: number;
   volume?: number;
-  lang?: string;
+  /** Set by callers so progress is persisted against this book */
+  bookId?: string;
+  chapterIndex?: number;
 }
 
+/** Per-call overrides (used by the reader page to switch voice/provider
+ *  without mutating the global config). Empty / undefined fields fall
+ *  back to `cfg`. */
+export type TTSOverrides = Partial<Pick<TTSConfig, 'provider' | 'voiceId' | 'rate' | 'pitch' | 'volume'>>;
+
 export interface TTSProgress {
+  paragraphIndex: number;
+  totalParagraphs: number;
+  /** 0..1, within the current paragraph audio */
+  paragraphProgress: number;
+  /** 0..1, across the whole chapter */
+  chapterProgress: number;
   currentText: string;
-  currentIndex: number;
-  totalChunks: number;
-  percentage: number;
   isPlaying: boolean;
 }
 
@@ -24,296 +59,508 @@ export interface TTSEventCallbacks {
   onPause?: () => void;
   onResume?: () => void;
   onEnd?: () => void;
-  onProgress?: (progress: TTSProgress) => void;
-  onError?: (error: Error) => void;
+  onProgress?: (p: TTSProgress) => void;
+  onParagraphChange?: (paragraphIndex: number, paragraph: Paragraph) => void;
+  onError?: (err: Error) => void;
 }
 
-// Server-side TTS using API
-class ServerTTS {
-  private audioElement: HTMLAudioElement | null = null;
-  private currentBlob: Blob | null = null;
-  private config: TTSConfig = {};
+interface CachedAudio {
+  url: string;
+  audio: HTMLAudioElement;
+  loaded: boolean;
+}
 
-  async speak(
-    text: string,
-    config: TTSConfig = {},
-    callbacks: TTSEventCallbacks = {}
-  ): Promise<void> {
-    this.stop();
-    this.config = config;
+export class TTSManager {
+  private api = getApiClient();
+  private cfg: TTSConfig = {};
 
-    try {
-      callbacks.onProgress?.({
-        currentText: text,
-        currentIndex: 0,
-        totalChunks: 1,
-        percentage: 0,
-        isPlaying: true,
-      });
+  private paragraphs: Paragraph[] = [];
+  private currentIndex = 0;
+  private audio: HTMLAudioElement | null = null;
+  private cache = new Map<string, CachedAudio>();
+  private state: TTSState = 'idle';
+  private cb: TTSEventCallbacks = {};
+  private progress: TTSProgress = {
+    paragraphIndex: 0,
+    totalParagraphs: 0,
+    paragraphProgress: 0,
+    chapterProgress: 0,
+    currentText: '',
+    isPlaying: false,
+  };
+  private voices: TTSVoice[] = [];
+  private lastSaveAt = 0;
+  /** Tracks the provider the voices list was loaded for, so we can
+   *  refetch when the user switches provider. */
+  private voicesProvider: string | null = null;
+  private providers: TTSProvider[] = [];
+  private providersLoaded = false;
+  /** Per-call overrides set by the most recent play() call. */
+  private activeOverrides: TTSOverrides | null = null;
+  /** Last payload that was actually written to the server. Lets callers
+   *  (e.g. Reader-TTS) read back the most recent server-side state
+   *  for resume UI. */
+  private lastSavedProgress: TtsProgressPayload | null = null;
+  /** The ms offset within the current paragraph's audio where playback
+   *  should resume. Set by callers via play(startOffsetMs) and
+   *  consumed by playCurrent(). */
+  private pendingOffsetMs = 0;
 
-      const apiClient = getApiClient();
-      const voiceId = config.voiceId || 'default';
-      
-      const blob = await apiClient.convertToSpeech(text, voiceId);
-      this.currentBlob = blob;
-
-      const url = URL.createObjectURL(blob);
-      this.audioElement = new Audio(url);
-
-      this.audioElement.onplay = () => callbacks.onStart?.();
-      this.audioElement.onpause = () => callbacks.onPause?.();
-      this.audioElement.onended = () => {
-        URL.revokeObjectURL(url);
-        callbacks.onEnd?.();
-      };
-      this.audioElement.onerror = (event) => {
-        const error = new Error('Audio playback error');
-        callbacks.onError?.(error);
-      };
-
-      // Simulate progress updates
-      const duration = this.audioElement.duration || 0;
-      const updateProgress = () => {
-        if (this.audioElement && !this.audioElement.paused) {
-          const currentTime = this.audioElement.currentTime;
-          const percentage = duration > 0 ? Math.round((currentTime / duration) * 100) : 0;
-          callbacks.onProgress?.({
-            currentText: text,
-            currentIndex: 0,
-            totalChunks: 1,
-            percentage,
-            isPlaying: true,
-          });
-          requestAnimationFrame(updateProgress);
-        }
-      };
-
-      await this.audioElement.play();
-      updateProgress();
-    } catch (error) {
-      callbacks.onError?.(error as Error);
-      throw error;
-    }
+  async initialize(provider = 'edge'): Promise<void> {
+    await this.loadProviders();
+    await this.loadVoices(provider);
   }
 
-  pause(): void {
-    this.audioElement?.pause();
+  async loadProviders(): Promise<TTSProvider[]> {
+    if (this.providersLoaded) return this.providers;
+    try {
+      const r = await this.api.getTtsProviders();
+      const list = (r.success && r.data?.providers) ? r.data.providers : [];
+      this.providers = list;
+      this.providersLoaded = true;
+    } catch {
+      this.providers = [];
+    }
+    return this.providers;
+  }
+
+  getProviders(): TTSProvider[] { return this.providers; }
+
+  /** Fetch the voice list for a given provider. Re-fetches if the
+   *  provider differs from the last loaded one. */
+  async loadVoices(provider = 'edge', language?: string): Promise<TTSVoice[]> {
+    try {
+      const r = await this.api.getVoices(provider, language);
+      if (r.success && r.data) {
+        this.voices = r.data;
+        this.voicesProvider = provider;
+      } else {
+        this.voices = [];
+        this.voicesProvider = provider;
+      }
+    } catch {
+      this.voices = [];
+    }
+    return this.voices;
+  }
+
+  /** Returns the provider that the cached voices list belongs to. */
+  getVoicesProvider(): string | null { return this.voicesProvider; }
+
+  getAvailableVoices(): TTSVoice[] { return this.voices; }
+  getState(): TTSState { return this.state; }
+  getProgress(): TTSProgress { return this.progress; }
+
+  setConfig(cfg: TTSConfig) { this.cfg = { ...this.cfg, ...cfg }; }
+  setProvider(p: string) {
+    if (this.cfg.provider !== p) {
+      this._clearCache();
+    }
+    this.cfg.provider = p;
+  }
+  setVoice(voiceId: string) {
+    if (this.cfg.voiceId !== voiceId) {
+      this._clearCache();
+    }
+    this.cfg.voiceId = voiceId;
+  }
+  private _clearCache() {
+    this.cache.forEach((c) => { try { URL.revokeObjectURL(c.url); } catch { /* ignore */ } });
+    this.cache.clear();
+  }
+
+  /** Read the live configuration (bookId / provider / voice / rate /
+   *  volume). Useful for callers that need the most recent values
+   *  without waiting for the React effect to flush stale state
+   *  into the manager. */
+  getConfig(): TTSConfig { return { ...this.cfg }; }
+  getCurrentOffsetMs(): number {
+    return this.audio ? Math.round(this.audio.currentTime * 1000) : 0;
+  }
+  setRate(rate: number) {
+    this.cfg.rate = rate;
+    if (this.audio) this.audio.playbackRate = Math.max(0.25, Math.min(4, rate));
+  }
+  setVolume(volume: number) {
+    this.cfg.volume = volume;
+    if (this.audio) this.audio.volume = Math.max(0, Math.min(1, volume));
+  }
+  setPlaybackRate(rate: number) { this.setRate(rate); }
+
+  async play(
+    paragraphs: Paragraph[],
+    startIndex = 0,
+    callbacks: TTSEventCallbacks = {},
+    overrides?: TTSOverrides,
+    startOffsetMs = 0,
+  ): Promise<void> {
+    if (!paragraphs.length) {
+      callbacks.onError?.(new Error('No paragraphs to play'));
+      return;
+    }
+    this.paragraphs = paragraphs;
+    this.progress.totalParagraphs = paragraphs.length;
+    this.cb = callbacks;
+    this.currentIndex = Math.max(0, Math.min(startIndex, paragraphs.length - 1));
+    this.activeOverrides = overrides || null;
+    this.pendingOffsetMs = Math.max(0, startOffsetMs);
+    // If the voice/provider changed, drop the cache so the new request
+    // goes through with the new audio URL.
+    if (overrides && (overrides.provider !== undefined || overrides.voiceId !== undefined)) {
+      this.cache.forEach((c) => { try { URL.revokeObjectURL(c.url); } catch { /* ignore */ } });
+      this.cache.clear();
+    }
+    await this.playCurrent();
   }
 
   resume(): void {
-    this.audioElement?.play();
-  }
-
-  stop(): void {
-    if (this.audioElement) {
-      this.audioElement.pause();
-      this.audioElement.currentTime = 0;
-    }
-    if (this.currentBlob) {
-      URL.revokeObjectURL(URL.createObjectURL(this.currentBlob));
-      this.currentBlob = null;
+    if (this.state === 'paused' && this.audio) {
+      this.audio.play().catch((e) => this.cb.onError?.(e as Error));
+      this.state = 'playing';
+      this.progress.isPlaying = true;
+      this.cb.onResume?.();
     }
   }
 
-  isPaused(): boolean {
-    return this.audioElement?.paused ?? false;
-  }
-
-  isSpeaking(): boolean {
-    return this.audioElement ? !this.audioElement.paused && !this.audioElement.ended : false;
-  }
-
-  setVolume(volume: number): void {
-    if (this.audioElement) {
-      this.audioElement.volume = Math.max(0, Math.min(1, volume));
+  async pause(): Promise<void> {
+    if (this.state === 'playing' && this.audio) {
+      this.audio.pause();
+      this.state = 'paused';
+      this.progress.isPlaying = false;
+      this.cb.onPause?.();
+      await this.persistProgress();
     }
   }
 
-  setPlaybackRate(rate: number): void {
-    if (this.audioElement) {
-      this.audioElement.playbackRate = rate;
+  async stop(): Promise<void> {
+    this.detachAudioListeners(this.audio);
+    if (this.audio) {
+      this.audio.pause();
+      this.audio.currentTime = 0;
     }
-  }
-}
-
-// Unified TTS Manager
-export class TTSManager {
-  private serverTTS: ServerTTS;
-  private serverVoices: TTSVoice[] = [];
-  private currentConfig: TTSConfig = {};
-  private textChunks: string[] = [];
-  private currentChunkIndex: number = 0;
-  private state: TTSState = 'idle';
-  private callbacks: TTSEventCallbacks = {};
-  private progress: TTSProgress = {
-    currentText: '',
-    currentIndex: 0,
-    totalChunks: 0,
-    percentage: 0,
-    isPlaying: false,
-  };
-
-  constructor() {
-    this.serverTTS = new ServerTTS();
+    this.state = 'idle';
+    this.progress.isPlaying = false;
+    this.cache.forEach((c) => { try { URL.revokeObjectURL(c.url); } catch { /* ignore */ } });
+    this.cache.clear();
+    this.audio = null;
+    this.activeOverrides = null;
+    await this.persistProgress(true);
   }
 
-  async initialize(): Promise<void> {
-    // Load server voices from backend
-    try {
-      const apiClient = getApiClient();
-      const response = await apiClient.getVoices();
-      if (response.success && response.data) {
-        this.serverVoices = response.data;
+  async seek(globalProgress: number): Promise<void> {
+    if (!this.paragraphs.length) return;
+    const clamped = Math.max(0, Math.min(1, globalProgress));
+    const targetParaIdx = Math.floor(clamped * this.paragraphs.length);
+    const fracInPara = clamped * this.paragraphs.length - targetParaIdx;
+    await this.jumpTo(targetParaIdx, fracInPara);
+  }
+
+  async jumpTo(paragraphIndex: number, fracInParagraph = 0): Promise<void> {
+    if (!this.paragraphs.length) return;
+    const idx = Math.max(0, Math.min(paragraphIndex, this.paragraphs.length - 1));
+    const wasPlaying = this.state === 'playing' || this.state === 'loading';
+    if (this.audio) this.audio.pause();
+    this.currentIndex = idx;
+    await this.playCurrent(wasPlaying);
+    if (this.audio && fracInParagraph > 0) {
+      const dur = this.audio.duration;
+      if (Number.isFinite(dur) && dur > 0) {
+        this.audio.currentTime = dur * fracInParagraph;
       }
-    } catch {
-      console.log('Server TTS not available');
     }
   }
 
-  getAvailableVoices(): TTSVoice[] {
-    return this.serverVoices;
-  }
-
-  getState(): TTSState {
-    return this.state;
-  }
-
-  getProgress(): TTSProgress {
-    return this.progress;
-  }
-
-  async speak(
-    text: string,
-    config: TTSConfig = {},
-    callbacks: TTSEventCallbacks = {}
-  ): Promise<void> {
-    this.callbacks = callbacks;
-    this.currentConfig = config;
-    this.state = 'loading';
-
-    // Split text into manageable chunks
-    this.textChunks = this.splitIntoChunks(text);
-    this.currentChunkIndex = 0;
-    this.progress.totalChunks = this.textChunks.length;
-
-    await this.speakChunk();
-  }
-
-  private async speakChunk(): Promise<void> {
-    if (this.currentChunkIndex >= this.textChunks.length) {
+  private async playCurrent(autoAdvance = true): Promise<void> {
+    if (this.currentIndex >= this.paragraphs.length) {
       this.state = 'idle';
-      this.callbacks.onEnd?.();
+      this.cb.onEnd?.();
+      return;
+    }
+    const para = this.paragraphs[this.currentIndex];
+    this.progress.paragraphIndex = this.currentIndex;
+    this.progress.currentText = para.text;
+    this.cb.onParagraphChange?.(this.currentIndex, para);
+
+    const eff = this._effective();
+
+    // Split paragraph text into ≤ 2500-char chunks (server's hard cap is
+    // 3000, we leave headroom for UTF-8 expansion / SSML overhead).
+    const chunks = splitForTts(para.text, 2500);
+    if (chunks.length === 0) {
+      this.cb.onError?.(new Error('Paragraph is empty'));
       return;
     }
 
-    const chunk = this.textChunks[this.currentChunkIndex];
-    this.progress.currentText = chunk;
-    this.progress.currentIndex = this.currentChunkIndex;
-    this.progress.percentage = Math.round((this.currentChunkIndex / this.textChunks.length) * 100);
-    this.progress.isPlaying = true;
-    
-    this.state = 'playing';
-    this.callbacks.onProgress?.(this.progress);
-
+    this.state = 'loading';
+    const audios: HTMLAudioElement[] = [];
     try {
-      await this.serverTTS.speak(chunk, this.currentConfig, {
-        onEnd: () => {
-          this.currentChunkIndex++;
-          this.speakChunk();
-        },
-        onError: (error) => {
-          this.state = 'error';
-          this.callbacks.onError?.(error);
-        },
-      });
-    } catch (error) {
-      this.state = 'error';
-      this.callbacks.onError?.(error as Error);
-    }
-  }
-
-  private splitIntoChunks(text: string, maxLength: number = 300): string[] {
-    // Split by sentences or paragraphs for natural reading
-    const sentences = text.match(/[^.!?。！？]+[.!?。！？]+/g) || [text];
-    const chunks: string[] = [];
-    let currentChunk = '';
-
-    for (const sentence of sentences) {
-      if ((currentChunk + sentence).length > maxLength) {
-        if (currentChunk) {
-          chunks.push(currentChunk.trim());
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const chunkParaId = chunks.length > 1 ? `${para.id}#${i}` : para.id;
+        let entry = this.cache.get(chunkParaId);
+        if (!entry) {
+          const r = await this.api.synthesizeParagraph({
+            bookId: this.cfg.bookId,
+            paragraphId: chunkParaId,
+            text: chunk,
+            provider: eff.provider,
+            voice: eff.voiceId,
+            rate: eff.rate,
+            pitch: eff.pitch,
+            volume: eff.volume,
+          } as SynthesizeParagraphRequest);
+          if (!r.success || !r.data) throw new Error(r.error || 'synthesize failed');
+          const audio = new Audio();
+          audio.preload = 'auto';
+          const audioUrl = r.data.url.startsWith('http') ? r.data.url : `${this.api.serverBaseURL}${r.data.url}`;
+          audio.src = audioUrl;
+          audio.playbackRate = eff.rate ?? 1.0;
+          audio.volume = eff.volume ?? 1.0;
+          entry = { url: audioUrl, audio, loaded: false };
+          this.cache.set(chunkParaId, entry);
+          await new Promise<void>((resolve, reject) => {
+            const onCanPlay = () => { audio.removeEventListener('canplaythrough', onCanPlay); audio.removeEventListener('error', onErr); resolve(); };
+            const onErr = () => { audio.removeEventListener('canplaythrough', onCanPlay); audio.removeEventListener('error', onErr); reject(new Error('audio load failed')); };
+            audio.addEventListener('canplaythrough', onCanPlay);
+            audio.addEventListener('error', onErr);
+            audio.load();
+          });
+          entry.loaded = true;
+        } else {
+          // Ensure cached audio reflects the latest rate / volume settings
+          entry.audio.playbackRate = eff.rate ?? 1.0;
+          entry.audio.volume = eff.volume ?? 1.0;
         }
-        currentChunk = sentence;
-      } else {
-        currentChunk += sentence;
+        audios.push(entry.audio);
       }
+    } catch (err) {
+      this.state = 'error';
+      this.cb.onError?.(err as Error);
+      return;
     }
 
-    if (currentChunk) {
-      chunks.push(currentChunk.trim());
-    }
-
-    return chunks;
-  }
-
-  pause(): void {
-    this.serverTTS.pause();
-    this.state = 'paused';
-    this.progress.isPlaying = false;
-    this.callbacks.onPause?.();
-  }
-
-  resume(): void {
-    this.serverTTS.resume();
     this.state = 'playing';
     this.progress.isPlaying = true;
-    this.callbacks.onResume?.();
+    this.cb.onStart?.();
+    this.audio = audios[0];
+    this.attachAudioListeners(autoAdvance);
+    try {
+      await this.audio.play();
+      // Resume from a specific position within the first chunk's audio.
+      // Used by play(startOffsetMs) when restoring server-side progress.
+      if (this.pendingOffsetMs > 0) {
+        const dur = this.audio.duration;
+        if (Number.isFinite(dur) && dur > 0) {
+          this.audio.currentTime = Math.min(this.pendingOffsetMs / 1000, dur);
+        }
+        this.pendingOffsetMs = 0;
+      }
+    } catch (err) {
+      this.cb.onError?.(err as Error);
+      return;
+    }
+    // Chain chunks: each chunk (except the last) plays the next on ended.
+    // The last chunk relies on attachAudioListeners(autoAdvance) to move
+    // to the next paragraph, so we must NOT add another ended listener.
+    for (let i = 1; i < audios.length; i++) {
+      const prev = audios[i - 1];
+      const next = audios[i];
+      // prev is not the last chunk, so detach its paragraph-advance listener
+      // and replace with a chunk-chain listener.
+      prev.removeEventListener('ended', this._onEnded);
+      prev.addEventListener('ended', () => {
+        this.detachAudioListeners(this.audio);
+        this.audio = next;
+        this.attachAudioListeners(autoAdvance);
+        next.play().catch((e) => this.cb.onError?.(e as Error));
+      }, { once: true });
+    }
+
+    this.prefetch(this.currentIndex + 1);
+    await this.persistProgress();
   }
 
-  stop(): void {
-    this.serverTTS.stop();
-    this.state = 'idle';
-    this.progress.isPlaying = false;
-    this.textChunks = [];
-    this.currentChunkIndex = 0;
+  private _onTimeUpdate = () => {
+    const audio = this.audio;
+    if (!audio) return;
+    const dur = audio.duration;
+    const cur = audio.currentTime;
+    this.progress.paragraphProgress = Number.isFinite(dur) && dur > 0 ? cur / dur : 0;
+    this.progress.chapterProgress = (this.currentIndex + this.progress.paragraphProgress) / Math.max(1, this.paragraphs.length);
+    this.cb.onProgress?.(this.progress);
+    const now = Date.now();
+    if (now - this.lastSaveAt > 5000) {
+      this.lastSaveAt = now;
+      void this.persistProgress();
+    }
+  };
+
+  private _onEnded = () => {
+    this.currentIndex += 1;
+    if (this.currentIndex >= this.paragraphs.length) {
+      this.state = 'idle';
+      this.progress.isPlaying = false;
+      this.cb.onEnd?.();
+      void this.persistProgress(true);
+      return;
+    }
+    this.playCurrent(true).catch((e) => this.cb.onError?.(e as Error));
+  };
+
+  private _onError = () => {
+    this.state = 'error';
+    this.cb.onError?.(new Error('Audio playback error'));
+  };
+
+  private attachAudioListeners(autoAdvance: boolean) {
+    if (!this.audio) return;
+    const audio = this.audio;
+    audio.addEventListener('timeupdate', this._onTimeUpdate);
+    if (autoAdvance) {
+      audio.addEventListener('ended', this._onEnded);
+    }
+    audio.addEventListener('error', this._onError);
   }
 
-  togglePlayPause(): void {
-    if (this.state === 'playing') {
-      this.pause();
-    } else if (this.state === 'paused') {
-      this.resume();
+  private detachAudioListeners(audio: HTMLAudioElement | null) {
+    if (!audio) return;
+    audio.removeEventListener('timeupdate', this._onTimeUpdate);
+    audio.removeEventListener('ended', this._onEnded);
+    audio.removeEventListener('error', this._onError);
+  }
+
+  private async prefetch(idx: number) {
+    if (idx >= this.paragraphs.length) return;
+    const para = this.paragraphs[idx];
+    const eff = this._effective();
+    try {
+      const r = await this.api.synthesizeParagraph({
+        bookId: this.cfg.bookId,
+        paragraphId: para.id,
+        text: para.text,
+        provider: eff.provider,
+        voice: eff.voiceId,
+        rate: eff.rate,
+        pitch: eff.pitch,
+        volume: eff.volume,
+      } as SynthesizeParagraphRequest);
+      if (!r.success || !r.data) return;
+      const audio = new Audio();
+      audio.preload = 'auto';
+      const audioUrl = r.data.url.startsWith('http') ? r.data.url : `${this.api.serverBaseURL}${r.data.url}`;
+      audio.src = audioUrl;
+      audio.load();
+      this.cache.set(para.id, { url: audioUrl, audio, loaded: false });
+    } catch {
+      // Prefetch failures are non-fatal.
     }
   }
 
-  setRate(rate: number): void {
-    this.currentConfig.rate = rate;
-    this.serverTTS.setPlaybackRate(rate);
+  /** Merge `cfg` with `activeOverrides` (overrides win). */
+  private _effective(): TTSConfig {
+    return { ...this.cfg, ...(this.activeOverrides || {}) };
   }
 
-  setVolume(volume: number): void {
-    this.currentConfig.volume = volume;
-    this.serverTTS.setVolume(volume);
+  private async persistProgress(force = false): Promise<void> {
+    if (!this.cfg.bookId) return;
+    const payload: TtsProgressPayload = {
+      bookId: this.cfg.bookId,
+      chapterIndex: this.cfg.chapterIndex ?? 0,
+      paragraphIndex: this.currentIndex,
+      audioOffsetMs: this.audio ? Math.round(this.audio.currentTime * 1000) : 0,
+      voice: this.cfg.voiceId,
+      provider: this.cfg.provider,
+      totalParagraphs: this.paragraphs.length,
+    };
+    this.lastSavedProgress = payload;
+    // Mirror the latest position into the global "last listened" pointer
+    // so the book detail page's "继续听书" button can deep-link straight
+    // back here across devices.
+    const lastRead: BookLastReadPayload = {
+      bookId: payload.bookId,
+      chapterIndex: payload.chapterIndex,
+      paragraphIndex: payload.paragraphIndex,
+      audioOffsetMs: payload.audioOffsetMs,
+    };
+    try {
+      await Promise.all([
+        this.api.saveTtsProgress(payload),
+        this.api.saveBookLastRead(lastRead),
+      ]);
+    } catch (err) {
+      console.error('[TTSManager] persistProgress failed:', err);
+    }
+    // suppress unused-arg warnings; force is reserved for future use
+    void force;
   }
 
-  setVoice(voiceId: string): void {
-    this.currentConfig.voiceId = voiceId;
+  /** Most recent payload that the manager wrote to the server. Useful
+   *  for UI to show "last saved" status / for the resume flow to read
+   *  back the audioOffsetMs. */
+  getLastSavedProgress(): TtsProgressPayload | null {
+    return this.lastSavedProgress;
   }
 }
 
-// Singleton instance
-let ttsManagerInstance: TTSManager | null = null;
+let instance: TTSManager | null = null;
 
 export function getTTSManager(): TTSManager {
-  if (!ttsManagerInstance) {
-    ttsManagerInstance = new TTSManager();
-  }
-  return ttsManagerInstance;
+  if (!instance) instance = new TTSManager();
+  return instance;
 }
 
 export function initTTSManager(): TTSManager {
-  ttsManagerInstance = new TTSManager();
-  return ttsManagerInstance;
+  instance = new TTSManager();
+  return instance;
 }
 
-export { ServerTTS };
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Split a paragraph into ≤ maxLen-character chunks for TTS.
+ * Tries to break on sentence boundaries (CJK + Western punctuation),
+ * falling back to hard-cuts at whitespace if a single sentence is
+ * longer than maxLen.
+ */
+export function splitForTts(text: string, maxLen: number): string[] {
+  if (!text) return [];
+  if (text.length <= maxLen) return [text];
+
+  const sentenceEnd = /(?<=[.!?。！？；;])\s*/g;
+  const sentences = text.split(sentenceEnd).filter(Boolean);
+  const out: string[] = [];
+  let buf = '';
+
+  for (const s of sentences) {
+    if (s.length > maxLen) {
+      // Single sentence is too long — flush whatever we have, then
+      // hard-split this monster on whitespace.
+      if (buf) { out.push(buf); buf = ''; }
+      let rest = s;
+      while (rest.length > maxLen) {
+        let cutAt = rest.lastIndexOf(' ', maxLen);
+        if (cutAt <= 0) cutAt = maxLen; // no whitespace, hard cut
+        out.push(rest.slice(0, cutAt));
+        rest = rest.slice(cutAt).trimStart();
+      }
+      if (rest) {
+        if (rest.length > maxLen) {
+          // Last-resort hard cut
+          out.push(rest.slice(0, maxLen));
+          out.push(rest.slice(maxLen));
+        } else {
+          buf = rest;
+        }
+      }
+      continue;
+    }
+    if ((buf + ' ' + s).trim().length > maxLen) {
+      if (buf) out.push(buf);
+      buf = s;
+    } else {
+      buf = buf ? buf + ' ' + s : s;
+    }
+  }
+  if (buf) out.push(buf);
+  return out;
+}

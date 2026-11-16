@@ -151,7 +151,7 @@ export default function Notes() {
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            <h1 className="hidden md:block text-2xl font-bold text-gray-900 dark:text-white">
               {headerTitle}
             </h1>
           </div>

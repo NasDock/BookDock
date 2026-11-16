@@ -6,23 +6,34 @@ on:
       - "feat/test"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-desktop:
     name: Build Desktop (${{ matrix.platform }})
-    permissions:
-      contents: write
     strategy:
       matrix:
         include:
           - os: macos-latest
             platform: mac
             command: build:mac
+            files: |
+              apps/desktop/release/*.dmg
+            exts: dmg
           - os: windows-latest
             platform: win
             command: build:win
+            files: |
+              apps/desktop/release/*.exe
+            exts: exe
           - os: ubuntu-latest
             platform: linux
             command: build:linux
+            files: |
+              apps/desktop/release/*.AppImage
+              apps/desktop/release/*.deb
+            exts: AppImage deb
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -55,22 +66,36 @@ jobs:
           tag_name: test-build
           name: Test Build (feat/test)
           draft: true
-          files: |
-            apps/desktop/release/*.dmg
-            apps/desktop/release/*.zip
-            apps/desktop/release/*.exe
-            apps/desktop/release/*.AppImage
-            apps/desktop/release/*.deb
-            apps/desktop/release/*.blockmap
-            apps/desktop/release/latest*.yml
+          files: ${{ matrix.files }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set version
+        id: version
+        shell: bash
+        run: echo "version=$(node -p "require('./apps/desktop/package.json').version")" >> $GITHUB_OUTPUT
+
+      - name: Upload artifacts to Minio
+        shell: bash
+        env:
+          MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+          MINIO_BUCKET: ${{ secrets.MINIO_BUCKET }}
+          MINIO_ACCESS: ${{ secrets.MINIO_ACCESS }}
+          MINIO_SECRET: ${{ secrets.MINIO_SECRET }}
+          MINIO_REGION: ${{ secrets.MINIO_REGION || 'us-east-1' }}
+        run: |
+          export AWS_ACCESS_KEY_ID="${MINIO_ACCESS}"
+          export AWS_SECRET_ACCESS_KEY="${MINIO_SECRET}"
+          export AWS_DEFAULT_REGION="${MINIO_REGION}"
+          mkdir -p release-upload
+          for ext in ${{ matrix.exts }}; do
+            cp apps/desktop/release/*.$ext release-upload/ 2>/dev/null || true
+          done
+          aws s3 sync release-upload/ "s3://${MINIO_BUCKET}/bookdock/releases/${{ steps.version.outputs.version }}/" --endpoint-url "${MINIO_ENDPOINT}"
 
   build-android:
     name: Build Android
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -100,11 +125,6 @@ jobs:
           NPM_CONFIG_REGISTRY: https://registry.npmjs.org/
         run: pnpm install --no-frozen-lockfile
 
-      - name: Prebuild Android
-        run: |
-          cd apps/mobile
-          npx expo prebuild --platform android
-
       - name: Build Android APK
         run: |
           cd apps/mobile/android
@@ -120,6 +140,8 @@ jobs:
           NEW_PATH="apps/mobile/android/app/build/outputs/apk/release/${NEW_NAME}"
           mv "$OLD_PATH" "$NEW_PATH"
           echo "apk_path=$NEW_PATH" >> $GITHUB_OUTPUT
+          echo "apk_name=$NEW_NAME" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Upload Release Assets (Draft)
         uses: softprops/action-gh-release@v2
@@ -129,5 +151,79 @@ jobs:
           draft: true
           files: |
             ${{ steps.prepare_apk.outputs.apk_path }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload APK to Minio
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MINIO_ENDPOINT: ${{ secrets.MINIO_ENDPOINT }}
+          MINIO_BUCKET: ${{ secrets.MINIO_BUCKET }}
+          MINIO_ACCESS: ${{ secrets.MINIO_ACCESS }}
+          MINIO_SECRET: ${{ secrets.MINIO_SECRET }}
+          MINIO_REGION: ${{ secrets.MINIO_REGION || 'us-east-1' }}
+        run: |
+          export AWS_ACCESS_KEY_ID="${MINIO_ACCESS}"
+          export AWS_SECRET_ACCESS_KEY="${MINIO_SECRET}"
+          export AWS_DEFAULT_REGION="${MINIO_REGION}"
+          aws s3 cp "${{ steps.prepare_apk.outputs.apk_path }}" "s3://${MINIO_BUCKET}/bookdock/releases/${{ steps.prepare_apk.outputs.version }}/${{ steps.prepare_apk.outputs.apk_name }}" --endpoint-url "${MINIO_ENDPOINT}"
+
+  build-server-docker:
+    name: Build & Push Server Docker (feat-test)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to Harbor
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.HARBOR_REGISTRY }}
+          username: ${{ secrets.HARBOR_USERNAME }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+
+      - name: Set lowercase image name
+        id: image_name
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          NAME_LOWER=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          DOCKERHUB_USER_LOWER=$(echo "${{ secrets.DOCKERHUB_USERNAME }}" | tr '[:upper:]' '[:lower:]')
+          echo "ghcr=${REGISTRY}/${REPO_LOWER}" >> $GITHUB_OUTPUT
+          echo "dockerhub=${DOCKERHUB_USER_LOWER}/${NAME_LOWER}" >> $GITHUB_OUTPUT
+          echo "harbor=${{ secrets.HARBOR_REGISTRY }}/audiodock/${NAME_LOWER}" >> $GITHUB_OUTPUT
+        env:
+          REGISTRY: ghcr.io
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: runner
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.image_name.outputs.ghcr }}:feat-test
+            ${{ steps.image_name.outputs.dockerhub }}:feat-test
+            ${{ steps.image_name.outputs.harbor }}:feat-test

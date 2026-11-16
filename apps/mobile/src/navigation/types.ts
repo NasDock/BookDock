@@ -5,7 +5,7 @@ import type { EbookSource } from '../services/api';
 export type RootStackParamList = {
   Main: undefined;
   Reader: { book: Book };
-  TTSScreen: { book: Book };
+  TTSScreen: { book: Book; showChapterPicker?: boolean };
   TTSReader: { book: Book };
   BookDetails: { book: Book };
   AuthorDetail: { author: Author };
@@ -20,6 +20,7 @@ export type RootStackParamList = {
   AdminUsers: undefined;
   CollectionDetail: { collectionId: string };
   Notes: { bookId?: string; author?: string };
+  Stats: undefined;
 };
 
 // Tab navigator param list

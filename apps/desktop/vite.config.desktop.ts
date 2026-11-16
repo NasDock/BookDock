@@ -59,6 +59,7 @@ export default defineConfig({
     port: 1424,
     strictPort: true,
   },
+  base: './',
   build: {
     outDir: 'dist',
     emptyOutDir: true,

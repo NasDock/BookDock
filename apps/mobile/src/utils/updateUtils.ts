@@ -1,7 +1,8 @@
 import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system';
 import * as IntentLauncher from 'expo-intent-launcher';
-import { Platform } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import { Linking, Platform } from 'react-native';
 
 /**
  * 1. 获取本地版本号 (例如 "1.0.58")
@@ -82,6 +83,40 @@ export const installApk = async (localUri: string) => {
   }
 };
 
+/**
+ * 使用应用内浏览器打开下载链接，让系统浏览器处理下载
+ * 避免弹出第三方应用选择器（如迅雷）
+ */
+export const downloadWithSystemManager = async (downloadUrl: string): Promise<void> => {
+  if (Platform.OS !== 'android') return;
+
+  try {
+    // 使用应用内浏览器打开下载链接
+    // 浏览器会自动处理下载，不会弹出第三方应用选择器
+    await WebBrowser.openBrowserAsync(downloadUrl, {
+      showTitle: true,
+      toolbarColor: '#000000',
+    });
+  } catch (e) {
+    console.error('浏览器打开失败:', e);
+    // 降级方案：使用系统浏览器
+    await Linking.openURL(downloadUrl);
+  }
+};
+
+/**
+ * 检查系统下载是否完成（通过查询本地文件）
+ * 系统下载管理器会将文件保存到 Downloads 目录
+ */
+export const checkSystemDownloadComplete = async (downloadUrl: string): Promise<boolean> => {
+  // 系统下载管理器下载的文件不在应用缓存目录
+  // 这里我们简化处理，返回 false 让调用方自行处理
+  return false;
+};
+
+/**
+ * 旧的应用内下载逻辑（保留作为备用）
+ */
 export const downloadAndInstallApk = async (
   downloadUrl: string, 
   onProgress: (progress: number) => void

@@ -20,6 +20,11 @@ import {
   BookmarkResponseDto,
   SyncReadingDto,
   ReadingStatsDto,
+  RecordReadingSessionDto,
+  ReadingStatsQueryDto,
+  PeriodReadingStatsDto,
+  DailyHourStatsDto,
+  ReadingTimeSummaryDto,
 } from './dto/reading-progress.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -77,6 +82,45 @@ export class ReadingProgressController {
   @ApiResponse({ status: 200, type: ReadingStatsDto })
   async getStats(@CurrentUser('sub') userId: string) {
     return this.progressService.getStats(userId);
+  }
+
+  // ── Reading Session Endpoints ───────────────────────────────────────────────
+
+  @Post('session')
+  @ApiOperation({ summary: 'Record a reading session' })
+  @ApiResponse({ status: 200 })
+  async recordSession(
+    @Body() dto: RecordReadingSessionDto,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.progressService.recordSession(userId, dto);
+  }
+
+  @Get('time-summary')
+  @ApiOperation({ summary: 'Get reading time summary (today/week/month/year/total)' })
+  @ApiResponse({ status: 200, type: ReadingTimeSummaryDto })
+  async getTimeSummary(@CurrentUser('sub') userId: string) {
+    return this.progressService.getReadingTimeSummary(userId);
+  }
+
+  @Get('period-stats')
+  @ApiOperation({ summary: 'Get period reading stats with breakdown' })
+  @ApiResponse({ status: 200, type: PeriodReadingStatsDto })
+  async getPeriodStats(
+    @CurrentUser('sub') userId: string,
+    @Query() query: ReadingStatsQueryDto,
+  ) {
+    return this.progressService.getPeriodStats(userId, query.period || 'week', query.date);
+  }
+
+  @Get('daily-hours')
+  @ApiOperation({ summary: 'Get daily reading hours distribution (24h)' })
+  @ApiResponse({ status: 200, type: DailyHourStatsDto })
+  async getDailyHours(
+    @CurrentUser('sub') userId: string,
+    @Query('date') date?: string,
+  ) {
+    return this.progressService.getDailyHourStats(userId, date);
   }
 
   // ── Bookmarks ───────────────────────────────────────────────────────────────

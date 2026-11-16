@@ -282,7 +282,7 @@ export default function MemberBenefits() {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl shadow-xl mb-4">
             <Crown className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+          <h1 className="hidden md:block text-3xl font-bold text-gray-900 dark:text-white">
             会员特权
           </h1>
           <p className="text-gray-500 dark:text-gray-400 mt-2">
