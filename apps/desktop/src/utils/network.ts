@@ -189,7 +189,8 @@ export function getServerBaseUrl(): string {
  */
 export function getCoverImageUrl(coverUrl: string | undefined): string | undefined {
   if (!coverUrl) return undefined;
-  if (coverUrl.startsWith('http')) return coverUrl;
+  // [feat/mock] data:/blob: 开头的是内联图片，不能再拼服务器地址。
+  if (/^(https?:|data:|blob:)/i.test(coverUrl)) return coverUrl;
   const serverBase = getServerBaseUrl();
   return `${serverBase}${coverUrl}`;
 }

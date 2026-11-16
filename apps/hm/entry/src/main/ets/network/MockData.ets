@@ -1,7 +1,8 @@
 // [feat/mock] 宣传截图专用：把服务端返回的书籍统一替换成本地 mock 数据。
-// 封面图位于 apps/server/public/mock-covers/，由服务端 /covers 静态目录提供，
-// 全部走本地服务器，不依赖任何外网图片。
+// 封面以 base64 data URI 内联在 App 内（MockCovers.ets），不经过服务端、不依赖外网，
+// 因此后端地址、服务端是否重启都不会影响封面展示。
 // 按书籍 id 做稳定映射：同一本书每次刷新拿到的书名、作者、封面都相同。
+import { MOCK_COVER_DATA_URIS } from './MockCovers';
 
 const MOCK_ENABLED: boolean = true;
 
@@ -12,18 +13,18 @@ export interface MockBookPreset {
 }
 
 const MOCK_BOOKS: MockBookPreset[] = [
-  { title: '时光倒流', author: '陈默', coverUrl: '/covers/mock-01.jpg' },
-  { title: '梦境边缘', author: '林雨桐', coverUrl: '/covers/mock-02.jpg' },
-  { title: '城市回响', author: '苏晚晴', coverUrl: '/covers/mock-03.jpg' },
-  { title: '夏日长河', author: '顾言', coverUrl: '/covers/mock-04.jpg' },
-  { title: '午夜飞行', author: '江屿', coverUrl: '/covers/mock-05.jpg' },
-  { title: '云端漫步', author: '沈清辞', coverUrl: '/covers/mock-06.jpg' },
-  { title: '昨日重现', author: '许知远', coverUrl: '/covers/mock-07.jpg' },
-  { title: '星空之下', author: '陆沉舟', coverUrl: '/covers/mock-08.jpg' },
-  { title: '破晓时分', author: '叶知秋', coverUrl: '/covers/mock-09.jpg' },
-  { title: '蓝色森林', author: '宋时微', coverUrl: '/covers/mock-10.jpg' },
-  { title: '雨中的城', author: '温以凡', coverUrl: '/covers/mock-11.jpg' },
-  { title: '归途', author: '傅慎行', coverUrl: '/covers/mock-12.jpg' }
+  { title: '时光倒流', author: '陈默', coverUrl: MOCK_COVER_DATA_URIS[0] },
+  { title: '梦境边缘', author: '林雨桐', coverUrl: MOCK_COVER_DATA_URIS[1] },
+  { title: '城市回响', author: '苏晚晴', coverUrl: MOCK_COVER_DATA_URIS[2] },
+  { title: '夏日长河', author: '顾言', coverUrl: MOCK_COVER_DATA_URIS[3] },
+  { title: '午夜飞行', author: '江屿', coverUrl: MOCK_COVER_DATA_URIS[4] },
+  { title: '云端漫步', author: '沈清辞', coverUrl: MOCK_COVER_DATA_URIS[5] },
+  { title: '昨日重现', author: '许知远', coverUrl: MOCK_COVER_DATA_URIS[6] },
+  { title: '星空之下', author: '陆沉舟', coverUrl: MOCK_COVER_DATA_URIS[7] },
+  { title: '破晓时分', author: '叶知秋', coverUrl: MOCK_COVER_DATA_URIS[8] },
+  { title: '蓝色森林', author: '宋时微', coverUrl: MOCK_COVER_DATA_URIS[9] },
+  { title: '雨中的城', author: '温以凡', coverUrl: MOCK_COVER_DATA_URIS[10] },
+  { title: '归途', author: '傅慎行', coverUrl: MOCK_COVER_DATA_URIS[11] }
 ];
 
 function stableHash(input: string): number {
@@ -73,7 +74,14 @@ export function applyMockData(value: Object): Object {
     record['author'] = preset.author;
     // 原本没有封面的书也会补上 mock 封面，保证截图里每一本都有图。
     record['coverUrl'] = preset.coverUrl;
-    return record;
+  }
+
+  // 书单/合集等带封面但没有书名作者的对象，封面也要换成本地图，避免走服务端相对路径。
+  const cover: Object = record['coverUrl'];
+  if (typeof cover === 'string' && !(cover as string).startsWith('data:')) {
+    const coverSeed: Object = record['id'];
+    const seed: string = typeof coverSeed === 'string' ? coverSeed as string : cover as string;
+    record['coverUrl'] = pickPreset(seed).coverUrl;
   }
 
   const keys: string[] = Object.keys(record);

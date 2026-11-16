@@ -1,4 +1,5 @@
 import { Book, Author, Collection } from "./index";
+import { MOCK_COVER_DATA_URIS } from "./mockCovers";
 
 function getStableHash(str: string): string {
     let hash = 0;
@@ -10,27 +11,14 @@ function getStableHash(str: string): string {
     return Math.abs(hash).toString();
 }
 
-const unsplashIds = [
-  "1508700115892-45ecd05ae2ad", // Headphones
-  "1511379938547-c1f69419868d", // Studio
-  "1506157786151-b8491531f063", // Bokeh
-  "1493225255756-d9584f8606e9", // Vinyl
-  "1419242902214-272b3f66ee7a", // Starry Sky
-  "1476275466078-4007374efbbe", // Books
-  "1481627835980-16bf899c17f7", // Library
-  "1495446815901-a7297e633e8d", // Nature
-  "1512820178375-8266326b3e79", // Coffee
-  "1507842217153-e21293d8b9ff", // Landscape
-];
-
-const getMockUrlFromSeed = (seed: string, size = 500) => {
+// 封面/头像统一使用内联本地图片，避免 Unsplash 外链在国内加载失败导致截图空白。
+const getMockUrlFromSeed = (seed: string) => {
     const hash = parseInt(getStableHash(seed));
-    const id = unsplashIds[hash % unsplashIds.length];
-    return `https://images.unsplash.com/photo-${id}?w=${size}&h=${size}&fit=crop`;
+    return MOCK_COVER_DATA_URIS[hash % MOCK_COVER_DATA_URIS.length];
 };
 
-const getMockCover = (seed: string) => getMockUrlFromSeed(seed, 500);
-const getMockAvatar = (seed: string) => getMockUrlFromSeed("avatar_" + seed, 300);
+const getMockCover = (seed: string) => getMockUrlFromSeed(seed);
+const getMockAvatar = (seed: string) => getMockUrlFromSeed("avatar_" + seed);
 
 const chineseFirstNames = ["张", "王", "李", "赵", "陈", "林", "周", "吴", "徐", "孙", "马", "朱", "胡", "郭", "何", "高", "罗", "郑", "梁", "谢"];
 const chineseLastNames = ["伟", "芳", "娜", "秀英", "敏", "静", "丽", "强", "磊", "洋", "勇", "杰", "娟", "涛", "明", "超", "秀兰", "霞", "平", "刚"];
@@ -129,39 +117,32 @@ export const mockData = <T>(data: T): T => {
   }
 
   if (typeof data === 'object' && data !== null) {
-    let mocked = data;
-    let handled = false;
+    let mocked: any = data;
 
-    // Detect Book (has title and fileType)
-    if ((data as any).title !== undefined && (data as any).fileType !== undefined) {
-      mocked = mockBook(data as any) as any;
-      handled = true;
+    // Detect Book: 服务端 books 模块返回 fileType，推荐/收藏/书单/作者/进度等接口只返回 format，两者都要命中。
+    if ((data as any).title !== undefined && ((data as any).fileType !== undefined || (data as any).format !== undefined)) {
+      mocked = mockBook(data as any);
+    }
+    // Detect Collection (先于 Author：两者都有 name + bookCount)
+    else if ((data as any).name !== undefined && ((data as any).coverUrl !== undefined || (data as any).description !== undefined || (data as any).books !== undefined)) {
+      mocked = mockCollection(data as any);
     }
     // Detect Author (has name and bio or bookCount)
     else if ((data as any).name !== undefined && ((data as any).bio !== undefined || (data as any).bookCount !== undefined || (data as any).avatarUrl !== undefined)) {
-      mocked = mockAuthor(data as any) as any;
-      handled = true;
-    }
-    // Detect Collection (has name and bookCount)
-    else if ((data as any).name !== undefined && (data as any).bookCount !== undefined && (data as any).coverUrl !== undefined) {
-      mocked = mockCollection(data as any) as any;
-      handled = true;
+      mocked = mockAuthor(data as any);
     }
 
-    // Mark as mocked to prevent recursive loops or double processing
-    if (mocked && typeof mocked === 'object') {
-        (mocked as any)._isMocked = true;
+    // 无论是否命中模型都继续遍历子对象：书单里的 books、响应里的 items 等嵌套书籍也要 mock。
+    // authors 已由 mockBook 处理，跳过以免二次改名。
+    const result: any = {};
+    for (const key in mocked) {
+      const value = (mocked as any)[key];
+      result[key] = key !== 'authors' && value && typeof value === 'object'
+        ? mockData(value)
+        : value;
     }
-
-    // Always process children even if not a direct model match (for nested structures)
-    if (!handled) {
-        const result: any = {};
-        for (const key in data) {
-          result[key] = mockData((data as any)[key]);
-        }
-        return result;
-    }
-    return mocked;
+    result._isMocked = true;
+    return result;
   }
   return data;
 };
