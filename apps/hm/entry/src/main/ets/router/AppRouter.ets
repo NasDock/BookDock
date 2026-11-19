@@ -23,6 +23,7 @@ export class RouteName {
   static readonly MEMBER_PAYMENT_SUCCESS = 'MemberPaymentSuccess';
   static readonly SOURCE_MANAGE = 'SourceManage';
   static readonly SETTINGS = 'Settings';
+  static readonly API_TOKENS = 'ApiTokens';
   static readonly ADMIN_USERS = 'AdminUsers';
   static readonly COLLECTION_DETAIL = 'CollectionDetail';
   static readonly NOTES = 'Notes';
@@ -86,6 +87,7 @@ export const ROUTE_CONFIG: RouteConfig[] = [
   // 资料 / 设置
   { name: RouteName.SOURCE_MANAGE, showHeader: true, title: '书源管理' },
   { name: RouteName.SETTINGS, showHeader: true, title: '设置' },
+  { name: RouteName.API_TOKENS, showHeader: true, title: 'API 令牌' },
   { name: RouteName.ADMIN_USERS, showHeader: true, title: '用户管理' },
   { name: RouteName.STATS, showHeader: false },
   { name: RouteName.SEARCH, showHeader: true, title: '搜索' },

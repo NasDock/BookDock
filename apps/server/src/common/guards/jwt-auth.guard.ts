@@ -17,6 +17,12 @@ export class JwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
+
+    // 全局 ApiTokenGuard 已校验过 bd_ 前缀的 API Token 并注入了 user
+    if ((request as Request & { user?: { tokenType?: string } }).user?.tokenType === 'api-key') {
+      return true;
+    }
+
     const token = this.extractTokenFromRequest(request);
 
     if (!token) {
@@ -60,6 +66,12 @@ export class OptionalJwtAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
+
+    // 全局 ApiTokenGuard 已校验过 bd_ 前缀的 API Token
+    if ((request as Request & { user?: { tokenType?: string } }).user?.tokenType === 'api-key') {
+      return true;
+    }
+
     const token = this.extractTokenFromRequest(request);
 
     if (token) {

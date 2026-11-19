@@ -17,6 +17,7 @@ export type RootStackParamList = {
   MemberPaymentSuccess: undefined;
   SourceManage: undefined;
   Settings: undefined;
+  ApiTokens: undefined;
   AdminUsers: undefined;
   CollectionDetail: { collectionId: string };
   Notes: { bookId?: string; author?: string };

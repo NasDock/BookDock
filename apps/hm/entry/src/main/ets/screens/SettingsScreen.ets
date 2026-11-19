@@ -430,6 +430,17 @@ export struct SettingsScreen {
                 // mobile 端同样为空实现,对齐保留
               }
             })
+            this.RowDivider()
+            this.SettingRow({
+              icon: AppIconKind.Lock,
+              iconText: '⚿',
+              label: 'API 令牌',
+              value: '',
+              showChevron: true,
+              onTap: (): void => {
+                pushRoute(RouteName.API_TOKENS);
+              }
+            })
           }
           .width('100%')
           .backgroundColor(this.themeSurface)

@@ -412,6 +412,32 @@ export interface CreateCollectionDto {
   description?: string;
 }
 
+// ─── API Tokens ────────────────────────────────────────────────
+export interface ApiKey {
+  id: string;
+  name: string;
+  isActive: boolean;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export interface CreatedApiKey extends ApiKey {
+  /** 明文 Token，仅创建时返回一次 */
+  token: string;
+}
+
+export interface CreateApiKeyDto {
+  name: string;
+  expiresInDays?: number;
+}
+
+export interface UpdateApiKeyDto {
+  name?: string;
+  isActive?: boolean;
+  expiresInDays?: number | null;
+}
+
 export interface UpdateCollectionDto {
   name?: string;
   description?: string;

@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { AppConfig } from './config/app.config';
 import { DatabaseModule } from './config/database.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { ApiKeyModule } from './modules/api-key/api-key.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AuthorModule } from './modules/author/author.module';
 import { BookMetadataModule } from './modules/book-metadata/book-metadata.module';
@@ -22,6 +24,7 @@ import { TtsModule } from './modules/tts/tts.module';
 import { VipModule } from './modules/vip/vip.module';
 
 import { HealthController } from './health.controller';
+import { ApiTokenGuard } from './common/guards/api-token.guard';
 
 
 @Module({
@@ -36,6 +39,7 @@ import { HealthController } from './health.controller';
       exclude: ['/api/(.*)', '/health', '/covers/(.*)'],
     }),
     DatabaseModule,
+    ApiKeyModule,
     AuthModule,
     BooksModule,
     BookMetadataModule,
@@ -54,5 +58,11 @@ import { HealthController } from './health.controller';
     AuthorModule,
   ],
   controllers: [HealthController],
+  providers: [
+    {
+      provide: APP_GUARD,
+      useClass: ApiTokenGuard,
+    },
+  ],
 })
 export class AppModule {}

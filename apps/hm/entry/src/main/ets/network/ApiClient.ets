@@ -6,6 +6,7 @@ import { util } from '@kit.ArkTS';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
   AddFavoritePayload,
+  ApiKey,
   ApiResponse,
   Author,
   AuthorsQuery,
@@ -23,10 +24,12 @@ import {
   Collection,
   CollectionDetail,
   ConvertToSpeechPayload,
+  CreateApiKeyDto,
   CreateCollectionDto,
   CreateHighlightDto,
   CreateNoteDto,
   CreateUserDto,
+  CreatedApiKey,
   DailyHoursQuery,
   DailyHourStats,
   EbookSource,
@@ -63,6 +66,7 @@ import {
   TtsProgressPayload,
   TtsProgressRecord,
   UpdateCollectionDto,
+  UpdateApiKeyDto,
   UpdateHighlightDto,
   UpdateNoteDto,
   UpdateReadingProgressPayload,
@@ -511,6 +515,24 @@ export class ApiClient {
 
   async removeBookFromCollection(collectionId: string, bookId: string): Promise<ApiResponse<void>> {
     return this.request<void>(http.RequestMethod.DELETE, `/collections/${collectionId}/books/${bookId}`);
+  }
+
+  // ─── API Tokens（需要 JWT，不能用 API Token 管理自身）───────────────
+
+  async getApiKeys(): Promise<ApiResponse<ApiKey[]>> {
+    return this.request<ApiKey[]>(http.RequestMethod.GET, '/api-keys');
+  }
+
+  async createApiKey(dto: CreateApiKeyDto): Promise<ApiResponse<CreatedApiKey>> {
+    return this.request<CreatedApiKey>(http.RequestMethod.POST, '/api-keys', dto);
+  }
+
+  async updateApiKey(id: string, dto: UpdateApiKeyDto): Promise<ApiResponse<ApiKey>> {
+    return this.request<ApiKey>(http.RequestMethod.PUT, `/api-keys/${id}`, dto);
+  }
+
+  async deleteApiKey(id: string): Promise<ApiResponse<void>> {
+    return this.request<void>(http.RequestMethod.DELETE, `/api-keys/${id}`);
   }
 
   // ─── Authors ───────────────────────────────────────────────────────

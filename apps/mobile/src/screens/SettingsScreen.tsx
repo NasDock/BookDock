@@ -283,6 +283,10 @@ export function SettingsScreen() {
             <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />,
             () => {}
           )}
+          {renderRow('key-outline', 'API 令牌',
+            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />,
+            () => navigation.navigate('ApiTokens')
+          )}
         </>
       )}
 

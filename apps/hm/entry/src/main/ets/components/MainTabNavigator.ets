@@ -12,6 +12,7 @@ import { TTSReaderScreen } from '../screens/TTSReaderScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { StatsScreen } from '../screens/StatsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
+import { ApiTokensScreen } from '../screens/ApiTokensScreen';
 import { AdminUsersScreen } from '../screens/AdminUsersScreen';
 import { MemberLoginScreen } from '../screens/MemberLoginScreen';
 import { ScanLoginScreen } from '../screens/ScanLoginScreen';
@@ -91,7 +92,7 @@ export struct MainTabNavigator {
     this.currentRouteName = top;
 
     // 2. 阅读详情页 / TTS 详情页 / TTS阅读页 / 设置页 → 始终隐藏
-    const hideRoutes: string[] = [RouteName.READER, RouteName.TTS_SCREEN, RouteName.TTS_READER, RouteName.SETTINGS];
+    const hideRoutes: string[] = [RouteName.READER, RouteName.TTS_SCREEN, RouteName.TTS_READER, RouteName.SETTINGS, RouteName.API_TOKENS];
     if (hideRoutes.includes(top)) {
       this.showMiniPlayer = false;
       return;
@@ -154,6 +155,11 @@ export struct MainTabNavigator {
     } else if (name === RouteName.SETTINGS) {
       NavDestination() {
         SettingsScreen()
+      }
+      .hideTitleBar(true)
+    } else if (name === RouteName.API_TOKENS) {
+      NavDestination() {
+        ApiTokensScreen()
       }
       .hideTitleBar(true)
     } else if (name === RouteName.ADMIN_USERS) {

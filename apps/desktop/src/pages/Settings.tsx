@@ -20,6 +20,7 @@ import {
   Hand,
   HardDrive,
   Info,
+  KeyRound,
   Lock,
   Monitor,
   Moon,
@@ -555,6 +556,27 @@ export default function Settings() {
             </Button>
           </CardFooter>
         )}
+      </Card>
+
+      {/* API Tokens Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <span className="inline-flex items-center gap-1">
+              <KeyRound className="w-5 h-5" /> API 令牌
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              创建令牌供 NAS、脚本等设备访问书仓内容（账号信息除外）
+            </p>
+            <Button variant="secondary" size="sm" onClick={() => navigate("/settings/api-tokens")}>
+              管理令牌
+            </Button>
+          </div>
+        </CardContent>
       </Card>
 
       {/* Appearance Section */}
