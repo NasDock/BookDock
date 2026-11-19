@@ -3,7 +3,7 @@
 // P1~P6 阶段把各路由接真实页面。
 import { ConfigurationConstant } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { getNavStack, RouteName } from './AppRouter';
+import { popToRoot } from './AppRouter';
 import { ThemeStore, getTheme, Theme } from '../theme/Theme';
 import { AuthStore } from '../store/AuthStore';
 import { initApiClient } from '../network/ApiClient';
@@ -86,7 +86,13 @@ struct AppRoot {
 
     // 4) 监听 auth 变化,镜像到 @State 驱动 if/else 重渲
     this.unsubscribeAuth = this.authStore.subscribe(() => {
+      const wasAuthed: boolean = this.isAuthed;
       this.isAuthed = this.authStore.isAuthenticated;
+      // 退出登录(含 401 自动退出):清空导航栈,
+      // 否则残留的子页面(设置/阅读等)会在下次登录时重新栈顶显示
+      if (wasAuthed && !this.isAuthed) {
+        popToRoot();
+      }
       hilog.info(APP_DOMAIN, APP_TAG, 'auth changed, isAuthed=%{public}s',
         this.isAuthed ? 'true' : 'false');
     });
@@ -119,7 +125,10 @@ struct AppRoot {
       if (this.isLoaded) {
         // 简化结构:不用 Navigation 包根页面,直接 if/else 渲登录或主 Tab。
         // 子页面跳转未来再用 Navigation 包(等 P3/P4 真正用到 pushRoute)。
-        if (this.authStore.isAuthenticated) {
+        // 必须读 @State isAuthed(由 authStore.subscribe 回调更新),不能直接读
+        // authStore.isAuthenticated 普通单例字段——后者不触发 ArkUI 依赖收集,
+        // 导致登录/退出后 build 不重渲染,页面停在原地不跳转。
+        if (this.isAuthed) {
           MainTabNavigator()
         } else {
           LoginScreen()

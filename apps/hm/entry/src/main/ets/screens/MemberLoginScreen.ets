@@ -6,7 +6,9 @@
 //   3. AsyncStorage → PreferencesStore(PLus_TOKEN / PLus_USER_ID / PLus_USER)
 //   4. RN Alert.alert('登录成功') → promptAction.showToast
 //   5. TextInput keyboardType → ArkUI InputType.PhoneNumber / InputType.Number
+//   6. 协议链接点击 → Span.onClick + startAbility(viewData) 打开系统浏览器(对齐 mobile Linking.openURL)
 import { promptAction } from '@kit.ArkUI';
+import { common, Want } from '@kit.AbilityKit';
 import { getTheme, Theme, spacing, fontSizes, borderRadius, ThemeStore } from '../theme/Theme';
 import { AppIcon, AppIconKind } from '../components/AppIcon';
 import { popRoute } from '../router/AppRouter';
@@ -22,6 +24,7 @@ export struct MemberLoginScreen {
   @State private isLoading: boolean = false;
   @State private isSending: boolean = false;
   @State private errorMsg: string = '';
+  @State private isAgreed: boolean = false;
 
   // ─── 主题(@State 镜像)──────────────────────────────────────────
   @State private themeBg: string = '#FFFFFF';
@@ -33,6 +36,35 @@ export struct MemberLoginScreen {
   @State private themeError: string = '#EF4444';
 
   private countdownTimer: number = -1;
+
+  // 协议链接(对齐 mobile 组件内 URL 常量)
+  private readonly PRIVACY_POLICY_URL: string = 'https://www.audiodock.cn/book/docs/privacy-policy/?preview=true';
+  private readonly USER_AGREEMENT_URL: string = 'http://audiodock.cn/book/docs/user-agreement/?preview=true';
+
+  // ─── 打开外部协议链接(对齐 mobile Linking.openURL)──────────────────────
+  private openUrl(url: string): void {
+    try {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      const want: Want = {
+        action: 'ohos.want.action.viewData',
+        entities: ['entity.system.browsable'],
+        uri: url
+      };
+      context.startAbility(want).catch(() => {
+        promptAction.showToast({ message: '无法打开链接', duration: 1500 });
+      });
+    } catch {
+      promptAction.showToast({ message: '无法打开链接', duration: 1500 });
+    }
+  }
+
+  // ─── 切换勾选(对齐 mobile 协议文案 onPress)──────────────────────────────
+  private toggleAgreed(): void {
+    this.isAgreed = !this.isAgreed;
+    if (this.isAgreed) {
+      this.errorMsg = '';
+    }
+  }
 
   aboutToAppear(): void {
     this.applyTheme();
@@ -97,6 +129,10 @@ export struct MemberLoginScreen {
 
   // ─── 登录(对齐 mobile handleLogin)─────────────────────────────────────
   private async handleLogin(): Promise<void> {
+    if (!this.isAgreed) {
+      this.errorMsg = '请先阅读并同意《隐私政策》和《用户协议》';
+      return;
+    }
     if (this.phone.length === 0 || this.code.length === 0) {
       this.errorMsg = '请输入手机号和验证码';
       return;
@@ -263,6 +299,38 @@ export struct MemberLoginScreen {
             .borderRadius(borderRadius.md)
           }
 
+          // 协议勾选(对齐 mobile agreeRow)
+          Row({ space: 6 }) {
+            Checkbox()
+              .select(this.isAgreed)
+              .selectedColor(this.themePrimary)
+              .onChange((value: boolean): void => {
+                this.isAgreed = value;
+                if (value) {
+                  this.errorMsg = '';
+                }
+              })
+
+            Text() {
+              Span('我已阅读并同意')
+                .fontColor(this.themeTextSec)
+                .onClick((): void => { this.toggleAgreed(); })
+              Span('《隐私政策》')
+                .fontColor(this.themePrimary)
+                .onClick((): void => { this.openUrl(this.PRIVACY_POLICY_URL); })
+              Span('和')
+                .fontColor(this.themeTextSec)
+                .onClick((): void => { this.toggleAgreed(); })
+              Span('《用户协议》')
+                .fontColor(this.themePrimary)
+                .onClick((): void => { this.openUrl(this.USER_AGREEMENT_URL); })
+            }
+            .fontSize(fontSizes.xs)
+            .lineHeight(20)
+          }
+          .width('100%')
+          .alignItems(VerticalAlign.Center)
+
           // 登录按钮(对齐 mobile loginBtn)
           Button(this.isLoading ? '' : '登录 / 注册')
             .width('100%')
@@ -279,26 +347,6 @@ export struct MemberLoginScreen {
             })
         }
         .width('100%')
-
-        // ─── Footer(对齐 mobile footer)─────────────────────────────────
-        Column() {
-          Text() {
-            Span('登录即代表同意')
-              .fontColor(this.themeTextSec)
-            Span('《隐私政策》')
-              .fontColor(this.themePrimary)
-            Span('和')
-              .fontColor(this.themeTextSec)
-            Span('《用户协议》')
-              .fontColor(this.themePrimary)
-          }
-          .fontSize(fontSizes.xs)
-          .textAlign(TextAlign.Center)
-          .lineHeight(20)
-        }
-        .width('100%')
-        .margin({ top: spacing.xl })
-        .alignItems(HorizontalAlign.Center)
       }
       .width('100%')
       .padding({ left: spacing.lg, right: spacing.lg, bottom: spacing.xl })

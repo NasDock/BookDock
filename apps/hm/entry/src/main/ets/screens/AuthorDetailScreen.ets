@@ -86,21 +86,21 @@ export struct AuthorDetailScreen {
         })
 
         Text(this.author.name || '作者')
-          .fontSize(fontSizes.lg)
-          .fontWeight(FontWeight.Medium)
+          .fontSize(fontSizes.md)
+          .fontWeight(FontWeight.Bold)
           .fontColor(this.themeText)
           .layoutWeight(1)
-          .textAlign(TextAlign.Center)
           .maxLines(1)
           .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .margin({ left: spacing.sm })
 
         Column()
           .width(40)
           .height(40)
       }
       .width('100%')
-      .padding({ left: spacing.md, right: spacing.md, top: spacing.xl + 8, bottom: spacing.md })
-      .backgroundColor(this.themeSurface)
+      .padding({ left: spacing.md, right: spacing.md, top: spacing.sm, bottom: spacing.sm })
+      .backgroundColor(this.themeBg)
       .alignItems(VerticalAlign.Center)
 
       Scroll() {

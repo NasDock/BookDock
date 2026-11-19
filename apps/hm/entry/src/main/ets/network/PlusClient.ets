@@ -117,19 +117,23 @@ export interface PlusCouponVerifyResult {
   reason?: string;
 }
 
-export type ScanLoginSessionStatus = 'PENDING' | 'CLAIMED' | 'CONFIRMED' | 'CONSUMED' | 'EXPIRED';
+// 扫码登录协议(对齐 desktop / mobile 与线上 /scan-login/session)。
+// 旧的 /auth/scan-login 端点已下线;target 与 scanner 靠 sessionId + secret 关联。
+export type ScanLoginStatus =
+  'waiting_scan' | 'waiting_confirm' | 'confirmed' | 'consumed' | 'success' | 'failed' | 'expired';
 
 export interface ScanLoginSession {
-  id: string;
-  status: ScanLoginSessionStatus;
-  clientId: string;
-  createdAt: string;
-  expiresAt: string;
-  claimedAt?: string;
-  confirmedAt?: string;
-  consumedAt?: string;
-  userId?: string;
-  token?: string;
+  sessionId: string;
+  secret: string;
+  role: string;
+  deviceKind: string;
+  expiresAt: number;
+  // GET /session/:id 返回的状态字段(create 时没有)
+  status?: ScanLoginStatus;
+  deviceName?: string;
+  sourceBundles?: string[];
+  hasNativeAuth?: boolean;
+  hasPlusAuth?: boolean;
 }
 
 export interface PlusAuthRef {
@@ -146,10 +150,23 @@ export interface ScanLoginClaimPayload {
 }
 
 export interface ScanLoginConfirmResult {
-  success: boolean;
-  token?: string;
-  userId?: string;
+  nativeAuth?: object;
   plusAuth?: PlusAuthRef;
+  sourceBundles?: string[];
+}
+
+export interface ScanLoginCreateDto {
+  role: string;
+  deviceKind: string;
+}
+
+export interface ScanLoginSecretDto {
+  secret: string;
+}
+
+export interface ScanLoginClaimRequestDto {
+  secret: string;
+  payload: ScanLoginClaimPayload;
 }
 
 export interface VipStatusResponse {
@@ -183,9 +200,8 @@ export interface DeletePlusMeResponse {
 }
 
 export interface ReportScanLoginResultDto {
+  secret: string;
   success: boolean;
-  token?: string;
-  userId?: string;
   error?: string;
 }
 
@@ -470,66 +486,84 @@ export function plusVerifyCoupon(code: string, userId: string): Promise<ISuccess
 }
 
 // ─── Scan Login API ───────────────────────────────────────────
+// 与 desktop / mobile 共用线上 /scan-login/session(旧 /auth/scan-login 已下线)
 
-export function createScanLoginSession(): Promise<ISuccessResponse<ScanLoginSession>> {
-  return plusRequest<ScanLoginSession>({ method: http.RequestMethod.POST, path: '/auth/scan-login' });
-}
-
-export function getScanLoginSession(sessionId: string): Promise<ISuccessResponse<ScanLoginSession>> {
-  return plusRequest<ScanLoginSession>({ method: http.RequestMethod.GET, path: `/auth/scan-login/${sessionId}` });
-}
-
-export function claimScanLoginSession(sessionId: string, payload: ScanLoginClaimPayload): Promise<ISuccessResponse<ScanLoginSession>> {
+export function createScanLoginSession(dto: ScanLoginCreateDto): Promise<ISuccessResponse<ScanLoginSession>> {
   return plusRequest<ScanLoginSession>({
     method: http.RequestMethod.POST,
-    path: `/auth/scan-login/${sessionId}/claim`,
-    body: payload,
+    path: '/scan-login/session',
+    body: dto,
   });
 }
 
-export function confirmScanLoginSession(sessionId: string): Promise<ISuccessResponse<ScanLoginConfirmResult>> {
+export function getScanLoginSession(sessionId: string, secret: string): Promise<ISuccessResponse<ScanLoginSession>> {
+  return plusRequest<ScanLoginSession>({
+    method: http.RequestMethod.GET,
+    path: `/scan-login/session/${sessionId}?secret=${encodeURIComponent(secret)}`,
+  });
+}
+
+export function claimScanLoginSession(sessionId: string, dto: ScanLoginClaimRequestDto): Promise<ISuccessResponse<ScanLoginSession>> {
+  return plusRequest<ScanLoginSession>({
+    method: http.RequestMethod.POST,
+    path: `/scan-login/session/${sessionId}/claim`,
+    body: dto,
+  });
+}
+
+export function confirmScanLoginSession(sessionId: string, dto: ScanLoginSecretDto): Promise<ISuccessResponse<ScanLoginConfirmResult>> {
   return plusRequest<ScanLoginConfirmResult>({
     method: http.RequestMethod.POST,
-    path: `/auth/scan-login/${sessionId}/confirm`,
+    path: `/scan-login/session/${sessionId}/confirm`,
+    body: dto,
   });
 }
 
-export function consumeScanLoginSession(sessionId: string): Promise<ISuccessResponse<ScanLoginSession>> {
-  return plusRequest<ScanLoginSession>({
+export function consumeScanLoginSession(sessionId: string, dto: ScanLoginSecretDto): Promise<ISuccessResponse<ScanLoginConfirmResult>> {
+  return plusRequest<ScanLoginConfirmResult>({
     method: http.RequestMethod.POST,
-    path: `/auth/scan-login/${sessionId}/consume`,
+    path: `/scan-login/session/${sessionId}/consume`,
+    body: dto,
   });
 }
 
 export function reportScanLoginResult(sessionId: string, result: ReportScanLoginResultDto): Promise<ISuccessResponse<object>> {
   return plusRequest<object>({
     method: http.RequestMethod.POST,
-    path: `/auth/scan-login/${sessionId}/result`,
+    path: `/scan-login/session/${sessionId}/report`,
     body: result,
   });
 }
 
 export const reportScanLoginResultViaSocket = reportScanLoginResult;
 
-export function subscribeScanLoginSession(sessionId: string, onUpdate: (session: ScanLoginSession) => void): () => void {
+export function subscribeScanLoginSession(
+  sessionId: string,
+  secret: string,
+  onUpdate: (session: ScanLoginSession) => void,
+): () => void {
   let cancelled = false;
   const interval = setInterval(async () => {
     if (cancelled) {
       return;
     }
     try {
-      const res = await getScanLoginSession(sessionId);
+      const res = await getScanLoginSession(sessionId, secret);
       if (cancelled) {
         return;
       }
       if (res && res.data) {
-        onUpdate(res.data);
-        if (res.data.status === 'CONSUMED' || res.data.status === 'EXPIRED') {
+        // GET 响应不含 secret,补齐后再回抛,避免覆盖 target 会话时丢失
+        const state: ScanLoginSession = res.data;
+        state.secret = secret;
+        onUpdate(state);
+        if (state.status === 'consumed' || state.status === 'expired'
+          || state.status === 'success' || state.status === 'failed') {
           clearInterval(interval);
         }
       }
     } catch {
-      clearInterval(interval);
+      // 网络抖动不中断轮询,会话过期后由服务端状态收敛
     }
   }, 2000);
   return () => {

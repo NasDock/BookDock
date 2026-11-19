@@ -38,12 +38,21 @@ function formatDate(dateStr?: string): string {
   return `${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm}`;
 }
 
-// 推荐网格列数(对齐 mobile getRecColumns,单位 vp)
+// 推荐网格列数(单位 vp):手机保持 3 列,pad 竖屏/横屏按宽度加密
 function getRecColumns(screenWidthVp: number): number {
+  if (screenWidthVp >= 1200) {
+    return 8;
+  }
+  if (screenWidthVp >= 900) {
+    return 7;
+  }
   if (screenWidthVp >= 700) {
+    return 6;
+  }
+  if (screenWidthVp >= 550) {
     return 5;
   }
-  if (screenWidthVp >= 500) {
+  if (screenWidthVp >= 400) {
     return 4;
   }
   return 3;
@@ -351,8 +360,13 @@ export struct RecommendScreen {
     .width('100%')
     .height('100%')
     .backgroundColor(this.themeBg)
-    // 不用 onAreaChange:首帧晚到会覆盖 display.getDefaultDisplaySync() 的正确值
-    // display.getDefaultDisplaySync() 在首帧就是真实屏幕宽,已够响应式(折叠屏展开不实时跟,可接受)
+    // 首帧用 display 的屏宽;旋转/窗口尺寸变化时同步更新,否则竖屏会沿用横屏列数
+    .onAreaChange((oldValue: Area, newValue: Area): void => {
+      const width: number = Number(newValue.width);
+      if (width > 0 && width !== this.screenWidthVp) {
+        this.screenWidthVp = width;
+      }
+    })
   }
 
   // ─── 骨架序号数组(build() 内禁 const,抽方法) ─────────────

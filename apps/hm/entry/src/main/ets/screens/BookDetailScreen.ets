@@ -6,10 +6,11 @@
 //   1. LinearGradient 封面降级为纯色(getBookGradient 取第一色)
 //   2. Ionicons → AppIcon(emoji 全部禁用,未验证 sys.symbol 走几何字符)
 //   3. RN Modal → @Builder + Stack 全屏 overlay(参考 ProfileScreen 范式)
-//   4. Linking.openURL(豆瓣) → openUrl(@kit.AbilityKit)未在 P3 引入,先 toast 占位
-//   5. 横竖屏 isLandscape → 媒体查询,P3 阶段先用固定竖屏布局(P4 再补横屏)
+//   4. Linking.openURL(豆瓣) → openUrl(@kit.AbilityKit startAbility viewData)打开系统浏览器(对齐 mobile)
+//   5. 横竖屏 isLandscape → 媒体查询,横屏封面放左/信息放右(对齐 mobile bookInfoSectionLandscape)
 //   6. 阅读 / 听书按钮 → 跳 Reader/TTSScreen(P3 已实现 UI 骨架,P4 接 AVPlayer 播放)
-import { promptAction } from '@kit.ArkUI';
+import { mediaquery, promptAction } from '@kit.ArkUI';
+import { common, Want } from '@kit.AbilityKit';
 import {
   ApiResponse,
   Author,
@@ -74,6 +75,9 @@ export struct BookDetailScreen {
   @State private newCollectionName: string = '';
   @State private addingCollectionId: string | null = null;
   @State private showMoreMenu: boolean = false;
+  // 横屏:封面放左、信息放右(对齐 mobile isLandscape 分支)
+  @State private isLandscape: boolean = false;
+  private orientationListener: mediaquery.MediaQueryListener | null = null;
 
   // 主题(@State 镜像,getTheme 每次重算避免缓存旧值)
   @State private themeBg: string = '#FFFFFF';
@@ -89,7 +93,21 @@ export struct BookDetailScreen {
   aboutToAppear(): void {
     this.applyTheme();
     this.book = this.initialBook;
+    const listener: mediaquery.MediaQueryListener =
+      this.getUIContext().getMediaQuery().matchMediaSync('(orientation: landscape)');
+    this.isLandscape = listener.matches;
+    this.orientationListener = listener;
+    listener.on('change', (result: mediaquery.MediaQueryResult): void => {
+      this.isLandscape = result.matches;
+    });
     void this.loadDetails();
+  }
+
+  aboutToDisappear(): void {
+    if (this.orientationListener) {
+      this.orientationListener.off('change');
+      this.orientationListener = null;
+    }
   }
 
   private applyTheme(): void {
@@ -291,6 +309,23 @@ export struct BookDetailScreen {
     return dateStr;
   }
 
+  // ─── 信息源链接(对齐 mobile Linking.openURL)──────────────────────
+  private openUrl(url: string): void {
+    try {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      const want: Want = {
+        action: 'ohos.want.action.viewData',
+        entities: ['entity.system.browsable'],
+        uri: url
+      };
+      context.startAbility(want).catch(() => {
+        promptAction.showToast({ message: '无法打开链接', duration: 1500 });
+      });
+    } catch {
+      promptAction.showToast({ message: '无法打开链接', duration: 1500 });
+    }
+  }
+
   // ─── 页数文本(@Builder 里不能 const,抽成方法)─────────────────────
   private pagesText(): string {
     const meta: BookMetadata = parseMetadata(this.book.metadata);
@@ -380,16 +415,46 @@ export struct BookDetailScreen {
     .height('100%')
   }
 
-  // ─── 区块 1:书籍信息(封面 + 12 行元数据 + 阅读/听书按钮)────────────
+  // ─── 区块 1:书籍信息(横屏封面左/信息右,竖屏封面居中上下)───────────
   @Builder
   private BookInfoSection() {
-    Column() {
-      // 封面(居中)
-      this.Cover(160, 240)
+    if (this.isLandscape) {
+      Row({ space: spacing.xl }) {
+        Column() {
+          this.Cover(180, 270)
+        }
+        .alignItems(HorizontalAlign.Center)
 
-      // 元数据列表
-      // 对齐 mobile bookMetaList: gap=spacing.sm(8), metaLabel/metaValue lineHeight=20
-      Column({ space: spacing.sm }) {
+        Column() {
+          this.BookMetaList()
+          this.ActionButtons()
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Top)
+      .padding({ left: spacing.md, right: spacing.md, top: spacing.md, bottom: spacing.md })
+    } else {
+      Column() {
+        Column() {
+          this.Cover(160, 240)
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Center)
+
+        this.BookMetaList()
+        this.ActionButtons()
+      }
+      .width('100%')
+      .padding({ left: spacing.md, right: spacing.md, top: spacing.md, bottom: spacing.md })
+    }
+  }
+
+  @Builder
+  private BookMetaList() {
+    // 对齐 mobile bookMetaList: gap=spacing.sm(8), metaLabel/metaValue lineHeight=20
+    Column({ space: spacing.sm }) {
         // 作者(优先 authors 数组,可点击跳 AuthorDetail)
         if (this.book.authors && this.book.authors.length > 0) {
           Row() {
@@ -495,8 +560,10 @@ export struct BookDetailScreen {
               .fontColor(this.themePrimary)
               .layoutWeight(1)
               .onClick((): void => {
-                // P3 先 toast 占位,P4 再接 openUrl
-                promptAction.showToast({ message: '跳转豆瓣链接(P4 实现)', duration: 1500 });
+                const url: string = parseMetadata(this.book.metadata).doubanUrl ?? '';
+                if (url.length > 0) {
+                  this.openUrl(url);
+                }
               })
           } else {
             Text('豆瓣')
@@ -512,42 +579,44 @@ export struct BookDetailScreen {
       .margin({ top: spacing.md })
       .alignItems(HorizontalAlign.Start)
 
-      // 操作按钮
-      Row({ space: spacing.sm }) {
-        Row({ space: spacing.xs }) {
-          AppIcon({ kind: AppIconKind.Book, iconSize: 18, iconColor: '#FFFFFF' })
-          Text('阅读')
-            .fontSize(fontSizes.md)
-            .fontWeight(FontWeight.Bold)
-            .fontColor('#FFFFFF')
-        }
-        .layoutWeight(1)
-        .height(44)
-        .backgroundColor(this.themePrimary)
-        .borderRadius(borderRadius.md)
-        .justifyContent(FlexAlign.Center)
-        .onClick((): void => {
-          this.handleRead();
-        })
+  }
 
-        Row() {
-          AppIcon({ kind: AppIconKind.Headset, iconSize: 18, iconColor: this.themeText })
-        }
-        .width(48)
-        .height(44)
-        .backgroundColor(this.themeSurface)
-        .border({ width: 1, color: this.themeBorder })
-        .borderRadius(borderRadius.md)
-        .justifyContent(FlexAlign.Center)
-        .onClick((): void => {
-          this.handleTTS();
-        })
+  @Builder
+  private ActionButtons() {
+    Row({ space: spacing.sm }) {
+      Row({ space: spacing.xs }) {
+        AppIcon({ kind: AppIconKind.Book, iconSize: 18, iconColor: '#FFFFFF' })
+        Text('阅读')
+          .fontSize(fontSizes.md)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#FFFFFF')
       }
-      .width('100%')
-      .margin({ top: spacing.md })
+      // 横屏对齐 mobile readButton 固定 200;竖屏 flex 铺满
+      .width(this.isLandscape ? 200 : '100%')
+      .layoutWeight(this.isLandscape ? 0 : 1)
+      .height(44)
+      .backgroundColor(this.themePrimary)
+      .borderRadius(borderRadius.md)
+      .justifyContent(FlexAlign.Center)
+      .onClick((): void => {
+        this.handleRead();
+      })
+
+      Row() {
+        AppIcon({ kind: AppIconKind.Headset, iconSize: 18, iconColor: this.themeText })
+      }
+      .width(48)
+      .height(44)
+      .backgroundColor(this.themeSurface)
+      .border({ width: 1, color: this.themeBorder })
+      .borderRadius(borderRadius.md)
+      .justifyContent(FlexAlign.Center)
+      .onClick((): void => {
+        this.handleTTS();
+      })
     }
     .width('100%')
-    .padding({ left: spacing.md, right: spacing.md, top: spacing.md, bottom: spacing.md })
+    .margin({ top: spacing.md })
   }
 
   // ─── 区块 2:阅读进度卡片 ─────────────────────────────────────────

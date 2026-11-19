@@ -1,9 +1,9 @@
 {
   "app": {
     "bundleName": "com.bookdock.app",
-    "vendor": "example",
+    "vendor": "BookDock",
     "versionCode": 1000000,
-    "versionName": "1.0.0",
+    "versionName": "0.0.73",
     "buildVersion": "1",
     "icon": "$media:layered_image",
     "label": "$string:app_name"

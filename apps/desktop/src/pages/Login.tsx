@@ -11,9 +11,11 @@ import {
   Server,
   User,
   Wifi,
+  X,
+  CircleHelp,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   consumeScanLoginSession,
@@ -32,7 +34,7 @@ import {
   setActiveServerAddress,
   toApiBaseUrl,
 } from "../utils/network";
-import { applyDesktopScanLoginResult } from "../utils/scanLogin";
+import { applyDesktopScanLoginResult, buildScanLoginQrValue } from "../utils/scanLogin";
 
 interface ServerHistoryItem {
   value: string;
@@ -73,6 +75,57 @@ export default function Login() {
     null,
   );
   const [scanBusy, setScanBusy] = useState(false);
+
+  // Report dialog state
+  const [showReport, setShowReport] = useState(false);
+  const [reportTitle, setReportTitle] = useState("");
+  const [reportReason, setReportReason] = useState("");
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [reportSuccess, setReportSuccess] = useState(false);
+  const reportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (reportTimerRef.current) clearTimeout(reportTimerRef.current);
+    },
+    [],
+  );
+
+  const openReport = useCallback(() => {
+    setReportTitle("");
+    setReportReason("");
+    setReportError(null);
+    setReportSuccess(false);
+    setShowReport(true);
+  }, []);
+
+  const closeReport = useCallback(() => {
+    if (reportSubmitting) return;
+    setShowReport(false);
+  }, [reportSubmitting]);
+
+  const handleReportSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!reportTitle.trim() || !reportReason.trim()) {
+        setReportError("请填写标题和原因");
+        return;
+      }
+      setReportError(null);
+      setReportSuccess(false);
+      setReportSubmitting(true);
+      reportTimerRef.current = setTimeout(() => {
+        setReportSubmitting(false);
+        setReportSuccess(true);
+        // 成功提示展示 1.5s 后自动关闭弹窗
+        reportTimerRef.current = setTimeout(() => {
+          setShowReport(false);
+        }, 1500);
+      }, 2000);
+    },
+    [reportTitle, reportReason],
+  );
 
   const sourceType = "BookDock";
   const historyKey = `serverHistory_${sourceType}`;
@@ -218,14 +271,7 @@ export default function Login() {
   ]);
 
   const qrValue = scanSession
-    ? JSON.stringify({
-        kind: "bookdock-scan-login",
-        version: 1,
-        sessionId: scanSession.sessionId,
-        secret: scanSession.secret,
-        role: "target",
-        deviceKind: "desktop",
-      })
+    ? buildScanLoginQrValue(scanSession, "desktop")
     : "";
 
   // --- Form handlers ---
@@ -379,6 +425,17 @@ export default function Login() {
       </div>
 
       <div className="w-full max-w-5xl relative">
+        {/* Report button (top-right) */}
+        <button
+          type="button"
+          onClick={openReport}
+          title="举报数据源"
+          aria-label="举报数据源"
+          className="absolute top-0 right-0 z-10 p-2 rounded-full text-gray-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:text-blue-400 dark:hover:bg-gray-700 transition-colors"
+        >
+          <CircleHelp className="w-6 h-6" />
+        </button>
+
         {/* Logo header */}
         <div className="text-center mb-6">
           <img
@@ -415,7 +472,13 @@ export default function Login() {
                 <>
                   <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm mb-4">
                     {qrValue ? (
-                      <QRCodeSVG value={qrValue} size={180} level="M" />
+                      <QRCodeSVG
+                        value={qrValue}
+                        size={180}
+                        level="M"
+                        bgColor="#FFFFFF"
+                        fgColor="#111827"
+                      />
                     ) : (
                       <div className="w-[180px] h-[180px] bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center">
                         <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
@@ -647,6 +710,113 @@ export default function Login() {
           </div>
         </div>
       </div>
+
+      {/* Report Dialog */}
+      {showReport && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) closeReport();
+          }}
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-800 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                举报数据源
+              </h3>
+              <button
+                type="button"
+                onClick={closeReport}
+                disabled={reportSubmitting}
+                className="p-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 disabled:opacity-50"
+                aria-label="关闭"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {reportSuccess ? (
+              <div className="px-6 py-12 flex flex-col items-center text-center">
+                <div className="w-14 h-14 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
+                  <svg
+                    className="w-7 h-7 text-green-600 dark:text-green-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                </div>
+                <p className="text-base font-medium text-gray-900 dark:text-white">
+                  提交成功
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  感谢您的反馈，我们会尽快处理
+                </p>
+              </div>
+            ) : (
+              <form onSubmit={handleReportSubmit} className="px-6 py-5 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    标题 <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={reportTitle}
+                    onChange={(e) => {
+                      setReportTitle(e.target.value);
+                      setReportError(null);
+                    }}
+                    placeholder="请输入举报标题"
+                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    原因 <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={reportReason}
+                    onChange={(e) => {
+                      setReportReason(e.target.value);
+                      setReportError(null);
+                    }}
+                    placeholder="请详细描述举报原因"
+                    rows={4}
+                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-none"
+                  />
+                </div>
+
+                {reportError && (
+                  <p className="text-sm text-red-600 dark:text-red-400">
+                    {reportError}
+                  </p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={reportSubmitting}
+                  className="w-full py-2.5 rounded-lg bg-blue-500 hover:bg-blue-600 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {reportSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      提交中...
+                    </>
+                  ) : (
+                    "提交举报"
+                  )}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

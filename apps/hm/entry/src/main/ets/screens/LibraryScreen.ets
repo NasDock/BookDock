@@ -7,7 +7,17 @@ import { LibraryStore } from '../store/LibraryStore';
 import { getApiClient } from '../network/ApiClient';
 import { pushRoute, RouteName, BookParams } from '../router/AppRouter';
 import { AppIcon, AppIconKind } from '../components/AppIcon';
-import { promptAction } from '@kit.ArkUI';
+import { display, promptAction } from '@kit.ArkUI';
+
+// 书仓网格列数(单位 vp):手机保持 3 列,pad 竖屏/横屏按宽度加密,避免封面过大浪费空间
+function getGridColumns(screenWidthVp: number): number {
+  if (screenWidthVp >= 1200) return 8;
+  if (screenWidthVp >= 900) return 7;
+  if (screenWidthVp >= 700) return 6;
+  if (screenWidthVp >= 550) return 5;
+  if (screenWidthVp >= 400) return 4;
+  return 3;
+}
 
 const FORMATS: string[] = ['all', 'txt', 'epub', 'pdf', 'mobi'];
 const STATUSES: string[] = ['all', 'unread', 'reading', 'completed'];
@@ -68,6 +78,8 @@ export struct LibraryScreen {
   @State private showScrollTop: boolean = false;
   // 滚动 >60vp 时头部显示搜索图标(对齐 mobile headerRight 动态显示)
   @State private showHeaderSearch: boolean = false;
+  // 首帧用 display 的真实屏宽确定列数；onAreaChange 跟进横竖屏/窗口尺寸变化
+  @State private screenWidthVp: number = px2vp(display.getDefaultDisplaySync().width);
 
   private libraryStore: LibraryStore = LibraryStore.shared();
   private unsubscribeLib: (() => void) | null = null;
@@ -175,6 +187,15 @@ export struct LibraryScreen {
     this.scroller.scrollTo({ xOffset: 0, yOffset: 0, animation: true });
   }
 
+  private getColumnsTemplate(): string {
+    const columns: number = getGridColumns(this.screenWidthVp);
+    let template: string = '';
+    for (let i: number = 0; i < columns; i++) {
+      template += i === 0 ? '1fr' : ' 1fr';
+    }
+    return template;
+  }
+
   build() {
     Stack({ alignContent: Alignment.BottomEnd }) {
       Column() {
@@ -203,6 +224,8 @@ export struct LibraryScreen {
         .padding({ left: spacing.md, right: spacing.md })
 
         // 搜索条(点击跳搜索页)
+        // 对齐 RecommendScreen:不写 width,用左右 margin 自适应铺满;
+        // 之前 width('90%') 在 pad 横屏下两侧各空 5%(约 64vp),浪费空间
         Row() {
           AppIcon({ kind: AppIconKind.Search, iconSize: 16, iconColor: this.themeTextSec })
             .margin({ right: spacing.sm })
@@ -211,11 +234,10 @@ export struct LibraryScreen {
             .fontColor(this.themeTextSec)
             .layoutWeight(1)
         }
-        .width('90%')
         .padding({ left: spacing.md, right: spacing.md, top: spacing.sm, bottom: spacing.sm })
         .backgroundColor(this.themeSurface)
         .borderRadius(borderRadius.lg)
-        .margin({ top: spacing.md })
+        .margin({ left: spacing.md, right: spacing.md, top: spacing.md })
         .onClick((): void => {
           this.handleSearchPress();
         })
@@ -327,7 +349,7 @@ export struct LibraryScreen {
                 }
               }, (book: Book): string => book.id)
             }
-            .columnsTemplate('1fr 1fr 1fr')
+            .columnsTemplate(this.getColumnsTemplate())
             .columnsGap(12)
             .rowsGap(12)
             .padding({ left: spacing.md, right: spacing.md, bottom: spacing.xl })
@@ -348,6 +370,12 @@ export struct LibraryScreen {
       .width('100%')
       .height('100%')
       .backgroundColor(this.themeBg)
+      .onAreaChange((oldValue: Area, newValue: Area): void => {
+        const width: number = Number(newValue.width);
+        if (width > 0 && width !== this.screenWidthVp) {
+          this.screenWidthVp = width;
+        }
+      })
 
       // 回顶按钮
       if (this.showScrollTop) {

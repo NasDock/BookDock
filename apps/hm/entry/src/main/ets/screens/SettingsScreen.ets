@@ -9,6 +9,9 @@
 //   3. Ionicons → AppIcon(crown 无对应用 Diamond,flask 用「⚗」几何字符)
 //   4. RN Modal(主题选择) → Stack 全屏 overlay
 //   5. AsyncStorage plus key → PreferencesStore PrefKey.PLus_USER_ID
+//   6. 版本号 → bundleManager.getBundleInfoForSelfSync 动态读 app.json5 versionName
+//      (对齐 mobile require(package.json).version / desktop VITE_APP_VERSION)
+import { bundleManager } from '@kit.AbilityKit';
 import { promptAction } from '@kit.ArkUI';
 import { getTheme, Theme, spacing, fontSizes, borderRadius, ThemeStore, ThemeMode } from '../theme/Theme';
 import { AppIcon, AppIconKind } from '../components/AppIcon';
@@ -54,7 +57,7 @@ export struct SettingsScreen {
   @State private readerFontSize: number = 18;
   @State private readerLineHeight: number = 1.8;
   @State private ttsRate: number = 1.0;
-  @State private appVersion: string = '1.0.0';
+  @State private appVersion: string = '-';
 
   // ─── 主题(@State 镜像)──────────────────────────────────────────
   @State private themeBg: string = '#FFFFFF';
@@ -80,7 +83,20 @@ export struct SettingsScreen {
     const reader: ReaderStore = ReaderStore.shared();
     this.readerFontSize = reader.fontSize;
     this.readerLineHeight = reader.lineHeight;
+    this.loadAppVersion();
     void this.loadTtsRate();
+  }
+
+  /** 动态读取应用版本号(对齐 mobile require(package.json).version) */
+  private loadAppVersion(): void {
+    try {
+      const info = bundleManager.getBundleInfoForSelfSync(
+        bundleManager.BundleFlag.GET_BUNDLE_INFO_WITH_APPLICATION
+      );
+      this.appVersion = info.versionName;
+    } catch {
+      this.appVersion = '-';
+    }
   }
 
   private applyTheme(): void {
@@ -140,19 +156,23 @@ export struct SettingsScreen {
   }
 
   // ─── 会员类型入口(对齐 mobile handleMembershipPress)──────────────────
-  // hm 无 iOS 购买限制判断,直接按 mobile Android 链路:
-  // 无 plus token → MemberLogin;已 VIP → MemberDetail;否则 MemberBenefits
+  // hm 端隐藏会员购买入口:非 VIP 只展示"免费版"状态,不跳转购买/登录页。
+  // soft-disable:原「无 plus token → MemberLogin / 非 VIP → MemberBenefits」链路保留在下方注释
   private async handleMembershipPress(): Promise<void> {
-    const plusToken: string = await PreferencesStore.readString(PrefKey.PLus_TOKEN, '');
-    if (plusToken.length === 0) {
-      pushRoute(RouteName.MEMBER_LOGIN);
+    if (!this.isVip) {
       return;
     }
-    if (this.isVip) {
-      pushRoute(RouteName.MEMBER_DETAIL);
-      return;
-    }
-    pushRoute(RouteName.MEMBER_BENEFITS);
+    // const plusToken: string = await PreferencesStore.readString(PrefKey.PLus_TOKEN, '');
+    // if (plusToken.length === 0) {
+    //   pushRoute(RouteName.MEMBER_LOGIN);
+    //   return;
+    // }
+    // if (this.isVip) {
+    //   pushRoute(RouteName.MEMBER_DETAIL);
+    //   return;
+    // }
+    // pushRoute(RouteName.MEMBER_BENEFITS);
+    pushRoute(RouteName.MEMBER_DETAIL);
   }
 
   // ─── 参与内测(对齐 mobile handleJoinInternalTest)─────────────────────
@@ -272,7 +292,8 @@ export struct SettingsScreen {
   // ─── 退出登录(对齐 mobile useAuthStore.getState().logout)─────────────
   private handleLogout(): void {
     AuthStore.shared().logout().then((): void => {
-      // auth 变化订阅会自动 replacePath(Login),这里无需手动跳
+      // 退出后 AppRoot 的 authStore.subscribe 会捕获 isAuthenticated=false
+      // 并切回 LoginScreen,同时清空导航栈;这里无需手动跳转
     });
   }
 
@@ -343,7 +364,8 @@ export struct SettingsScreen {
               iconText: '',
               label: '会员类型',
               value: this.vipTierLabel(),
-              showChevron: true,
+              // 非会员不可点进购买页,去掉右箭头、点击也不跳转
+              showChevron: this.isVip,
               onTap: (): void => {
                 void this.handleMembershipPress();
               }

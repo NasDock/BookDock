@@ -1,8 +1,8 @@
 // [API 23+] screens/LoginScreen.ets — 1:1 对齐 mobile src/screens/LoginScreen.tsx
 // 功能:内/外网地址输入 + 用户名密码登录 + 注册切换 + 横屏扫码面板 + 错误态。
 // mobile 的 vector-icons 在鸿蒙用字符串 emoji / SymbolGlyph 占位;
-// mobile 的 react-native-qrcode-svg 在 P5 阶段接鸿蒙 QRCode 库生成真码。
-import { mediaquery } from '@kit.ArkUI';
+// 扫码二维码已用 ArkUI 内置 QRCode 组件生成真码,与 desktop / mobile 共用同一 payload。
+import { mediaquery, promptAction } from '@kit.ArkUI';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import { ApiResponse, LoginResponse, User } from '../model/ApiModels';
 import { getApiClient, initApiClient } from '../network/ApiClient';
@@ -14,6 +14,9 @@ import {
   consumeScanLoginSession,
   reportScanLoginResult,
   ScanLoginSession,
+  ScanLoginCreateDto,
+  ScanLoginSecretDto,
+  ReportScanLoginResultDto,
 } from '../network/PlusClient';
 import { PrefKey, PreferencesStore } from '../utils/PreferencesStore';
 import {
@@ -23,7 +26,6 @@ import {
   toApiBaseUrl,
 } from '../utils/NetworkHelper';
 import { getTheme, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
-import { replaceRoute, RouteName } from '../router/AppRouter';
 import { AppIcon, AppIconKind } from '../components/AppIcon';
 
 const SOURCE_TYPE = 'BookDock';
@@ -45,6 +47,16 @@ interface ServerConfigRecord {
 
 interface ErrorLike {
   message: string;
+}
+
+// 三端统一的扫码登录二维码内容
+interface ScanQrValue {
+  kind: string;
+  version: number;
+  sessionId: string;
+  secret: string;
+  role: string;
+  deviceKind: string;
 }
 
 function emptyLoginResponse(): LoginEmptyResponse {
@@ -86,20 +98,37 @@ export struct LoginScreen {
   @State private themePrimary: string = '#4A90D9';
   @State private themeError: string = '#EF4444';
   @State private isTabletOrPC: boolean = false;
+  // 对齐 mobile 的 useWindowDimensions():只有宽 > 高(横屏)才走左右分栏
+  @State private isLandscape: boolean = false;
+  @State private showWideLayout: boolean = false;
+
+  // 举报弹窗状态
+  @State private showReport: boolean = false;
+  @State private reportTitle: string = '';
+  @State private reportReason: string = '';
+  @State private reportSubmitting: boolean = false;
+  @State private reportSuccess: boolean = false;
 
   private authStore: AuthStore = AuthStore.shared();
   private orientationListener: mediaquery.MediaQueryListener | null = null;
   private unsubscribeScan: (() => void) | null = null;
+  private reportTimerId: number = -1;
 
   aboutToAppear(): void {
     this.applyTheme();
     void this.loadSavedConfig();
-    // 只在平板 / 2in1 上展示扫码登录面板;手机端整个隐藏
+    // 只在平板 / 2in1 且横屏时展示扫码登录面板;手机、平板竖屏整块隐藏
     const dt: string = deviceInfo.deviceType;
     this.isTabletOrPC = dt === 'tablet' || dt === '2in1';
-    if (this.isTabletOrPC) {
-      void this.createTargetSession();
-    }
+    const listener: mediaquery.MediaQueryListener =
+      this.getUIContext().getMediaQuery().matchMediaSync('(orientation: landscape)');
+    this.isLandscape = listener.matches;
+    this.orientationListener = listener;
+    listener.on('change', (result: mediaquery.MediaQueryResult): void => {
+      this.isLandscape = result.matches;
+      this.syncLayoutMode();
+    });
+    this.syncLayoutMode();
   }
 
   aboutToDisappear(): void {
@@ -108,12 +137,40 @@ export struct LoginScreen {
       this.orientationListener = null;
     }
     this.cleanupScan();
+    this.clearReportTimer();
+  }
+
+  private clearReportTimer(): void {
+    if (this.reportTimerId >= 0) {
+      clearTimeout(this.reportTimerId);
+      this.reportTimerId = -1;
+    }
   }
 
   private cleanupScan(): void {
     if (this.unsubscribeScan) {
       this.unsubscribeScan();
       this.unsubscribeScan = null;
+    }
+  }
+
+  // 布局与扫码会话的唯一入口:平板/2in1 + 横屏才左右分栏,其余一律单列表单
+  private syncLayoutMode(): void {
+    const wide: boolean = this.isTabletOrPC && this.isLandscape;
+    this.showWideLayout = wide;
+    if (wide) {
+      // 进入横屏才创建会话 / 恢复订阅,竖屏不产生任何扫码请求
+      if (!this.scanSession) {
+        void this.createTargetSession();
+      } else {
+        this.subscribeSession();
+      }
+    } else {
+      // 竖屏 / 手机:停订阅并丢弃旧会话,避免转回横屏后展示已过期的二维码
+      this.cleanupScan();
+      this.scanSession = null;
+      this.scanBusy = false;
+      this.scanProgress = '';
     }
   }
 
@@ -172,7 +229,9 @@ export struct LoginScreen {
 
   private async createTargetSession(): Promise<void> {
     try {
-      const res = await createScanLoginSession();
+      // 平板/2in1 作为 target,与 desktop 共用同一套线上会话接口
+      const dto: ScanLoginCreateDto = { role: 'target', deviceKind: 'desktop' };
+      const res = await createScanLoginSession(dto);
       if (res.data) {
         this.scanSession = res.data;
         this.subscribeSession();
@@ -187,11 +246,12 @@ export struct LoginScreen {
     if (!this.scanSession) {
       return;
     }
-    const sid: string = this.scanSession.id;
-    void getScanLoginSession(sid).catch((): void => undefined);
-    const unsub: () => void = subscribeScanLoginSession(sid, (session: ScanLoginSession): void => {
+    const sid: string = this.scanSession.sessionId;
+    const secret: string = this.scanSession.secret;
+    void getScanLoginSession(sid, secret).catch((): void => undefined);
+    const unsub: () => void = subscribeScanLoginSession(sid, secret, (session: ScanLoginSession): void => {
       this.scanSession = session;
-      if (session.status === 'CONFIRMED') {
+      if (session.status === 'confirmed') {
         void this.consumeConfirmedScan();
       }
     });
@@ -202,15 +262,19 @@ export struct LoginScreen {
     if (!this.scanSession) {
       return;
     }
-    const sid: string = this.scanSession.id;
+    const sid: string = this.scanSession.sessionId;
+    const secret: string = this.scanSession.secret;
     this.scanBusy = true;
     try {
-      const res = await consumeScanLoginSession(sid);
+      const body: ScanLoginSecretDto = { secret: secret };
+      const res = await consumeScanLoginSession(sid, body);
       if (!res.data) {
         throw new Error('No data returned');
       }
-      const token: string | undefined = res.data.token;
-      const userId: string | undefined = res.data.userId;
+      // 新协议 consume 返回扫码端带来的认证包,Plus 身份在 plusAuth 里
+      const auth = res.data.plusAuth;
+      const token: string | undefined = auth?.token;
+      const userId: string | number | undefined = auth?.userId;
       if (token && userId) {
         try {
           const api = getApiClient();
@@ -226,16 +290,35 @@ export struct LoginScreen {
           await this.authStore.login(fallback, token);
         }
       }
-      await reportScanLoginResult(sid, { success: true });
+      const okDto: ReportScanLoginResultDto = { secret: secret, success: true };
+      await reportScanLoginResult(sid, okDto);
       this.scanProgress = '登录成功';
       this.scanBusy = false;
-      replaceRoute(RouteName.MAIN);
+      // 登录态变化由 AppRoot 的 authStore.subscribe 监听并切到主 Tab,
+      // 此处不再操作 NavPathStack(登录阶段无 Navigation 挂载,调用无效且污染栈)
     } catch (err) {
       const msg: string = errToString(err) || '确认扫码登录失败';
-      await reportScanLoginResult(sid, { success: false, error: msg }).catch((): void => undefined);
+      const failDto: ReportScanLoginResultDto = { secret: secret, success: false, error: msg };
+      await reportScanLoginResult(sid, failDto).catch((): void => undefined);
       this.error = msg;
       this.scanBusy = false;
     }
+  }
+
+  // 三端统一的二维码内容:扫码端按 kind / sessionId / secret / role 解析
+  private buildScanQrValue(): string {
+    if (!this.scanSession) {
+      return '';
+    }
+    const payload: ScanQrValue = {
+      kind: 'bookdock-scan-login',
+      version: 1,
+      sessionId: this.scanSession.sessionId,
+      secret: this.scanSession.secret,
+      role: 'target',
+      deviceKind: 'harmony',
+    };
+    return JSON.stringify(payload);
   }
 
   private async handleSubmit(): Promise<void> {
@@ -281,7 +364,7 @@ export struct LoginScreen {
         if (response.success && response.data) {
           await this.authStore.login(response.data.user, response.data.token);
           this.loading = false;
-          replaceRoute(RouteName.MAIN);
+          // 登录态变化由 AppRoot 的 authStore.subscribe 监听并切到主 Tab
         } else {
           this.error = response.error || '登录失败';
           this.loading = false;
@@ -292,7 +375,7 @@ export struct LoginScreen {
         if (response.success && response.data) {
           await this.authStore.login(response.data.user, response.data.token);
           this.loading = false;
-          replaceRoute(RouteName.MAIN);
+          // 登录态变化由 AppRoot 的 authStore.subscribe 监听并切到主 Tab
         } else {
           this.error = response.error || '注册失败';
           this.loading = false;
@@ -305,9 +388,43 @@ export struct LoginScreen {
     }
   }
 
+  // ─── 举报弹窗 ─────────────────────────────────────────────────────
+  private openReport(): void {
+    this.reportTitle = '';
+    this.reportReason = '';
+    this.reportSuccess = false;
+    this.showReport = true;
+  }
+
+  private closeReport(): void {
+    if (this.reportSubmitting) {
+      return;
+    }
+    this.showReport = false;
+  }
+
+  private handleReportSubmit(): void {
+    if (this.reportTitle.trim().length === 0 || this.reportReason.trim().length === 0) {
+      promptAction.showToast({ message: '请填写标题和原因', duration: 1500 });
+      return;
+    }
+    this.reportSuccess = false;
+    this.reportSubmitting = true;
+    this.clearReportTimer();
+    this.reportTimerId = setTimeout((): void => {
+      this.reportSubmitting = false;
+      this.reportSuccess = true;
+      this.reportTimerId = setTimeout((): void => {
+        this.showReport = false;
+        this.reportTimerId = -1;
+        promptAction.showToast({ message: '提交成功', duration: 1500 });
+      }, 1500);
+    }, 2000);
+  }
+
   @Builder
   private ScanPanelLandscape() {
-    if (this.scanSession && this.scanSession.status === 'CLAIMED') {
+    if (this.scanSession && this.scanSession.status === 'waiting_confirm') {
       Column() {
         Text('等待确认').fontSize(fontSizes.lg).fontWeight(FontWeight.Bold).fontColor(this.themeText)
         Text('手机已扫码。请在手机屏幕上确认登录...')
@@ -326,20 +443,34 @@ export struct LoginScreen {
     } else {
       Column() {
         Text('扫码登录').fontSize(fontSizes.sm).fontColor(this.themeTextSec).margin({ bottom: spacing.md })
-        Column() {
-          Text('QR').fontSize(64).fontWeight(FontWeight.Bold).fontColor(this.themePrimary)
-          Text('二维码占位').fontSize(12).fontColor(this.themeTextSec).margin({ top: 4 })
+        // 真二维码:ArkUI 内置 QRCode 组件,固定白底深码保证暗色主题下也能识别
+        if (this.buildScanQrValue().length > 0) {
+          QRCode(this.buildScanQrValue())
+            .width(180)
+            .height(180)
+            .color('#111827')
+            .backgroundColor('#FFFFFF')
+        } else {
+          Column()
+            .width(180).height(180)
+            .backgroundColor('#FFFFFF')
+            .borderRadius(borderRadius.lg)
         }
-        .width(160).height(160)
-        .justifyContent(FlexAlign.Center)
-        .backgroundColor(this.themeSurface)
-        .borderRadius(borderRadius.lg)
-        Button('刷新二维码')
-          .width('100%')
-          .margin({ top: spacing.md })
-          .onClick((): void => {
-            void this.createTargetSession();
-          })
+        // 轻量文字按钮:对齐 desktop 的「刷新图标 + 蓝色小字」。
+        // 原实现是整宽实心主按钮,与右侧「登录」形成两块高饱和色块,视觉上抢焦点。
+        Row({ space: spacing.xs }) {
+          AppIcon({ kind: AppIconKind.Refresh, iconSize: 14, iconColor: this.themePrimary })
+          Text('刷新二维码')
+            .fontSize(fontSizes.sm)
+            .fontColor(this.themePrimary)
+        }
+        .height(36)
+        .padding({ left: spacing.md, right: spacing.md })
+        .margin({ top: spacing.sm })
+        .enabled(!this.scanBusy)
+        .onClick((): void => {
+          void this.createTargetSession();
+        })
       }
       .padding(0)
       .width(260)
@@ -530,10 +661,27 @@ export struct LoginScreen {
   }
 
   build() {
-    Scroll() {
-      Column() {
+    Stack() {
+      Scroll() {
         Column() {
-          Image($r('app.media.app_logo'))
+          // 右上角举报按钮
+          Row() {
+            Blank()
+            Column() {
+              AppIcon({ kind: AppIconKind.Help, iconSize: 24, iconColor: this.themeTextSec })
+            }
+            .width(40)
+            .height(40)
+            .justifyContent(FlexAlign.Center)
+            .onClick((): void => {
+              this.openReport();
+            })
+          }
+          .width('100%')
+          .padding({ top: spacing.sm })
+
+          Column() {
+            Image($r('app.media.app_logo'))
             .width(72)
             .height(72)
             .borderRadius(borderRadius.md)
@@ -546,25 +694,176 @@ export struct LoginScreen {
         }
         .width('100%')
         .alignItems(HorizontalAlign.Center)
-        .margin({ top: spacing.xl, bottom: spacing.lg })
+        // 平板横屏高度有限,收紧品牌区上下留白,保证表单 + 去注册链接一屏内可见
+        .margin({
+          top: this.showWideLayout ? spacing.xs : spacing.xl,
+          bottom: this.showWideLayout ? spacing.xs : spacing.lg
+        })
 
-        if (this.isTabletOrPC) {
-          // 平板/2in1:左右布局,左边扫码面板 + 右边表单
+        if (this.showWideLayout) {
+          // 平板/2in1 横屏:左侧固定 260 扫码面板 + 右侧按剩余宽度收缩的表单。
+          // 对齐 mobile 的 contentLandscape(row + gap 40) / formCard(flex:1, minWidth:0):
+          // 表单必须用 layoutWeight 吃剩余空间,不能用 width('100%')——否则会按 Row 整宽测量,
+          // 260 + 40 + Row整宽 会一起溢出屏幕右边界。
           Row({ space: 40 }) {
             this.ScanPanelLandscape()
+            Column() {
+              this.FormPanel()
+            }
+            .layoutWeight(1)
+            .constraintSize({ maxWidth: 360 })
+            .alignItems(HorizontalAlign.Start)
+          }
+          .width('100%')
+          .constraintSize({ maxWidth: 680 })
+          .alignItems(VerticalAlign.Center)
+          .justifyContent(FlexAlign.Center)
+        } else {
+          // 手机 / 平板竖屏:单列表单,限制最大宽度并居中,避免平板上输入框被拉到屏幕边缘
+          // [备选·对齐 mobile 竖屏上下堆叠] 如需竖屏仍在表单上方显示二维码,改为:
+          // Column({ space: spacing.lg }) { this.ScanPanelLandscape(); this.FormPanel() }
+          Column() {
             this.FormPanel()
           }
           .width('100%')
-          .constraintSize({ maxWidth: 600 })
-          .justifyContent(FlexAlign.Center)
-        } else {
-          // 手机:只显示表单,不渲染扫码面板
-          this.FormPanel()
+          .constraintSize({ maxWidth: 420 })
         }
       }
       .width('100%')
-      .padding({ left: spacing.lg, right: spacing.lg, top: spacing.md, bottom: spacing.xxl })
+      .alignItems(HorizontalAlign.Center)
+      .padding({
+        left: spacing.lg,
+        right: spacing.lg,
+        top: this.showWideLayout ? spacing.xs : spacing.md,
+        bottom: this.showWideLayout ? spacing.xs : spacing.xxl
+      })
     }
+    .width('100%')
+    .height('100%')
+    .backgroundColor(this.themeBg)
+
+    // 举报弹窗(叠加在登录页之上)
+    if (this.showReport) {
+      Column() {
+        Column() {
+          Row() {
+            Text('举报数据源')
+              .fontSize(fontSizes.lg)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(this.themeText)
+            Blank()
+            Column() {
+              AppIcon({ kind: AppIconKind.Close, iconSize: 20, iconColor: this.themeTextSec })
+            }
+            .width(28)
+            .height(28)
+            .justifyContent(FlexAlign.Center)
+            .onClick((): void => {
+              this.closeReport();
+            })
+          }
+          .width('100%')
+          .margin({ bottom: spacing.md })
+
+          if (this.reportSuccess) {
+            Column() {
+              Text('✓')
+                .fontSize(48)
+                .fontColor('#22c55e')
+              Text('提交成功')
+                .fontSize(fontSizes.md)
+                .fontWeight(FontWeight.Bold)
+                .fontColor(this.themeText)
+                .margin({ top: spacing.md })
+              Text('感谢您的反馈，我们会尽快处理')
+                .fontSize(fontSizes.sm)
+                .fontColor(this.themeTextSec)
+                .margin({ top: spacing.xs })
+            }
+            .width('100%')
+            .padding({ top: spacing.xl, bottom: spacing.xl })
+          } else {
+            Column({ space: spacing.md }) {
+              Column() {
+                Text('标题 *')
+                  .fontSize(fontSizes.sm)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(this.themeText)
+                  .width('100%')
+                  .textAlign(TextAlign.Start)
+                TextInput({ placeholder: '请输入举报标题', text: this.reportTitle })
+                  .fontSize(fontSizes.md)
+                  .fontColor(this.themeText)
+                  .placeholderColor(this.themeTextSec)
+                  .backgroundColor(this.themeBg)
+                  .border({ width: 1, color: this.themeBorder })
+                  .borderRadius(borderRadius.md)
+                  .width('100%')
+                  .height(44)
+                  .padding({ left: spacing.md, right: spacing.md })
+                  .onChange((v: string): void => {
+                    this.reportTitle = v;
+                  })
+              }
+              .width('100%')
+
+              Column() {
+                Text('原因 *')
+                  .fontSize(fontSizes.sm)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor(this.themeText)
+                  .width('100%')
+                  .textAlign(TextAlign.Start)
+                TextArea({ placeholder: '请详细描述举报原因', text: this.reportReason })
+                  .fontSize(fontSizes.md)
+                  .fontColor(this.themeText)
+                  .placeholderColor(this.themeTextSec)
+                  .backgroundColor(this.themeBg)
+                  .border({ width: 1, color: this.themeBorder })
+                  .borderRadius(borderRadius.md)
+                  .width('100%')
+                  .height(100)
+                  .padding({ left: spacing.md, right: spacing.md })
+                  .onChange((v: string): void => {
+                    this.reportReason = v;
+                  })
+              }
+              .width('100%')
+
+              Button(this.reportSubmitting ? '提交中...' : '提交举报')
+                .width('100%')
+                .height(44)
+                .fontSize(fontSizes.md)
+                .fontWeight(FontWeight.Medium)
+                .fontColor('#FFFFFF')
+                .backgroundColor(this.themePrimary)
+                .borderRadius(borderRadius.md)
+                .enabled(!this.reportSubmitting)
+                .onClick((): void => {
+                  this.handleReportSubmit();
+                })
+            }
+            .width('100%')
+          }
+        }
+        .width('90%')
+        .constraintSize({ maxWidth: 420 })
+        .padding(spacing.lg)
+        .backgroundColor(this.themeSurface)
+        .borderRadius(borderRadius.lg)
+        .onClick((): void => {
+          // 消费点击事件,避免冒泡到遮罩层导致误关闭
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor('#99000000')
+      .justifyContent(FlexAlign.Center)
+      .onClick((): void => {
+        this.closeReport();
+      })
+    }
+  }
     .width('100%')
     .height('100%')
     .backgroundColor(this.themeBg)

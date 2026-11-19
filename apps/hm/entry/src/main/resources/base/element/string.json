@@ -2,15 +2,15 @@
   "string": [
     {
       "name": "module_desc",
-      "value": "module description"
+      "value": "BookDock（书仓）电子书管理与阅读"
     },
     {
       "name": "EntryAbility_desc",
-      "value": "description"
+      "value": "BookDock（书仓）主界面"
     },
     {
       "name": "EntryAbility_label",
-      "value": "label"
+      "value": "BookDock"
     },
     {
       "name": "camera_permission_reason",

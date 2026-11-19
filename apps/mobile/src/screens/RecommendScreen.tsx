@@ -8,7 +8,6 @@ import {
   Image,
   ActivityIndicator,
   RefreshControl,
-  Dimensions,
   Animated,
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -21,6 +20,7 @@ import { getCoverImageUrl } from '../services/api';
 import { getApiClient } from '@bookdock/api-client';
 import type { Book } from '@bookdock/api-client';
 import type { RootStackParamList } from '../navigation/types';
+import { useOrientation } from '../hooks/useOrientation';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -88,7 +88,8 @@ export function RecommendScreen() {
   const [recLoading, setRecLoading] = useState(false);
   const [showHeaderSearch, setShowHeaderSearch] = useState(false);
 
-  const screenWidth = Dimensions.get('window').width;
+  // 订阅 Dimensions 变化：横竖屏切换后必须重算卡片宽度，否则仍用横屏宽度导致竖屏一行只剩 2 个
+  const { width: screenWidth } = useOrientation();
   const recItemWidth = useMemo(() => getRecItemWidth(screenWidth), [screenWidth]);
   const recItemHeight = recItemWidth * 1.5;
 

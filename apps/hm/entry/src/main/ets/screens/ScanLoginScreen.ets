@@ -24,7 +24,12 @@ import {
   reportScanLoginResult,
   ISuccessResponse,
   ScanLoginSession,
+  ScanLoginConfirmResult,
   ScanLoginClaimPayload,
+  ScanLoginClaimRequestDto,
+  ScanLoginCreateDto,
+  ScanLoginSecretDto,
+  ReportScanLoginResultDto,
   PlusAuthRef
 } from '../network/PlusClient';
 import { AuthStore } from '../store/AuthStore';
@@ -33,6 +38,7 @@ import { AuthStore } from '../store/AuthStore';
 interface ScanQrPayload {
   kind: string;
   sessionId: string;
+  secret: string;
   role: string;
 }
 
@@ -60,11 +66,13 @@ async function collectScanLoginPayload(): Promise<ScanLoginClaimPayload> {
 }
 
 // 对齐 mobile applyMobileScanLoginResult
-async function applyScanLoginResult(result: ScanLoginSession): Promise<void> {
-  if (result.token && result.userId) {
-    await PreferencesStore.writeString(PrefKey.PLus_TOKEN, result.token);
-    await PreferencesStore.writeString(PrefKey.PLus_USER_ID, JSON.stringify(result.userId));
-    await PreferencesStore.writeString(PrefKey.PLus_USER, JSON.stringify({ id: result.userId }));
+async function applyScanLoginResult(result: ScanLoginConfirmResult): Promise<void> {
+  // 新协议 consume 返回扫码端带来的认证包,Plus 身份在 plusAuth 里
+  const auth: PlusAuthRef | undefined = result.plusAuth;
+  if (auth && auth.token && auth.userId) {
+    await PreferencesStore.writeString(PrefKey.PLus_TOKEN, auth.token);
+    await PreferencesStore.writeString(PrefKey.PLus_USER_ID, JSON.stringify(auth.userId));
+    await PreferencesStore.writeString(PrefKey.PLus_USER, JSON.stringify({ id: auth.userId }));
   }
 }
 
@@ -137,10 +145,11 @@ export struct ScanLoginScreen {
   // ─── 创建会话(对齐 mobile createTargetSession)──────────────────────────
   private async createTargetSession(): Promise<void> {
     try {
-      const res: ISuccessResponse<ScanLoginSession> = await createScanLoginSession();
+      const dto: ScanLoginCreateDto = { role: 'target', deviceKind: 'desktop' };
+      const res: ISuccessResponse<ScanLoginSession> = await createScanLoginSession(dto);
       if (res.data) {
         this.scanSession = res.data;
-        this.subscribeSession(res.data.id);
+        this.subscribeSession(res.data.sessionId, res.data.secret);
       }
     } catch {
       // 静默失败(对齐 mobile console.error)
@@ -148,14 +157,14 @@ export struct ScanLoginScreen {
   }
 
   // ─── 订阅会话状态(对齐 mobile subscribeScanLoginSession useEffect)────────
-  private subscribeSession(sessionId: string): void {
+  private subscribeSession(sessionId: string, secret: string): void {
     if (this.unsubscribeSession) {
       this.unsubscribeSession();
     }
-    getScanLoginSession(sessionId).catch((): void => {});
-    this.unsubscribeSession = subscribeScanLoginSession(sessionId, (session: ScanLoginSession): void => {
+    getScanLoginSession(sessionId, secret).catch((): void => {});
+    this.unsubscribeSession = subscribeScanLoginSession(sessionId, secret, (session: ScanLoginSession): void => {
       this.scanSession = session;
-      if (session.status === 'CONFIRMED') {
+      if (session.status === 'confirmed') {
         void this.consumeConfirmedScan(session);
       }
     });
@@ -170,8 +179,11 @@ export struct ScanLoginScreen {
     }
     this.consuming = true;
     this.scanBusy = true;
+    const sid: string = session.sessionId;
+    const secret: string = session.secret;
     try {
-      const res: ISuccessResponse<ScanLoginSession> = await consumeScanLoginSession(session.id);
+      const body: ScanLoginSecretDto = { secret: secret };
+      const res: ISuccessResponse<ScanLoginConfirmResult> = await consumeScanLoginSession(sid, body);
       if (!res.data) {
         throw new Error('No data returned');
       }
@@ -179,10 +191,12 @@ export struct ScanLoginScreen {
         await applyScanLoginResult(res.data);
       } catch (applyErr) {
         const msg: string = applyErr instanceof Error ? applyErr.message : '未知错误';
-        await reportScanLoginResult(session.id, { success: false, error: msg }).catch((): void => {});
+        const failDto: ReportScanLoginResultDto = { secret: secret, success: false, error: msg };
+        await reportScanLoginResult(sid, failDto).catch((): void => {});
         throw new Error(msg);
       }
-      await reportScanLoginResult(session.id, { success: true }).catch((): void => {});
+      const okDto: ReportScanLoginResultDto = { secret: secret, success: true };
+      await reportScanLoginResult(sid, okDto).catch((): void => {});
       // 同步 VIP 状态
       await AuthStore.shared().refreshVipStatus();
       promptAction.showToast({ message: '扫码登录成功', duration: 1500 });
@@ -219,8 +233,9 @@ export struct ScanLoginScreen {
       if (parsed.role === 'target') {
         const payload: ScanLoginClaimPayload = await collectScanLoginPayload();
         this.scanBusy = true;
+        const claimDto: ScanLoginClaimRequestDto = { secret: parsed.secret, payload: payload };
         const claimRes: ISuccessResponse<ScanLoginSession> =
-          await claimScanLoginSession(parsed.sessionId, payload);
+          await claimScanLoginSession(parsed.sessionId, claimDto);
         if (claimRes.code === 200 || claimRes.code === 201) {
           promptAction.showDialog({
             title: '已发送',
@@ -334,7 +349,7 @@ export struct ScanLoginScreen {
       .height('100%')
 
       // 会话状态提示(target 模式等待桌面端扫码确认)
-      if (this.scanSession && this.scanSession.status === 'PENDING') {
+      if (this.scanSession && this.scanSession.status === 'waiting_scan') {
         Text('等待桌面端扫码确认…')
           .fontSize(fontSizes.sm)
           .fontColor('#FFFFFF')

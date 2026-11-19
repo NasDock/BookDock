@@ -76,6 +76,7 @@ export struct ProfileScreen {
   @State private themeTextSec: string = '#6B7280';
   @State private themeBorder: string = '#E5E7EB';
   @State private themePrimary: string = '#4A90D9';
+  // 保留:恢复非会员购买卡片时使用(当前 hm 端已隐藏)
   @State private themeText2: string = '#6B7280';
 
   private authStore: AuthStore = AuthStore.shared();
@@ -359,7 +360,9 @@ export struct ProfileScreen {
 
   @Builder
   private ReadingTimeCard() {
-    if (this.authStore.isVip && this.readingSummary) {
+    // hm 端隐藏会员购买入口:非会员不再展示"开通会员解锁阅读时长统计"卡片
+    // soft-disable:原 else 分支(跳 MEMBER_BENEFITS)保留在下方注释,便于后续恢复
+    if (this.authStore.isVip) {
       Row() {
         SymbolGlyph($r('sys.symbol.clock')).fontSize(24).fontColor([Color.White])
         Column() {
@@ -381,29 +384,30 @@ export struct ProfileScreen {
       .onClick((): void => {
         pushRoute(RouteName.STATS);
       })
-    } else {
-      Row() {
-        AppIcon({ kind: AppIconKind.Diamond, iconSize: 24, iconColor: '#FFFFFF' })
-        Column() {
-          Text('阅读时长').fontSize(fontSizes.s).fontColor('#FFFFFF').opacity(0.8)
-          Text('开通会员解锁阅读时长统计')
-            .fontSize(fontSizes.md)
-            .fontColor(Color.White)
-            .fontWeight(FontWeight.Bold)
-        }
-        .alignItems(HorizontalAlign.Start)
-        .margin({ left: spacing.md })
-        .layoutWeight(1)
-        SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(20).fontColor([Color.White])
-      }
-      .padding(spacing.lg)
-      .backgroundColor(this.themeText2)
-      .borderRadius(borderRadius.lg)
-      .width('100%')
-      .onClick((): void => {
-        pushRoute(RouteName.MEMBER_BENEFITS);
-      })
     }
+    // else {
+    //   Row() {
+    //     AppIcon({ kind: AppIconKind.Diamond, iconSize: 24, iconColor: '#FFFFFF' })
+    //     Column() {
+    //       Text('阅读时长').fontSize(fontSizes.s).fontColor('#FFFFFF').opacity(0.8)
+    //       Text('开通会员解锁阅读时长统计')
+    //         .fontSize(fontSizes.md)
+    //         .fontColor(Color.White)
+    //         .fontWeight(FontWeight.Bold)
+    //     }
+    //     .alignItems(HorizontalAlign.Start)
+    //     .margin({ left: spacing.md })
+    //     .layoutWeight(1)
+    //     SymbolGlyph($r('sys.symbol.chevron_right')).fontSize(20).fontColor([Color.White])
+    //   }
+    //   .padding(spacing.lg)
+    //   .backgroundColor(this.themeText2)
+    //   .borderRadius(borderRadius.lg)
+    //   .width('100%')
+    //   .onClick((): void => {
+    //     pushRoute(RouteName.MEMBER_BENEFITS);
+    //   })
+    // }
   }
 
   private formatReading(): string {
@@ -599,19 +603,18 @@ export struct ProfileScreen {
                   .fontSize(fontSizes.xl)
                   .fontWeight(FontWeight.Bold)
                   .fontColor(this.themeText)
-                AppIcon({
-                  kind: AppIconKind.Diamond,
-                  iconSize: 20,
-                  iconColor: this.authStore.isVip ? DIAMOND_GOLD : this.themeText2
-                })
-                  .margin({ left: spacing.xs })
-                  .onClick((): void => {
-                    if (this.authStore.isVip) {
-                      pushRoute(RouteName.MEMBER_DETAIL);
-                    } else {
-                      pushRoute(RouteName.MEMBER_BENEFITS);
-                    }
+                // hm 端隐藏会员购买入口:非会员不展示钻石标识(原点击跳 MEMBER_BENEFITS)
+                if (this.authStore.isVip) {
+                  AppIcon({
+                    kind: AppIconKind.Diamond,
+                    iconSize: 20,
+                    iconColor: DIAMOND_GOLD
                   })
+                    .margin({ left: spacing.xs })
+                    .onClick((): void => {
+                      pushRoute(RouteName.MEMBER_DETAIL);
+                    })
+                }
               }
               .margin({ top: spacing.md })
             }

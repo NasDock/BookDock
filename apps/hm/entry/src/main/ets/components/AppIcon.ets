@@ -41,7 +41,8 @@ export enum AppIconKind {
   Settings,      // 设置(sys.symbol.gearshape)
   Diamond,       // 钻石(VIP,sys.symbol.diamond)
   ReadBook,      // 阅读原书(打开的书页,带横线的矩形,区别于 Book 的书堆)
-  Menu           // 章节列表(三条横线 ≡,区别于 Library 的书堆)
+  Menu,          // 章节列表(三条横线 ≡,区别于 Library 的书堆)
+  Help           // 问号(? 举报入口,sys.symbol.questionmark 未验证用文本字形)
 }
 
 @Component
@@ -161,6 +162,9 @@ export struct AppIcon {
     } else if (this.kind === AppIconKind.Menu) {
       // 章节列表(三条横线,通用菜单/列表符号,语义区别于 Library 的书堆)
       Text('≡').fontSize(this.iconSize).fontColor(this.iconColor)
+    } else if (this.kind === AppIconKind.Help) {
+      // 问号(举报入口)
+      Text('?').fontSize(this.iconSize).fontColor(this.iconColor)
     } else {
       // 默认 Book(书堆)
       Text('▤').fontSize(this.iconSize).fontColor(this.iconColor)
