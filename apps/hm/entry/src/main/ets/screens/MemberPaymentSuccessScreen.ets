@@ -4,7 +4,7 @@
 //   1. AsyncStorage.getItem('bookdock_plus_user') → PreferencesStore.readString(PLus_USER)
 //   2. navigation.getParent()?.goBack() → popToRoot()(hm 没有嵌套导航,直接回根)
 //   3. gestureEnabled: false + headerLeft: null → NavDestination 无返回键,只能点按钮跳走
-import { getTheme, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
+import { ThemeStore, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
 import { replaceRoute, popToRoot, RouteName } from '../router/AppRouter';
 import { PrefKey, PreferencesStore } from '../utils/PreferencesStore';
 
@@ -25,13 +25,19 @@ export struct MemberPaymentSuccessScreen {
   @State private themeText: string = '#1F2937';
   @State private themeTextSec: string = '#6B7280';
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
     void this.loadUser();
     this.startCountdown();
   }
 
   aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
     if (this.timerId >= 0) {
       clearInterval(this.timerId);
       this.timerId = -1;
@@ -39,7 +45,7 @@ export struct MemberPaymentSuccessScreen {
   }
 
   private applyTheme(): void {
-    const t: Theme = getTheme(false);
+    const t: Theme = ThemeStore.shared().getCurrentTheme();
     this.themeBg = t.colors.background;
     this.themeSurface = t.colors.surface;
     this.themeText = t.colors.text;

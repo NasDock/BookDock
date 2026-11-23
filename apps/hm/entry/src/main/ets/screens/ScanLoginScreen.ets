@@ -94,13 +94,19 @@ export struct ScanLoginScreen {
 
   private unsubscribeSession: (() => void) | null = null;
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
     void this.requestCameraPermission();
     void this.createTargetSession();
   }
 
   aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
     if (this.unsubscribeSession) {
       this.unsubscribeSession();
       this.unsubscribeSession = null;

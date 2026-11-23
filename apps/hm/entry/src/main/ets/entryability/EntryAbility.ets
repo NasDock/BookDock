@@ -30,20 +30,9 @@ export default class EntryAbility extends UIAbility {
 
   onWindowStageCreate(windowStage: window.WindowStage): void {
     // Main window is created, set main page for this ability
+    // 注意:只能 loadContent 一次。重复调用会创建两个 AppRoot 实例,
+    // 两者各自订阅 ThemeStore / 设置系统栏,导致主题与系统栏状态互相覆盖。
     hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
-    {
-      // Main window is created, set main page for this ability
-      hilog.info(DOMAIN, 'testTag', '%{public}s', 'Ability onWindowStageCreate');
-
-      windowStage.loadContent('router/AppRoot', (err) => {
-        if (err.code) {
-          hilog.error(DOMAIN, 'testTag', 'Failed to load the content. Cause: %{public}s', JSON.stringify(err));
-          return;
-        }
-        hilog.info(DOMAIN, 'testTag', 'Succeeded in loading the content.');
-      });
-    }
-
     windowStage.loadContent('router/AppRoot', (err) => {
       if (err.code) {
         hilog.error(DOMAIN, 'testTag', 'Failed to load the content. Cause: %{public}s', JSON.stringify(err));

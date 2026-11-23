@@ -1,6 +1,6 @@
 // [API 23+] screens/AdminUsersScreen.ets — 1:1 对齐 mobile AdminUsersScreen.tsx(占位版)
 // mobile 端也是占位(26 行),用户管理页后续 1:1 移植。
-import { getTheme, Theme, spacing, fontSizes } from '../theme/Theme';
+import { ThemeStore, Theme, spacing, fontSizes } from '../theme/Theme';
 
 @Component
 export struct AdminUsersScreen {
@@ -8,12 +8,21 @@ export struct AdminUsersScreen {
   @State private themeBg: string = '#FFFFFF';
   @State private themeTextSec: string = '#6B7280';
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
+  }
+
+  aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
   }
 
   private applyTheme(): void {
-    const t: Theme = getTheme(false);
+    const t: Theme = ThemeStore.shared().getCurrentTheme();
     this.themeBg = t.colors.background;
     this.themeTextSec = t.colors.textSecondary;
   }

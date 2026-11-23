@@ -36,10 +36,19 @@ export struct AuthorDetailScreen {
   @State private themeTextSec: string = '#6B7280';
   @State private themePrimary: string = '#4A90D9';
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.author = this.initialAuthor;
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
     void this.loadBooks();
+  }
+
+  aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
   }
 
   private applyTheme(): void {

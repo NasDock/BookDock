@@ -6,7 +6,7 @@
 //   3. LinearGradient 会员卡降级为纯色(取第一色)
 //   4. isMembershipPurchaseAvailable() iOS 判断 → hm 暂不区分平台,默认 true
 import { promptAction } from '@kit.ArkUI';
-import { getTheme, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
+import { ThemeStore, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
 import { AppIcon, AppIconKind } from '../components/AppIcon';
 import { replaceRoute, RouteName } from '../router/AppRouter';
 import { PrefKey, PreferencesStore } from '../utils/PreferencesStore';
@@ -31,13 +31,22 @@ export struct MemberDetailScreen {
   @State private themeText: string = '#1F2937';
   @State private themeTextSec: string = '#6B7280';
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
     void this.loadUser();
   }
 
+  aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
+  }
+
   private applyTheme(): void {
-    const t: Theme = getTheme(false);
+    const t: Theme = ThemeStore.shared().getCurrentTheme();
     this.themeBg = t.colors.background;
     this.themeSurface = t.colors.surface;
     this.themeText = t.colors.text;

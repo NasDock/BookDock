@@ -23,7 +23,7 @@ import { CollectionDetailScreen } from '../screens/CollectionDetailScreen';
 import { AuthorDetailScreen } from '../screens/AuthorDetailScreen';
 import { TTSMiniPlayer } from '../components/TTSMiniPlayer';
 import { AppIcon, AppIconKind } from '../components/AppIcon';
-import { getTheme, Theme, spacing, fontSizes } from '../theme/Theme';
+import { ThemeStore, Theme, spacing, fontSizes } from '../theme/Theme';
 import { AuthStore } from '../store/AuthStore';
 import { TTSPlayer, TTSPlayerState } from '../player/TTSPlayer';
 import {
@@ -54,8 +54,13 @@ export struct MainTabNavigator {
   private authStore: AuthStore = AuthStore.shared();
   private unsubscribeAuth: (() => void) | null = null;
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
     this.unsubscribeAuth = this.authStore.subscribe((): void => {
       this.applyTheme();
     });
@@ -63,6 +68,7 @@ export struct MainTabNavigator {
   }
 
   aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
     if (this.unsubscribeAuth) {
       this.unsubscribeAuth();
     }
@@ -106,7 +112,7 @@ export struct MainTabNavigator {
   }
 
   private applyTheme(): void {
-    const t: Theme = getTheme(false);
+    const t: Theme = ThemeStore.shared().getCurrentTheme();
     this.themeBg = t.colors.background;
     this.themeSurface = t.colors.surface;
     this.themeText = t.colors.text;
@@ -124,84 +130,102 @@ export struct MainTabNavigator {
         BookDetailScreen({ initialBook: (param as BookParams).book })
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     } else if (name === RouteName.READER) {
       NavDestination() {
         ReaderScreen({ initialBook: (param as BookParams).book })
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     } else if (name === RouteName.TTS_SCREEN) {
       NavDestination() {
         TTSScreen({
           initialBook: (param as TTSParams).book,
-          initialShowChapterPicker: (param as TTSParams).showChapterPicker ?? false
+          initialShowChapterPicker: (param as TTSParams).showChapterPicker ?? false,
+          initialSource: (param as TTSParams).source ?? 'detail',
+          initialChapter: (param as TTSParams).currentChapter ?? -1
         })
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     } else if (name === RouteName.TTS_READER) {
       NavDestination() {
         TTSReaderScreen()
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     } else if (name === RouteName.SEARCH) {
       NavDestination() {
         SearchScreen()
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     } else if (name === RouteName.STATS) {
       NavDestination() {
         StatsScreen()
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     } else if (name === RouteName.SETTINGS) {
       NavDestination() {
         SettingsScreen()
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     } else if (name === RouteName.API_TOKENS) {
       NavDestination() {
         ApiTokensScreen()
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     } else if (name === RouteName.ADMIN_USERS) {
       NavDestination() {
         AdminUsersScreen()
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     } else if (name === RouteName.MEMBER_LOGIN) {
       NavDestination() {
         MemberLoginScreen()
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     } else if (name === RouteName.SCAN_LOGIN) {
       NavDestination() {
         ScanLoginScreen()
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     } else if (name === RouteName.MEMBER_BENEFITS) {
       NavDestination() {
         MemberBenefitsScreen()
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     } else if (name === RouteName.MEMBER_DETAIL) {
       NavDestination() {
         MemberDetailScreen()
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     } else if (name === RouteName.MEMBER_PAYMENT_SUCCESS) {
       NavDestination() {
         MemberPaymentSuccessScreen()
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     } else if (name === RouteName.COLLECTION_DETAIL) {
       NavDestination() {
         CollectionDetailScreen({ collectionId: (param as CollectionDetailParams).collectionId })
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     } else if (name === RouteName.AUTHOR_DETAIL) {
       NavDestination() {
         AuthorDetailScreen({ initialAuthor: (param as AuthorParams).author })
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     } else {
       NavDestination() {
         Column() {
@@ -215,6 +239,7 @@ export struct MainTabNavigator {
         .alignItems(HorizontalAlign.Center)
       }
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
     }
   }
 
@@ -247,6 +272,7 @@ export struct MainTabNavigator {
       }
       .navDestination(this.PageBuilder)
       .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
       .mode(NavigationMode.Stack)
 
       // TTSMiniPlayer 全局浮层(路由感知:阅读/TTS/设置页隐藏，其他页有播放才显示)

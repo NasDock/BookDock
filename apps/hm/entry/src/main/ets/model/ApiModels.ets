@@ -213,6 +213,9 @@ export interface TtsProgressRecord {
   paragraphIndex?: number;
   audioOffsetMs?: number;
   totalDurationSecs?: number;
+  // 后端 TtsProgressResponseDto 实际返回 provider/voice;currentProvider/currentVoice 为历史兼容字段
+  provider?: string;
+  voice?: string;
   currentProvider?: string;
   currentVoice?: string;
   currentRate?: number;

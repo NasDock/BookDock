@@ -2,7 +2,7 @@
 // 显隐由 MainTabNavigator 控制：阅读/TTS/设置页始终隐藏，其他页有播放才显示。
 // 数据联动 TTSPlayer 单例：封面/书名/章节/播放暂停/进度条/上下段。
 import { promptAction } from '@kit.ArkUI';
-import { getTheme, spacing, fontSizes, borderRadius } from '../theme/Theme';
+import { ThemeStore, spacing, fontSizes, borderRadius } from '../theme/Theme';
 import { AppIcon, AppIconKind } from './AppIcon';
 import { TTSPlayer, TTSPlayerState } from '../player/TTSPlayer';
 import { getApiClient } from '../network/ApiClient';
@@ -31,18 +31,28 @@ export struct TTSMiniPlayer {
   private stateUnsub: (() => void) | null = null;
   private progressUnsub: (() => void) | null = null;
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
-    const t = getTheme(false);
+    this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
+    this.syncFromPlayer();
+    this.subscribePlayer();
+  }
+
+  private applyTheme(): void {
+    const t = ThemeStore.shared().getCurrentTheme();
     this.themeSurface = t.colors.surface;
     this.themeText = t.colors.text;
     this.themeTextSec = t.colors.textSecondary;
     this.themePrimary = t.colors.primary;
     this.themeBorder = t.colors.border;
-    this.syncFromPlayer();
-    this.subscribePlayer();
   }
 
   aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
     this.unsubscribePlayer();
   }
 

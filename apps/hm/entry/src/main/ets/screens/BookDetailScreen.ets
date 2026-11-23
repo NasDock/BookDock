@@ -22,9 +22,9 @@ import {
   FavoriteCheckResponse
 } from '../model/ApiModels';
 import { getApiClient } from '../network/ApiClient';
-import { getTheme, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
+import { ThemeStore, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
 import { AppIcon, AppIconKind } from '../components/AppIcon';
-import { pushRoute, popRoute, RouteName, BookParams, AuthorParams, NotesParams } from '../router/AppRouter';
+import { pushRoute, popRoute, RouteName, BookParams, TTSParams, AuthorParams, NotesParams } from '../router/AppRouter';
 
 // ─── 封面渐变底色(取双色渐变的第一色)─────────────────────────────────
 function getBookGradientStart(title: string): string {
@@ -90,8 +90,13 @@ export struct BookDetailScreen {
   @State private themeSuccess: string = '#10B981';
   @State private themeWarning: string = '#F59E0B';
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
     this.book = this.initialBook;
     const listener: mediaquery.MediaQueryListener =
       this.getUIContext().getMediaQuery().matchMediaSync('(orientation: landscape)');
@@ -104,6 +109,7 @@ export struct BookDetailScreen {
   }
 
   aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
     if (this.orientationListener) {
       this.orientationListener.off('change');
       this.orientationListener = null;
@@ -111,7 +117,7 @@ export struct BookDetailScreen {
   }
 
   private applyTheme(): void {
-    const t: Theme = getTheme(false);
+    const t: Theme = ThemeStore.shared().getCurrentTheme();
     this.themeBg = t.colors.background;
     this.themeSurface = t.colors.surface;
     this.themeText = t.colors.text;
@@ -167,7 +173,8 @@ export struct BookDetailScreen {
   }
 
   private handleTTS(): void {
-    const p: BookParams = { book: this.book };
+    // 详情页入口:听书页恢复上次听书位置(跨章续听)
+    const p: TTSParams = { book: this.book, source: 'detail' };
     pushRoute(RouteName.TTS_SCREEN, p);
   }
 

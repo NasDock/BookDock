@@ -16,7 +16,7 @@ import {
   ReadingTimeSummary
 } from '../model/ApiModels';
 import { getApiClient } from '../network/ApiClient';
-import { getTheme, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
+import { ThemeStore, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
 import { AppIcon, AppIconKind } from '../components/AppIcon';
 import { popRoute } from '../router/AppRouter';
 
@@ -62,14 +62,23 @@ export struct StatsScreen {
   @State private themeBorder: string = '#E5E7EB';
   @State private themePrimary: string = '#4A90D9';
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
     void this.fetchSummary();
     void this.fetchStats();
   }
 
+  aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
+  }
+
   private applyTheme(): void {
-    const t: Theme = getTheme(false);
+    const t: Theme = ThemeStore.shared().getCurrentTheme();
     this.themeBg = t.colors.background;
     this.themeSurface = t.colors.surface;
     this.themeText = t.colors.text;

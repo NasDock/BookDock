@@ -1,7 +1,7 @@
 // [API 23+] screens/LibraryScreen.ets — P2 阶段实现
 // 1:1 对齐 mobile LibraryScreen.tsx:搜索条 + 格式筛选 + 状态筛选 + 网格 + 回顶按钮
 // 视觉/布局/筛选逻辑全部照搬,ArkUI 重写。
-import { getTheme, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
+import { ThemeStore, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
 import { Book } from '../model/ApiModels';
 import { LibraryStore } from '../store/LibraryStore';
 import { getApiClient } from '../network/ApiClient';
@@ -85,8 +85,13 @@ export struct LibraryScreen {
   private unsubscribeLib: (() => void) | null = null;
   private scroller: Scroller = new Scroller();
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
     this.unsubscribeLib = this.libraryStore.subscribe((): void => {
       this.syncFromStore();
     });
@@ -96,13 +101,14 @@ export struct LibraryScreen {
   }
 
   aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
     if (this.unsubscribeLib) {
       this.unsubscribeLib();
     }
   }
 
   private applyTheme(): void {
-    const t: Theme = getTheme(false);
+    const t: Theme = ThemeStore.shared().getCurrentTheme();
     this.themeBg = t.colors.background;
     this.themeSurface = t.colors.surface;
     this.themeText = t.colors.text;

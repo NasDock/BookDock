@@ -32,7 +32,7 @@ import {
   BookLastReadPayload
 } from '../model/ApiModels';
 import { getApiClient } from '../network/ApiClient';
-import { getTheme, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
+import { ThemeStore, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
 import { AppIcon, AppIconKind } from '../components/AppIcon';
 import { popRoute, pushRoute, RouteName, BookParams } from '../router/AppRouter';
 import { TTSPlayer, TTSPlayerState } from '../player/TTSPlayer';
@@ -93,6 +93,10 @@ export struct TTSScreen {
   // 路由参数在 aboutToAppear 里通过 @Prop 注入,@Prop 兜底为空书
   @Prop initialBook: Book = {} as Book;
   @Prop initialShowChapterPicker: boolean = false;
+  // 听书入口:detail=书籍详情页(恢复上次听书位置) / reader=阅读页(带当前章节)
+  @Prop initialSource: string = 'detail';
+  // 从阅读页进入时的当前章节(0-based),-1 表示未指定
+  @Prop initialChapter: number = -1;
 
   // ─── 数据 ─────────────────────────────────────────────────────
   @State private book: Book = {} as Book;
@@ -142,8 +146,13 @@ export struct TTSScreen {
   private mainWindow: window.Window | null = null;
   private prevFullScreen: boolean = false;
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
     void this.initSafeArea();
     this.book = this.initialBook;
     void this.loadInitialData();
@@ -166,6 +175,7 @@ export struct TTSScreen {
   }
 
   aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
     this.clearSleepTimer();
     // 页面销毁时停止播放并释放 AVPlayer 资源
     void TTSPlayer.shared().release();
@@ -181,7 +191,7 @@ export struct TTSScreen {
   }
 
   private applyTheme(): void {
-    const t: Theme = getTheme(false);
+    const t: Theme = ThemeStore.shared().getCurrentTheme();
     this.themeBg = t.colors.background;
     this.themeSurface = t.colors.surface;
     this.themeText = t.colors.text;
@@ -189,6 +199,35 @@ export struct TTSScreen {
     this.themeBorder = t.colors.border;
     this.themePrimary = t.colors.primary;
     this.themeError = t.colors.error;
+  }
+
+  // ─── 取"上次听书位置":全书所有章节里 updatedAt 最新的一条进度 ──────
+  // 后端 GET /tts/progress?bookId=xxx(不带 chapterIndex)返回该书全部章节记录
+  private async fetchLastTtsProgress(bookId: string): Promise<TtsProgressRecord | null> {
+    try {
+      const res: ApiResponse<TtsProgressRecord | TtsProgressRecord[] | null> =
+        await getApiClient().getTtsProgress(bookId);
+      if (!res.success || !res.data) {
+        return null;
+      }
+      const list: TtsProgressRecord[] = Array.isArray(res.data)
+        ? res.data
+        : [res.data as TtsProgressRecord];
+      let latest: TtsProgressRecord | null = null;
+      let latestMs: number = -1;
+      for (const rec of list) {
+        // ISO 字符串用 Date.parse 比较;无效时间按 0 处理
+        const parsed: number = rec.updatedAt ? Date.parse(rec.updatedAt) : 0;
+        const ms: number = Number.isNaN(parsed) ? 0 : parsed;
+        if (ms >= latestMs) {
+          latestMs = ms;
+          latest = rec;
+        }
+      }
+      return latest;
+    } catch {
+      return null;
+    }
   }
 
   // ─── 初始数据加载(对齐 mobile useEffect [book.id])──────────────────
@@ -233,8 +272,29 @@ export struct TTSScreen {
       }
       this.chapters = chRes.data;
 
-      // Load first chapter(skipEmpty: true 自动跳过空章)
-      await this.loadChapter(0, true);
+      // ── 决定听书起点 ──────────────────────────────────────────────
+      // 上次听书位置(全书最新一条进度),用于详情页续听 / 阅读页同章判断
+      const lastRec: TtsProgressRecord | null = await this.fetchLastTtsProgress(this.book.id);
+      let startChapter: number = 0;
+      // 是否需要续听(恢复段落进度)。false 表示从章节开头开始
+      let resume: boolean = false;
+
+      if (this.initialSource === 'reader' && this.initialChapter >= 0) {
+        // 从阅读详情页进入:以当前阅读章节为准
+        // 当前章 == 上次听书章 且上次确实听了一部分 → 续听;否则从当前章开头
+        startChapter = this.initialChapter;
+        if (lastRec !== null && lastRec.chapterIndex === startChapter) {
+          const lastPara: number = lastRec.paragraphIndex ?? 0;
+          const lastOffset: number = lastRec.audioOffsetMs ?? 0;
+          resume = lastPara > 0 || lastOffset > 0;
+        }
+      } else if (lastRec !== null && lastRec.chapterIndex >= 0 && lastRec.chapterIndex < this.chapters.length) {
+        // 从书籍详情页进入:恢复上次听书位置(跨章续听)
+        startChapter = lastRec.chapterIndex;
+        resume = true;
+      }
+
+      await this.loadChapter(startChapter, true, resume);
 
       // 路由参数 showChapterPicker:从 Reader 跳过来时自动开章节选择(对齐 mobile line 331-335)
       if (this.initialShowChapterPicker && this.chapters.length > 0) {
@@ -248,7 +308,8 @@ export struct TTSScreen {
   }
 
   // ─── 拉取指定章的段落(对齐 mobile loadChapter,支持 skipEmpty)─────────
-  private async loadChapter(ci: number, skipEmpty: boolean = false): Promise<void> {
+  // resume=false 时不恢复云端段落进度,从本章第 0 段开始(阅读页进入但非上次听书章)
+  private async loadChapter(ci: number, skipEmpty: boolean = false, resume: boolean = true): Promise<void> {
     if (!this.book.id) {
       return;
     }
@@ -281,23 +342,28 @@ export struct TTSScreen {
       this.currentParagraph = 0;
 
       // Resume from saved cloud progress(对齐 mobile getTtsProgress(bookId, chapterIndex))
+      // resume=false 时只保留音色/倍速偏好,段落进度与偏移归零
       try {
         const prog: ApiResponse<TtsProgressRecord | TtsProgressRecord[] | null> =
           await api.getTtsProgress(this.book.id, effectiveCi);
         if (prog.success && prog.data && !Array.isArray(prog.data)) {
           const rec: TtsProgressRecord = prog.data as TtsProgressRecord;
-          if (rec.currentProvider) {
-            this.provider = rec.currentProvider;
+          const savedProvider: string = rec.provider ?? rec.currentProvider ?? '';
+          const savedVoice: string = rec.voice ?? rec.currentVoice ?? '';
+          if (savedProvider) {
+            this.provider = savedProvider;
           }
-          if (rec.currentVoice) {
-            this.voiceId = rec.currentVoice;
+          if (savedVoice) {
+            this.voiceId = savedVoice;
           }
           if (rec.currentRate) {
             this.playbackRate = rec.currentRate;
           }
-          this.currentParagraph = Math.min(rec.paragraphIndex ?? 0, this.paragraphs.length - 1);
-          // 恢复段内偏移(对齐 mobile setResumeOffsetMs(rec.audioOffsetMs))
-          this.resumeOffsetMs = rec.audioOffsetMs ?? 0;
+          if (resume) {
+            this.currentParagraph = Math.min(rec.paragraphIndex ?? 0, this.paragraphs.length - 1);
+            // 恢复段内偏移(对齐 mobile setResumeOffsetMs(rec.audioOffsetMs))
+            this.resumeOffsetMs = rec.audioOffsetMs ?? 0;
+          }
         }
       } catch {
         // 进度恢复失败静默,从 0 开始

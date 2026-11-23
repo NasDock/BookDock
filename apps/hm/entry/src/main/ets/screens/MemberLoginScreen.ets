@@ -66,11 +66,17 @@ export struct MemberLoginScreen {
     }
   }
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
   }
 
   aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
     this.clearCountdown();
   }
 
@@ -301,15 +307,28 @@ export struct MemberLoginScreen {
 
           // 协议勾选(对齐 mobile agreeRow)
           Row({ space: 6 }) {
-            Checkbox()
-              .select(this.isAgreed)
-              .selectedColor(this.themePrimary)
-              .onChange((value: boolean): void => {
-                this.isAgreed = value;
-                if (value) {
-                  this.errorMsg = '';
-                }
-              })
+            // 自绘方形复选框,与数据源登录页保持一致(ArkUI Checkbox 默认圆形)
+            Column() {
+              if (this.isAgreed) {
+                Text('✓')
+                  .fontSize(13)
+                  .fontWeight(FontWeight.Bold)
+                  .fontColor(Color.White)
+              }
+            }
+            .width(18)
+            .height(18)
+            .borderRadius(2)
+            .border({ width: 1, color: this.isAgreed ? this.themePrimary : this.themeTextSec })
+            .backgroundColor(this.isAgreed ? this.themePrimary : Color.Transparent)
+            .justifyContent(FlexAlign.Center)
+            .alignItems(HorizontalAlign.Center)
+            .onClick((): void => {
+              this.isAgreed = !this.isAgreed;
+              if (this.isAgreed) {
+                this.errorMsg = '';
+              }
+            })
 
             Text() {
               Span('我已阅读并同意')

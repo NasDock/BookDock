@@ -3,6 +3,7 @@
 // mobile 的 vector-icons 在鸿蒙用字符串 emoji / SymbolGlyph 占位;
 // 扫码二维码已用 ArkUI 内置 QRCode 组件生成真码,与 desktop / mobile 共用同一 payload。
 import { mediaquery, promptAction } from '@kit.ArkUI';
+import { common, Want } from '@kit.AbilityKit';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import { ApiResponse, LoginResponse, User } from '../model/ApiModels';
 import { getApiClient, initApiClient } from '../network/ApiClient';
@@ -25,7 +26,7 @@ import {
   setActiveServerAddress,
   toApiBaseUrl,
 } from '../utils/NetworkHelper';
-import { getTheme, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
+import { ThemeStore, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
 import { AppIcon, AppIconKind } from '../components/AppIcon';
 
 const SOURCE_TYPE = 'BookDock';
@@ -87,6 +88,8 @@ export struct LoginScreen {
   @State private password: string = '';
   @State private confirmPassword: string = '';
   @State private showPassword: boolean = false;
+  // 协议勾选:登录/注册前必须同意(对齐 MemberLoginScreen 的 isAgreed)
+  @State private isAgreed: boolean = false;
   @State private scanSession: ScanLoginSession | null = null;
   @State private scanBusy: boolean = false;
   @State private scanProgress: string = '';
@@ -114,8 +117,34 @@ export struct LoginScreen {
   private unsubscribeScan: (() => void) | null = null;
   private reportTimerId: number = -1;
 
+  // 协议链接(与 MemberLoginScreen / mobile 保持同一组 URL)
+  private readonly PRIVACY_POLICY_URL: string = 'https://www.audiodock.cn/book/docs/privacy-policy/?preview=true';
+  private readonly USER_AGREEMENT_URL: string = 'http://audiodock.cn/book/docs/user-agreement/?preview=true';
+
+  // ─── 打开外部协议链接(对齐 MemberLoginScreen.openUrl)────────────────────
+  private openUrl(url: string): void {
+    try {
+      const context: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      const want: Want = {
+        action: 'ohos.want.action.viewData',
+        entities: ['entity.system.browsable'],
+        uri: url
+      };
+      context.startAbility(want).catch(() => {
+        promptAction.showToast({ message: '无法打开链接', duration: 1500 });
+      });
+    } catch {
+      promptAction.showToast({ message: '无法打开链接', duration: 1500 });
+    }
+  }
+
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
     void this.loadSavedConfig();
     // 只在平板 / 2in1 且横屏时展示扫码登录面板;手机、平板竖屏整块隐藏
     const dt: string = deviceInfo.deviceType;
@@ -132,6 +161,7 @@ export struct LoginScreen {
   }
 
   aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
     if (this.orientationListener) {
       this.orientationListener.off('change');
       this.orientationListener = null;
@@ -175,7 +205,7 @@ export struct LoginScreen {
   }
 
   private applyTheme(): void {
-    const t: Theme = getTheme(false);
+    const t: Theme = ThemeStore.shared().getCurrentTheme();
     this.themeBg = t.colors.background;
     this.themeSurface = t.colors.surface;
     this.themeText = t.colors.text;
@@ -264,6 +294,17 @@ export struct LoginScreen {
     }
     const sid: string = this.scanSession.sessionId;
     const secret: string = this.scanSession.secret;
+    // 扫码登录同样是登录入口,未勾选协议则拒绝确认并重建会话,避免绕过勾选
+    if (!this.isAgreed) {
+      const msg: string = '请先阅读并同意《隐私政策》和《用户协议》';
+      this.error = msg;
+      const failDto: ReportScanLoginResultDto = { secret: secret, success: false, error: msg };
+      // 先清空会话,防止等待上报期间重复回调再次进入本分支
+      this.scanSession = null;
+      await reportScanLoginResult(sid, failDto).catch((): void => undefined);
+      void this.createTargetSession();
+      return;
+    }
     this.scanBusy = true;
     try {
       const body: ScanLoginSecretDto = { secret: secret };
@@ -322,6 +363,10 @@ export struct LoginScreen {
   }
 
   private async handleSubmit(): Promise<void> {
+    if (!this.isAgreed) {
+      this.error = '请先阅读并同意《隐私政策》和《用户协议》';
+      return;
+    }
     if (!this.externalAddress && !this.internalAddress) {
       this.error = '请至少输入一个服务器地址(内网或外网)';
       return;
@@ -655,6 +700,48 @@ export struct LoginScreen {
           this.isLogin = !this.isLogin;
           this.error = null;
         })
+
+      // 协议勾选:登录/注册必选,链接打开系统浏览器(对齐 MemberLoginScreen.agreeRow)
+      Row({ space: 6 }) {
+        // 自绘方形复选框:ArkUI Checkbox 默认圆形,ROUNDED_SQUARE 在部分机型仍偏圆
+        Column() {
+          if (this.isAgreed) {
+            Text('✓')
+              .fontSize(13)
+              .fontWeight(FontWeight.Bold)
+              .fontColor(Color.White)
+          }
+        }
+        .width(18)
+        .height(18)
+        .borderRadius(2)
+        .border({ width: 1, color: this.isAgreed ? this.themePrimary : this.themeTextSec })
+        .backgroundColor(this.isAgreed ? this.themePrimary : Color.Transparent)
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
+        .onClick((): void => {
+          this.isAgreed = !this.isAgreed;
+          if (this.isAgreed) {
+            this.error = null;
+          }
+        })
+
+        Text() {
+          Span('我已阅读并同意').fontColor(this.themeTextSec)
+          Span('《隐私政策》')
+            .fontColor(this.themePrimary)
+            .onClick((): void => { this.openUrl(this.PRIVACY_POLICY_URL); })
+          Span('和').fontColor(this.themeTextSec)
+          Span('《用户协议》')
+            .fontColor(this.themePrimary)
+            .onClick((): void => { this.openUrl(this.USER_AGREEMENT_URL); })
+        }
+        .fontSize(fontSizes.xs)
+        .lineHeight(20)
+      }
+      .width('100%')
+      .margin({ top: spacing.sm })
+      .alignItems(VerticalAlign.Center)
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)

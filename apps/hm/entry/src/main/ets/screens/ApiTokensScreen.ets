@@ -41,9 +41,18 @@ export struct ApiTokensScreen {
   @State private themeError: string = '#EF4444';
   @State private themeSuccess: string = '#10B981';
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
     void this.load();
+  }
+
+  aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
   }
 
   private applyTheme(): void {

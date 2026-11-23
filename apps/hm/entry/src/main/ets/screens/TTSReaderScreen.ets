@@ -31,10 +31,19 @@ export struct TTSReaderScreen {
   @State private themeBorder: string = '#E5E7EB';
   @State private themePrimary: string = '#4A90D9';
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
     this.books = LibraryStore.shared().books;
     void this.loadPrefs();
+  }
+
+  aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
   }
 
   private applyTheme(): void {

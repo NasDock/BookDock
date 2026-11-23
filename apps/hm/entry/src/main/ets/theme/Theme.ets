@@ -130,6 +130,8 @@ export class ThemeStore {
 
   mode: ThemeMode = 'system';
   systemDark: boolean = false;
+  // 主题变化订阅(AppRoot 用它同步系统栏颜色;页面在 aboutToAppear 重新取主题)
+  private listeners: Set<() => void> = new Set();
 
   static shared(): ThemeStore {
     if (!ThemeStore.instance) {
@@ -146,10 +148,28 @@ export class ThemeStore {
   async setMode(mode: ThemeMode): Promise<void> {
     this.mode = mode;
     await PreferencesStore.writeString(PrefKey.THEME_MODE, mode);
+    this.notify();
   }
 
   setSystemDark(dark: boolean): void {
+    if (this.systemDark === dark) {
+      return;
+    }
     this.systemDark = dark;
+    this.notify();
+  }
+
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener);
+    return (): void => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private notify(): void {
+    this.listeners.forEach((listener: () => void): void => {
+      listener();
+    });
   }
 
   /** 是否真正深色:mode='dark' 或 mode='system' 且系统是深色 */

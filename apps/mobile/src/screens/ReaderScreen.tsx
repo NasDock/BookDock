@@ -2372,8 +2372,8 @@ export function ReaderScreen() {
   }, [book.fileType, currentChapter, chapters.length, loadChapter, pdfCurrentPage, pdfTotalPages]);
 
   const handleTTS = useCallback(async () => {
-    navigation.navigate('TTSScreen', { book });
-  }, [navigation, book]);
+    navigation.navigate('TTSScreen', { book, source: 'reader', currentChapter });
+  }, [navigation, book, currentChapter]);
 
   // Push speed changes to the WebView when the user adjusts the slider.
   useEffect(() => {

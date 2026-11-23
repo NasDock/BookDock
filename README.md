@@ -25,6 +25,59 @@ BookDock（书仓）是一款专为 NAS 用户设计的电子书管理 & 阅读�
 - **NAS 本地账户**: 不依赖互联网，直接连接 NAS 使用
 - **用户管理**: 添加、编辑、删除用户，查看用户阅读统计
 
+## 本地开发
+
+### 环境准备
+
+- Node.js 22 + pnpm
+- 将 `.env.example` 复制为 `.env`，按注释填写数据库、存储路径等配置
+
+```bash
+pnpm install
+pnpm --filter @bookdock/server run prisma:generate
+pnpm --filter @bookdock/server run prisma:push   # 首次建表 / 表结构变更后同步
+# 需要生成迁移文件时改用：pnpm --filter @bookdock/server run prisma:migrate
+```
+
+### 启动
+
+| 场景 | 命令 |
+| --- | --- |
+| Web 前端 + 服务端（推荐） | `pnpm dev` |
+| 桌面端 Electron | `pnpm dev:desktop` |
+| 仅服务端 | `pnpm --filter @bookdock/server run dev` |
+| 移动端 Expo | `pnpm --filter @bookdock/mobile run start` |
+| 移动端 Android / iOS 真机 | `pnpm --filter @bookdock/mobile run android` / `pnpm --filter @bookdock/mobile run ios` |
+
+> 全量生产构建：`pnpm build`。桌面端单平台构建命令见下方发包章节。
+
+## 发包
+
+### 测试包
+
+推送到 `feat/test` 分支，或在 GitHub Actions 手动触发 **Test Build (feat/test)**，会自动构建并上传：
+
+| 端 | 产物与去向 | 本地等价命令 |
+| --- | --- | --- |
+| Desktop | dmg / exe / AppImage + deb → GitHub Release 草稿 `test-build`、Minio | `pnpm --filter @bookdock/desktop run build:mac` / `build:win` / `build:linux` |
+| Android | `BookDock-{version}-test.apk` → 同上 | `cd apps/mobile/android && ./gradlew assembleRelease` |
+| Server | Docker 镜像 `feat-test` 标签 → ghcr.io / Docker Hub / Harbor | `docker build --target runner -f Dockerfile .` |
+
+### 正式包
+
+```bash
+pnpm release patch          # 也可 minor / major / 指定版本 x.y.z
+git push && git push --tags
+```
+
+`pnpm release` 会统一更新所有包与 `app.json` 的版本号、执行 `expo prebuild`，并提交 `vX.Y.Z` tag。推送 tag 后自动触发：
+
+| 工作流 | 产物 |
+| --- | --- |
+| `desktop-release.yml` | Desktop 三平台安装包 → GitHub Release（latest）、Minio |
+| `android-release.yml` | `BookDock-{version}.apk` → GitHub Release、Minio |
+| `docker-publish.yml` | Docker 镜像（版本号 + latest）→ ghcr.io / Docker Hub / Harbor |
+
 ## NAS 部署
 
 ```yaml

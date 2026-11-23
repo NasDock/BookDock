@@ -1,6 +1,6 @@
 // [API 23+] screens/SearchScreen.ets — 1:1 对齐 mobile SearchScreen.tsx(占位版)
 // mobile 端也是占位(58 行),保证点搜索框不 crash。完整搜索功能待后续 1:1 移植。
-import { getTheme, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
+import { ThemeStore, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
 import { AppIcon, AppIconKind } from '../components/AppIcon';
 
 @Component
@@ -14,12 +14,21 @@ export struct SearchScreen {
   @State private themeTextSec: string = '#6B7280';
   @State private themeBorder: string = '#E5E7EB';
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
+  }
+
+  aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
   }
 
   private applyTheme(): void {
-    const t: Theme = getTheme(false);
+    const t: Theme = ThemeStore.shared().getCurrentTheme();
     this.themeBg = t.colors.background;
     this.themeSurface = t.colors.surface;
     this.themeText = t.colors.text;

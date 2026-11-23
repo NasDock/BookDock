@@ -40,9 +40,18 @@ export struct CollectionDetailScreen {
   @State private themePrimary: string = '#4A90D9';
   @State private themeError: string = '#EF4444';
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
     void this.fetchCollection();
+  }
+
+  aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
   }
 
   private applyTheme(): void {

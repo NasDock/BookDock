@@ -17,10 +17,11 @@ import {
 } from '../model/ApiModels';
 import { getApiClient } from '../network/ApiClient';
 import { ReaderStore, ReaderMode, ReadingMode } from '../store/ReaderStore';
-import { getTheme, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
+import { ThemeStore, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
 import { AppIcon, AppIconKind } from '../components/AppIcon';
 import { popRoute, pushRoute, RouteName, BookParams, TTSParams } from '../router/AppRouter';
 import { FileHelper } from '../utils/FileHelper';
+import { applySystemBars } from '../utils/SystemBarHelper';
 import {
   generateReaderHtml,
   generateInjectedJs,
@@ -323,21 +324,12 @@ export struct ReaderScreen {
     }
   }
 
-  /** 恢复系统栏默认颜色(离开阅读页时调用) */
+  /** 离开阅读页:恢复为当前 App 主题,而不是硬编码白色 */
   private restoreSystemBarTheme(): void {
     if (!this.mainWindow) {
       return;
     }
-    try {
-      this.mainWindow.setWindowSystemBarProperties({
-        statusBarColor: '#FFFFFF',
-        navigationBarColor: '#FFFFFF',
-        statusBarContentColor: '#000000',
-        navigationBarContentColor: '#000000'
-      });
-    } catch (err) {
-      hilog.error(DOMAIN, TAG, 'restoreSystemBarTheme failed: %{public}s', JSON.stringify(err));
-    }
+    applySystemBars(this.mainWindow, ThemeStore.shared().getCurrentTheme());
   }
 
   // ─── 数据加载 ─────────────────────────────────────────────────
@@ -664,7 +656,12 @@ export struct ReaderScreen {
   }
 
   private handleTTS(): void {
-    const p: TTSParams = { book: this.book };
+    // 带当前阅读章节进入:听书页据此判断是否正好是上次听到一半的章
+    const p: TTSParams = {
+      book: this.book,
+      source: 'reader',
+      currentChapter: this.currentChapter
+    };
     pushRoute(RouteName.TTS_SCREEN, p);
   }
 

@@ -68,8 +68,17 @@ export struct SettingsScreen {
   @State private themePrimary: string = '#4A90D9';
   @State private themeError: string = '#EF4444';
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.refreshAll();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
+  }
+
+  aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
   }
 
   /** 每次进入页面都重取(主题切换后重建也会走这里) */

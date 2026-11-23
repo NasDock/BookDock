@@ -44,6 +44,10 @@ export interface BookParams {
 export interface TTSParams {
   book: Book;
   showChapterPicker?: boolean;
+  // 听书入口:detail=书籍详情页(恢复上次听书位置) / reader=阅读页(带当前章节)
+  source?: string;
+  // 从阅读页进入时的当前章节(0-based),仅 source='reader' 时有效;-1 表示未指定
+  currentChapter?: number;
 }
 
 export interface AuthorParams {

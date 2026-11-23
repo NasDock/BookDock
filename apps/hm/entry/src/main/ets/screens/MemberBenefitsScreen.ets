@@ -102,8 +102,13 @@ export struct MemberBenefitsScreen {
 
   private pollTimer: number = -1;
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
     // 对齐 mobile usePlusAuthGuard:未登录 → MemberLogin;已 VIP → MemberDetail
     const auth: AuthStore = AuthStore.shared();
     if (auth.isVip) {
@@ -114,6 +119,7 @@ export struct MemberBenefitsScreen {
   }
 
   aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
     this.clearPoll();
   }
 

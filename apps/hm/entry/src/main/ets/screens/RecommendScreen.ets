@@ -7,7 +7,7 @@
 //   - 下拉刷新同时刷 books + 推荐
 //   - 无任何内容时显示空态
 // 图标一律走 AppIcon(几何字符/SymbolGlyph),不用 emoji。
-import { getTheme, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
+import { ThemeStore, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
 import { Book, RecommendationsResponse, ApiResponse } from '../model/ApiModels';
 import { LibraryStore } from '../store/LibraryStore';
 import { ApiClient, getApiClient } from '../network/ApiClient';
@@ -91,8 +91,13 @@ export struct RecommendScreen {
   private libraryStore: LibraryStore = LibraryStore.shared();
   private unsubscribeLib: (() => void) | null = null;
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
     this.unsubscribeLib = this.libraryStore.subscribe((): void => {
       this.syncFromStore();
     });
@@ -106,13 +111,14 @@ export struct RecommendScreen {
   }
 
   aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
     if (this.unsubscribeLib) {
       this.unsubscribeLib();
     }
   }
 
   private applyTheme(): void {
-    const t: Theme = getTheme(false);
+    const t: Theme = ThemeStore.shared().getCurrentTheme();
     this.themeBg = t.colors.background;
     this.themeSurface = t.colors.surface;
     this.themeText = t.colors.text;

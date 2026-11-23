@@ -15,7 +15,7 @@ import {
 } from '../model/ApiModels';
 import { getApiClient } from '../network/ApiClient';
 import { AuthStore } from '../store/AuthStore';
-import { getTheme, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
+import { ThemeStore, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
 import { pushRoute, RouteName } from '../router/AppRouter';
 import { AppIcon, AppIconKind } from '../components/AppIcon';
 
@@ -82,8 +82,13 @@ export struct ProfileScreen {
   private authStore: AuthStore = AuthStore.shared();
   private unsubscribeAuth: (() => void) | null = null;
 
+  private unsubscribeTheme: (() => void) | null = null;
+
   aboutToAppear(): void {
     this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
     this.unsubscribeAuth = this.authStore.subscribe((): void => {
       this.applyTheme();
     });
@@ -93,6 +98,7 @@ export struct ProfileScreen {
   }
 
   aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
     if (this.unsubscribeAuth) {
       this.unsubscribeAuth();
       this.unsubscribeAuth = null;
@@ -100,7 +106,7 @@ export struct ProfileScreen {
   }
 
   private applyTheme(): void {
-    const t: Theme = getTheme(false);
+    const t: Theme = ThemeStore.shared().getCurrentTheme();
     this.themeBg = t.colors.background;
     this.themeSurface = t.colors.surface;
     this.themeText = t.colors.text;

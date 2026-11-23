@@ -2,9 +2,11 @@
 // P1: 根据 AuthStore.isAuthenticated 分发登录页/主 Tab;
 // P1~P6 阶段把各路由接真实页面。
 import { ConfigurationConstant } from '@kit.AbilityKit';
+import { window } from '@kit.ArkUI';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { popToRoot } from './AppRouter';
-import { ThemeStore, getTheme, Theme } from '../theme/Theme';
+import { ThemeStore, Theme } from '../theme/Theme';
+import { applySystemBars } from '../utils/SystemBarHelper';
 import { AuthStore } from '../store/AuthStore';
 import { initApiClient } from '../network/ApiClient';
 import { getSavedApiBaseUrl } from '../utils/NetworkHelper';
@@ -55,11 +57,19 @@ struct AppRoot {
   private themeStore: ThemeStore = ThemeStore.shared();
   private authStore: AuthStore = AuthStore.shared();
   private unsubscribeAuth: (() => void) | null = null;
+  private unsubscribeTheme: (() => void) | null = null;
+  private mainWindow: window.Window | null = null;
 
   async aboutToAppear(): Promise<void> {
     hilog.info(APP_DOMAIN, APP_TAG, 'aboutToAppear start');
     await withTimeout(this.themeStore.load(), 2000, 'themeStore.load');
     this.applyTheme(this.themeStore.getCurrentTheme());
+    void this.syncSystemBars();
+    // 主题模式/系统深浅色变化时同步全局系统栏(页面自身在 aboutToAppear 重取主题)
+    this.unsubscribeTheme = this.themeStore.subscribe((): void => {
+      this.applyTheme(this.themeStore.getCurrentTheme());
+      void this.syncSystemBars();
+    });
 
     // 1) 加载 auth 持久化态(token + user)
     await withTimeout(this.authStore.load(), 2000, 'authStore.load');
@@ -104,6 +114,7 @@ struct AppRoot {
 
   aboutToDisappear(): void {
     this.unsubscribeAuth?.();
+    this.unsubscribeTheme?.();
   }
 
   onConfigurationUpdate(newConfig: object): void {
@@ -112,6 +123,19 @@ struct AppRoot {
     const cm: number = (cfg as ConfigurationLike).colorMode;
     this.themeStore.setSystemDark(cm === ConfigurationConstant.ColorMode.COLOR_MODE_DARK);
     this.applyTheme(this.themeStore.getCurrentTheme());
+    void this.syncSystemBars();
+  }
+
+  /** 首次取窗口引用后,按当前 App 主题设置状态栏/导航条 */
+  private async syncSystemBars(): Promise<void> {
+    try {
+      if (!this.mainWindow) {
+        this.mainWindow = await window.getLastWindow(getContext(this));
+      }
+      applySystemBars(this.mainWindow, this.themeStore.getCurrentTheme());
+    } catch (err) {
+      hilog.warn(APP_DOMAIN, APP_TAG, 'syncSystemBars failed: %{public}s', JSON.stringify(err));
+    }
   }
 
   private applyTheme(t: Theme): void {
