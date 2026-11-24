@@ -1,0 +1,69 @@
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "storeFile": "/Users/ctjj/Documents/资料/bd/bd.p12",
+          "storePassword": "0000001AC93271A08DAB2DEE832F69B163245F7F22A997792BCCBB72678424B8D23F6D31190BB8D1D657",
+          "keyAlias": "bd",
+          "keyPassword": "0000001AFF669D91411D0E924860A44AD9F809D29ACC585FA6B68871B658799E9BDFF8E28452C2005F31",
+          "signAlg": "SHA256withECDSA",
+          "profile": "/Users/ctjj/Documents/资料/bd/bdRelease.p7b",
+          "certpath": "/Users/ctjj/Documents/资料/bd/bd.cer"
+        }
+      },
+      {
+        "name": "debug",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "/Users/ctjj/.ohos/config/debug_hm_UYWps8kZ4F6jZ3r42bBkqhaYAkzb5_txmMPno0SWN50=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001B95289BEC281BE1EB0CFA8C1088A735DDC95AF24C660759174BDC8A54DE0D98FB430365605F05A8",
+          "profile": "/Users/ctjj/.ohos/config/debug_hm_UYWps8kZ4F6jZ3r42bBkqhaYAkzb5_txmMPno0SWN50=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "/Users/ctjj/.ohos/config/debug_hm_UYWps8kZ4F6jZ3r42bBkqhaYAkzb5_txmMPno0SWN50=.p12",
+          "storePassword": "0000001BC824106071938A3A275622BBABE8B0999FC090F3587DA5B33B0FCAE4C5A2EEB82CB1B3B157B895"
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "targetSdkVersion": "6.1.1(24)",
+        "compatibleSdkVersion": "6.0.2(22)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          }
+        }
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug",
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    }
+  ]
+}

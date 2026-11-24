@@ -1,0 +1,44 @@
+// [API 23+] screens/AdminUsersScreen.ets — 1:1 对齐 mobile AdminUsersScreen.tsx(占位版)
+// mobile 端也是占位(26 行),用户管理页后续 1:1 移植。
+import { ThemeStore, Theme, spacing, fontSizes } from '../theme/Theme';
+
+@Component
+export struct AdminUsersScreen {
+  // ─── 主题(@State 镜像)──────────────────────────────────────────
+  @State private themeBg: string = '#FFFFFF';
+  @State private themeTextSec: string = '#6B7280';
+
+  private unsubscribeTheme: (() => void) | null = null;
+
+  aboutToAppear(): void {
+    this.applyTheme();
+    this.unsubscribeTheme = ThemeStore.shared().subscribe((): void => {
+      this.applyTheme();
+    });
+  }
+
+  aboutToDisappear(): void {
+    this.unsubscribeTheme?.();
+  }
+
+  private applyTheme(): void {
+    const t: Theme = ThemeStore.shared().getCurrentTheme();
+    this.themeBg = t.colors.background;
+    this.themeTextSec = t.colors.textSecondary;
+  }
+
+  build() {
+    Column() {
+      Text('用户管理占位（仅 admin 角色可见）')
+        .fontSize(fontSizes.md)
+        .fontColor(this.themeTextSec)
+        .fontStyle(FontStyle.Italic)
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
+    .padding(spacing.lg)
+    .backgroundColor(this.themeBg)
+  }
+}

@@ -1676,7 +1676,9 @@ export default function Reader() {
         onAddBookmark={handleAddBookmark}
         showToc={showToc}
         showSettings={showSettings}
-        onNavigateTts={() => navigate(`/reader/${id}/tts`)}
+        onNavigateTts={() =>
+          navigate(`/book/${id}/tts?ci=${currentChapter}&source=reader`)
+        }
         scrollContainerRef={contentRef}
         isPdf={isPdf}
         hidden={hidden}

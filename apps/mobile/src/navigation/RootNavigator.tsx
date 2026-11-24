@@ -2,6 +2,7 @@ import { NavigationContainer, useNavigationContainerRef } from "@react-navigatio
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useEffect, useRef } from "react";
 import { LoginScreen } from "../screens/LoginScreen";
+import { ApiTokensScreen } from "../screens/ApiTokensScreen";
 import { MemberBenefitsScreen } from "../screens/MemberBenefitsScreen";
 import { MemberDetailScreen } from "../screens/MemberDetailScreen";
 import { MemberLoginScreen } from "../screens/MemberLoginScreen";
@@ -106,6 +107,14 @@ export function RootNavigator() {
               component={SettingsScreen}
               options={{
                 title: "设置",
+                headerBackTitle: "返回",
+              }}
+            />
+            <Stack.Screen
+              name="ApiTokens"
+              component={ApiTokensScreen}
+              options={{
+                title: "API 令牌",
                 headerBackTitle: "返回",
               }}
             />

@@ -155,10 +155,10 @@ export default function BookDetail() {
           ? Math.max(0, res.data.chapterIndex)
           : 0;
       console.log("[BookDetail] navigating to ci:", ci);
-      navigate(`/book/${book.id}/tts?ci=${ci}`);
+      navigate(`/book/${book.id}/tts?ci=${ci}&source=detail`);
     } catch (e) {
       console.error("[BookDetail] getBookLastRead error:", e);
-      navigate(`/book/${book.id}/tts?ci=0`);
+      navigate(`/book/${book.id}/tts?ci=0&source=detail`);
     }
   }, [navigate, book]);
 

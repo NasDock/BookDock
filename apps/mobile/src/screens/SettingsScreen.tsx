@@ -208,16 +208,20 @@ export function SettingsScreen() {
   );
 
   const handleMembershipPress = useCallback(async () => {
-    const plusToken = await AsyncStorage.getItem('bookdock_plus_token');
-    if (!plusToken) {
-      navigation.navigate('MemberLogin');
-      return;
-    }
-    if (isVip) {
-      navigation.navigate('MemberDetail');
-      return;
-    }
-    navigation.navigate('MemberBenefits');
+    // hm 对齐:隐藏会员购买入口,非 VIP 只展示"免费版"状态,不跳转购买/登录页
+    if (!isVip) return;
+    // soft-disable:原「无 plus token → MemberLogin / 非 VIP → MemberBenefits」链路
+    // const plusToken = await AsyncStorage.getItem('bookdock_plus_token');
+    // if (!plusToken) {
+    //   navigation.navigate('MemberLogin');
+    //   return;
+    // }
+    // if (isVip) {
+    //   navigation.navigate('MemberDetail');
+    //   return;
+    // }
+    // navigation.navigate('MemberBenefits');
+    navigation.navigate('MemberDetail');
   }, [isVip, navigation]);
 
   return (
@@ -233,9 +237,10 @@ export function SettingsScreen() {
           {renderRow('crown-outline', '会员类型',
             <View style={styles.rowValueRow}>
               <Text style={styles.rowValueText}>{vipTier === 'LIFETIME' ? '永久卡' : vipTier === 'BASIC' ? '年卡' : '免费版'}</Text>
-              <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />
+              {isVip && <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />}
             </View>,
-            handleMembershipPress
+            // 非会员不可点进购买页(renderRow 在无 onPress 时 disabled)
+            isVip ? handleMembershipPress : undefined
           )}
         </>
       )}
@@ -277,6 +282,10 @@ export function SettingsScreen() {
           {renderRow('lock-closed-outline', '修改密码',
             <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />,
             () => {}
+          )}
+          {renderRow('key-outline', 'API 令牌',
+            <Ionicons name="chevron-forward" size={18} color={theme.colors.textSecondary} />,
+            () => navigation.navigate('ApiTokens')
           )}
         </>
       )}

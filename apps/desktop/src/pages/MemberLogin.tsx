@@ -22,7 +22,7 @@ import {
   type ScanLoginSessionStatus,
 } from "../services/plus";
 import { useAuthStore } from "../stores/authStore";
-import { applyDesktopScanLoginResult } from "../utils/scanLogin";
+import { applyDesktopScanLoginResult, buildScanLoginQrValue } from "../utils/scanLogin";
 
 export default function MemberLogin() {
   const navigate = useNavigate();
@@ -36,6 +36,7 @@ export default function MemberLogin() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
 
   // Scan login state
   const [scanSession, setScanSession] = useState<ScanLoginSession | null>(null);
@@ -94,6 +95,10 @@ export default function MemberLogin() {
   // Handle confirmed scan login
   useEffect(() => {
     if (!scanSession || scanStatus?.status !== "confirmed") return;
+    if (!agreed) {
+      setError("请先阅读并同意《隐私政策》和《用户协议》");
+      return;
+    }
 
     const consumeConfirmedScan = async () => {
       try {
@@ -147,6 +152,7 @@ export default function MemberLogin() {
   }, [
     scanSession?.sessionId,
     scanStatus?.status,
+    agreed,
     navigate,
     setPlusAuth,
     createTargetSession,
@@ -180,6 +186,10 @@ export default function MemberLogin() {
   const handleLogin = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
+      if (!agreed) {
+        setError("请先阅读并同意《隐私政策》和《用户协议》");
+        return;
+      }
       if (!code || code.length !== 6) {
         setError("请输入6位验证码");
         return;
@@ -214,18 +224,11 @@ export default function MemberLogin() {
         setError(err.message || "登录失败，请检查验证码");
       }
     },
-    [phone, code, navigate, setPlusAuth],
+    [phone, code, agreed, navigate, setPlusAuth],
   );
 
   const qrValue = scanSession
-    ? JSON.stringify({
-        kind: "bookdock-scan-login",
-        version: 1,
-        sessionId: scanSession.sessionId,
-        secret: scanSession.secret,
-        role: "target",
-        deviceKind: "desktop",
-      })
+    ? buildScanLoginQrValue(scanSession, "desktop")
     : "";
 
   return (
@@ -273,7 +276,13 @@ export default function MemberLogin() {
                 <>
                   <div className="bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm mb-4">
                     {qrValue ? (
-                      <QRCodeSVG value={qrValue} size={180} level="M" />
+                      <QRCodeSVG
+                        value={qrValue}
+                        size={180}
+                        level="M"
+                        bgColor="#FFFFFF"
+                        fgColor="#111827"
+                      />
                     ) : (
                       <div className="w-[180px] h-[180px] bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center">
                         <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
@@ -354,6 +363,41 @@ export default function MemberLogin() {
                   />
                 </div>
 
+                {/* Agreement */}
+                <label className="flex items-start gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={agreed}
+                    onChange={(e) => {
+                      setAgreed(e.target.checked);
+                      if (e.target.checked) setError(null);
+                    }}
+                    className="mt-0.5 w-4 h-4 shrink-0 rounded border-gray-300 dark:border-gray-600 accent-amber-500 cursor-pointer"
+                  />
+                  <span className="text-xs text-gray-500 dark:text-gray-400 leading-5">
+                    我已阅读并同意
+                    <a
+                      href="https://www.audiodock.cn/docs/privacy-policy/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 mx-1"
+                    >
+                      《隐私政策》
+                    </a>
+                    和
+                    <a
+                      href="https://www.audiodock.cn/docs/user-agreement/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 mx-1"
+                    >
+                      《用户协议》
+                    </a>
+                  </span>
+                </label>
+
                 {error && (
                   <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                     <p className="text-sm text-red-600 dark:text-red-400">
@@ -383,29 +427,6 @@ export default function MemberLogin() {
                   )}
                 </button>
               </form>
-
-              <div className="mt-6 text-center">
-                <p className="text-xs text-gray-400 dark:text-gray-500">
-                  登录即代表同意
-                  <a
-                    href="https://www.audiodock.cn/docs/privacy-policy/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 mx-1"
-                  >
-                    《隐私政策》
-                  </a>
-                  和
-                  <a
-                    href="https://www.audiodock.cn/docs/user-agreement/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 mx-1"
-                  >
-                    《用户协议》
-                  </a>
-                </p>
-              </div>
             </div>
           </div>
         </div>

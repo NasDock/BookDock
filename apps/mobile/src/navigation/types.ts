@@ -5,7 +5,12 @@ import type { EbookSource } from '../services/api';
 export type RootStackParamList = {
   Main: undefined;
   Reader: { book: Book };
-  TTSScreen: { book: Book; showChapterPicker?: boolean };
+  TTSScreen: {
+    book: Book;
+    showChapterPicker?: boolean;
+    source?: "detail" | "reader";
+    currentChapter?: number;
+  };
   TTSReader: { book: Book };
   BookDetails: { book: Book };
   AuthorDetail: { author: Author };
@@ -17,6 +22,7 @@ export type RootStackParamList = {
   MemberPaymentSuccess: undefined;
   SourceManage: undefined;
   Settings: undefined;
+  ApiTokens: undefined;
   AdminUsers: undefined;
   CollectionDetail: { collectionId: string };
   Notes: { bookId?: string; author?: string };

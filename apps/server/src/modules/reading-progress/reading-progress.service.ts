@@ -405,8 +405,8 @@ export class ReadingProgressService {
         endDate = new Date(d.getFullYear() + 1, 0, 1);
         labels = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
         dateKeys = Array.from({ length: 12 }, (_, i) => {
-          const dd = new Date(d.getFullYear(), i, 1);
-          return dd.toISOString().split('T')[0].slice(0, 7); // YYYY-MM
+          const month = String(i + 1).padStart(2, '0');
+          return `${d.getFullYear()}-${month}`;
         });
         break;
       }
@@ -427,10 +427,18 @@ export class ReadingProgressService {
     const sessionMap = new Map(sessions.map((s) => [s.date, s._sum.durationSecs || 0]));
 
     const breakdown = labels.map((label, i) => {
-      const key = period === 'year' ? dateKeys[i] : dateKeys[i];
-      const durationSecs = period === 'year'
-        ? (sessionMap.get(key) || 0)
-        : (sessionMap.get(dateKeys[i]) || 0);
+      const key = dateKeys[i];
+      let durationSecs: number;
+      if (period === 'year') {
+        // Sessions are stored per-day (YYYY-MM-DD), so aggregate every date
+        // that starts with the current month key (YYYY-MM).
+        durationSecs = 0;
+        for (const [date, secs] of sessionMap) {
+          if (date.startsWith(key)) durationSecs += secs;
+        }
+      } else {
+        durationSecs = sessionMap.get(key) || 0;
+      }
       return { label, durationSecs, date: key };
     });
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
@@ -13,6 +13,7 @@ import {
   ScrollView,
   useWindowDimensions,
   Image,
+  Modal,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,6 +30,8 @@ import {
   toApiBaseUrl,
 } from '../utils/network';
 import { setApiBaseUrl } from '../services/api';
+import { QrCodeView } from '../components/QrCodeView';
+import { buildScanLoginQrValue } from '../utils/scanLogin';
 import {
   createScanLoginSession,
   getScanLoginSession,
@@ -65,8 +68,53 @@ export function LoginScreen() {
   const [scanStatus, setScanStatus] = useState<ScanLoginSessionStatus | null>(null);
   const [scanBusy, setScanBusy] = useState(false);
 
+  // Report dialog state
+  const [showReport, setShowReport] = useState(false);
+  const [reportTitle, setReportTitle] = useState('');
+  const [reportReason, setReportReason] = useState('');
+  const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [reportSuccess, setReportSuccess] = useState(false);
+
   const styles = useMemo(() => createStyles(theme), [theme]);
   const sourceType = 'BookDock';
+  // 与 desktop / hm 完全一致的二维码内容,手机端扫码后按 sessionId + secret 认领会话
+  const qrValue = useMemo(
+    () => (scanSession ? buildScanLoginQrValue(scanSession, 'mobile') : ''),
+    [scanSession],
+  );
+
+  const reportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (reportTimerRef.current) clearTimeout(reportTimerRef.current);
+  }, []);
+
+  const openReport = useCallback(() => {
+    setReportTitle('');
+    setReportReason('');
+    setReportSuccess(false);
+    setShowReport(true);
+  }, []);
+
+  const closeReport = useCallback(() => {
+    if (reportSubmitting) return;
+    setShowReport(false);
+  }, [reportSubmitting]);
+
+  const handleReportSubmit = useCallback(() => {
+    if (!reportTitle.trim() || !reportReason.trim()) {
+      Alert.alert('提示', '请填写标题和原因');
+      return;
+    }
+    setReportSuccess(false);
+    setReportSubmitting(true);
+    reportTimerRef.current = setTimeout(() => {
+      setReportSubmitting(false);
+      setReportSuccess(true);
+      reportTimerRef.current = setTimeout(() => {
+        setShowReport(false);
+      }, 1500);
+    }, 2000);
+  }, [reportTitle, reportReason]);
 
   // Load saved config on mount
   useEffect(() => {
@@ -323,10 +371,14 @@ export function LoginScreen() {
         <View style={[styles.scanCard, styles.scanCardQr, { backgroundColor: 'transparent', borderColor: 'transparent' }]}>
           <Text style={[styles.qrLabel, { color: theme.colors.textSecondary }]}>扫码登录</Text>
           <View style={styles.qrBox}>
-            {/* QR code placeholder - would use react-native-qrcode-svg */}
-            <View style={[styles.qrPlaceholder, { backgroundColor: theme.colors.surface }]}>
-              <Ionicons name="qr-code" size={80} color={theme.colors.primary} />
-            </View>
+            {qrValue ? (
+              // 深色模块固定深色 + 白底,不跟随主题,否则暗色主题下扫码识别率会掉
+              <QrCodeView value={qrValue} size={180} />
+            ) : (
+              <View style={[styles.qrPlaceholder, { backgroundColor: '#FFFFFF', width: 180, height: 180 }]}>
+                <ActivityIndicator size="large" color={theme.colors.primary} />
+              </View>
+            )}
           </View>
           <TouchableOpacity
             style={[styles.secondaryButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}
@@ -461,6 +513,14 @@ export function LoginScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         {/* Header */}
         <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.reportBtn}
+            onPress={openReport}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="举报数据源"
+          >
+            <Ionicons name="help-circle-outline" size={26} color={theme.colors.textSecondary} />
+          </TouchableOpacity>
           <View style={styles.logoContainer}>
             <Image source={require('../../assets/logo.webp')} style={{ width: 64, height: 64 }} resizeMode="contain" />
             <Text style={[styles.title, { color: theme.colors.text }]}>
@@ -482,6 +542,73 @@ export function LoginScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Report Modal */}
+      <Modal
+        visible={showReport}
+        transparent
+        animationType="fade"
+        onRequestClose={closeReport}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: theme.colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>举报数据源</Text>
+              <TouchableOpacity onPress={closeReport} disabled={reportSubmitting} style={styles.modalClose}>
+                <Ionicons name="close" size={22} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {reportSuccess ? (
+              <View style={styles.successBox}>
+                <Ionicons name="checkmark-circle" size={56} color="#22c55e" />
+                <Text style={styles.successText}>提交成功</Text>
+                <Text style={styles.successDesc}>感谢您的反馈，我们会尽快处理</Text>
+              </View>
+            ) : (
+              <View style={styles.modalBody}>
+                <View>
+                  <Text style={styles.modalLabel}>
+                    标题 <Text style={styles.requiredMark}>*</Text>
+                  </Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="请输入举报标题"
+                    placeholderTextColor={theme.colors.textSecondary}
+                    value={reportTitle}
+                    onChangeText={(t) => setReportTitle(t)}
+                  />
+                </View>
+                <View>
+                  <Text style={styles.modalLabel}>
+                    原因 <Text style={styles.requiredMark}>*</Text>
+                  </Text>
+                  <TextInput
+                    style={[styles.modalInput, styles.modalTextArea]}
+                    placeholder="请详细描述举报原因"
+                    placeholderTextColor={theme.colors.textSecondary}
+                    value={reportReason}
+                    onChangeText={(t) => setReportReason(t)}
+                    multiline
+                  />
+                </View>
+
+                <TouchableOpacity
+                  style={styles.modalSubmit}
+                  onPress={handleReportSubmit}
+                  disabled={reportSubmitting}
+                >
+                  {reportSubmitting ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={styles.modalSubmitText}>提交举报</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -498,9 +625,19 @@ const createStyles = (theme: ReturnType<typeof getTheme>) =>
     header: {
       alignItems: 'center',
       marginBottom: spacing.lg,
+      position: 'relative',
+    },
+    reportBtn: {
+      position: 'absolute',
+      // logo 下移后帮助按钮同步下移,保持与 logo 顶部齐平(原 top:0)
+      top: spacing.md,
+      right: 0,
+      padding: 4,
     },
     logoContainer: {
       alignItems: 'center',
+      // logo 原本紧贴刘海下沿偏高,整体下移一点(往下 spacing.md)
+      marginTop: spacing.md,
     },
     logo: {
       width: 72,
@@ -630,6 +767,96 @@ const createStyles = (theme: ReturnType<typeof getTheme>) =>
     errorText: {
       fontSize: fontSizes.sm,
       textAlign: 'center',
+      marginTop: spacing.xs,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: spacing.lg,
+    },
+    modalCard: {
+      width: '100%',
+      maxWidth: 420,
+      borderRadius: borderRadius.lg,
+      overflow: 'hidden',
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.colors.border,
+    },
+    modalTitle: {
+      fontSize: fontSizes.lg,
+      fontWeight: '600',
+      color: theme.colors.text,
+    },
+    modalClose: {
+      padding: 4,
+    },
+    modalBody: {
+      padding: spacing.lg,
+      gap: spacing.md,
+    },
+    modalLabel: {
+      fontSize: fontSizes.sm,
+      fontWeight: '500',
+      color: theme.colors.text,
+      marginBottom: spacing.xs,
+    },
+    requiredMark: {
+      color: '#ef4444',
+    },
+    modalInput: {
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: borderRadius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      fontSize: fontSizes.md,
+      color: theme.colors.text,
+      backgroundColor: theme.colors.background,
+    },
+    modalTextArea: {
+      minHeight: 96,
+      textAlignVertical: 'top',
+    },
+    modalError: {
+      fontSize: fontSizes.sm,
+      color: theme.colors.error || '#ef4444',
+    },
+    modalSubmit: {
+      height: 44,
+      borderRadius: borderRadius.md,
+      backgroundColor: theme.colors.primary,
+      justifyContent: 'center',
+      alignItems: 'center',
+      flexDirection: 'row',
+      gap: 8,
+    },
+    modalSubmitText: {
+      color: '#fff',
+      fontSize: fontSizes.md,
+      fontWeight: '600',
+    },
+    successBox: {
+      paddingVertical: spacing.xl,
+      alignItems: 'center',
+    },
+    successText: {
+      fontSize: fontSizes.md,
+      fontWeight: '600',
+      color: theme.colors.text,
+      marginTop: spacing.md,
+    },
+    successDesc: {
+      fontSize: fontSizes.sm,
+      color: theme.colors.textSecondary,
       marginTop: spacing.xs,
     },
   });

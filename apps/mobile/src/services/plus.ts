@@ -106,30 +106,60 @@ export interface LoginDto {
   code: string;
 }
 
-export interface ScanLoginSession {
+// 扫码登录协议(对齐 desktop services/plus.ts 与线上 /scan-login/session)
+// 旧的 /auth/scan-login 端点已下线,三端必须共用这里的 sessionId + secret 结构。
+export interface ScanLoginSourceConfig {
   id: string;
-  status: ScanLoginSessionStatus;
-  clientId: string;
-  createdAt: string;
-  expiresAt: string;
-  claimedAt?: string;
-  confirmedAt?: string;
-  consumedAt?: string;
-  userId?: string;
-  token?: string;
+  internal: string;
+  external: string;
+  name?: string;
 }
 
-export type ScanLoginSessionStatus = 'PENDING' | 'CLAIMED' | 'CONFIRMED' | 'CONSUMED' | 'EXPIRED';
+export interface ScanLoginSourceBundle {
+  type: string;
+  configs: ScanLoginSourceConfig[];
+}
+
+export interface ScanLoginAuthBundle {
+  baseUrl: string;
+  sourceType: string;
+  token: string;
+  user: any;
+  device?: any;
+}
+
+export interface ScanLoginPlusBundle {
+  token: string;
+  userId: string | number;
+}
+
+export interface ScanLoginSession {
+  sessionId: string;
+  secret: string;
+  role: 'scanner' | 'target';
+  deviceKind: 'mobile' | 'desktop' | 'harmony';
+  expiresAt: number;
+}
+
+export interface ScanLoginSessionStatus extends Omit<ScanLoginSession, 'secret'> {
+  status: 'waiting_scan' | 'waiting_confirm' | 'confirmed' | 'consumed' | 'success' | 'failed' | 'expired';
+  deviceName?: string;
+  sourceBundles: ScanLoginSourceBundle[];
+  hasNativeAuth: boolean;
+  hasPlusAuth: boolean;
+}
 
 export interface ScanLoginClaimPayload {
-  deviceName: string;
-  deviceType: string;
+  nativeAuth?: ScanLoginAuthBundle | null;
+  plusAuth?: ScanLoginPlusBundle | null;
+  sourceBundles: ScanLoginSourceBundle[];
+  deviceName?: string;
 }
 
 export interface ScanLoginConfirmResult {
-  success: boolean;
-  token?: string;
-  userId?: string;
+  nativeAuth: ScanLoginAuthBundle | null;
+  plusAuth: ScanLoginPlusBundle | null;
+  sourceBundles: ScanLoginSourceBundle[];
 }
 
 export interface VipStatusResponse {
@@ -199,52 +229,103 @@ export const plusGetVipStatus = async (userId: string) => {
 };
 
 // --- Scan Login API ---
+// 与 desktop / hm 共用线上 /scan-login/session 协议(sessionId + secret)。
+// axios 会包一层 AxiosResponse,这里统一 unwrap 成 envelope,调用方按 res.data 取业务数据。
+const unwrap = <T,>(res: { data: ISuccessResponse<T> }): ISuccessResponse<T> => res.data;
 
-export const createScanLoginSession = async () => {
-  return plusRequest.post<ISuccessResponse<ScanLoginSession>>('/auth/scan-login');
+export const createScanLoginSession = async (data: {
+  role: 'scanner' | 'target';
+  deviceKind: 'mobile' | 'desktop' | 'harmony';
+}): Promise<ISuccessResponse<ScanLoginSession>> => {
+  const res = await plusRequest.post<ISuccessResponse<ScanLoginSession>>('/scan-login/session', data);
+  return unwrap(res);
 };
 
-export const getScanLoginSession = async (sessionId: string) => {
-  return plusRequest.get<ISuccessResponse<ScanLoginSession>>(`/auth/scan-login/${sessionId}`);
+export const getScanLoginSession = async (
+  sessionId: string,
+  secret: string,
+): Promise<ISuccessResponse<ScanLoginSessionStatus>> => {
+  const res = await plusRequest.get<ISuccessResponse<ScanLoginSessionStatus>>(
+    `/scan-login/session/${sessionId}?secret=${encodeURIComponent(secret)}`,
+  );
+  return unwrap(res);
 };
 
-export const claimScanLoginSession = async (sessionId: string, payload: ScanLoginClaimPayload) => {
-  return plusRequest.post<ISuccessResponse<ScanLoginSession>>(`/auth/scan-login/${sessionId}/claim`, payload);
+export const claimScanLoginSession = async (
+  sessionId: string,
+  data: { secret: string; payload: ScanLoginClaimPayload },
+): Promise<ISuccessResponse<ScanLoginSessionStatus>> => {
+  const res = await plusRequest.post<ISuccessResponse<ScanLoginSessionStatus>>(
+    `/scan-login/session/${sessionId}/claim`,
+    data,
+  );
+  return unwrap(res);
 };
 
-export const confirmScanLoginSession = async (sessionId: string) => {
-  return plusRequest.post<ISuccessResponse<ScanLoginConfirmResult>>(`/auth/scan-login/${sessionId}/confirm`);
+export const confirmScanLoginSession = async (
+  sessionId: string,
+  data: { secret: string; selections?: { type: string; configIds: string[] }[] },
+): Promise<ISuccessResponse<ScanLoginSessionStatus>> => {
+  const res = await plusRequest.post<ISuccessResponse<ScanLoginSessionStatus>>(
+    `/scan-login/session/${sessionId}/confirm`,
+    data,
+  );
+  return unwrap(res);
 };
 
-export const consumeScanLoginSession = async (sessionId: string) => {
-  return plusRequest.post<ISuccessResponse<ScanLoginSession>>(`/auth/scan-login/${sessionId}/consume`);
+export const consumeScanLoginSession = async (
+  sessionId: string,
+  data: { secret: string; selections?: { type: string; configIds: string[] }[] },
+): Promise<ISuccessResponse<ScanLoginConfirmResult>> => {
+  const res = await plusRequest.post<ISuccessResponse<ScanLoginConfirmResult>>(
+    `/scan-login/session/${sessionId}/consume`,
+    data,
+  );
+  return unwrap(res);
 };
 
-export const reportScanLoginResult = async (sessionId: string, result: { success: boolean; token?: string; userId?: string }) => {
-  return plusRequest.post<ISuccessResponse<any>>(`/auth/scan-login/${sessionId}/result`, result);
+export const reportScanLoginResult = async (
+  sessionId: string,
+  data: { secret: string; success: boolean; error?: string },
+): Promise<ISuccessResponse<unknown>> => {
+  const res = await plusRequest.post<ISuccessResponse<unknown>>(
+    `/scan-login/session/${sessionId}/report`,
+    data,
+  );
+  return unwrap(res);
 };
 
-export const subscribeScanLoginSession = (sessionId: string, onUpdate: (session: ScanLoginSession) => void) => {
-  // 轮询实现
+// desktop 走 socket.io;mobile 未引入 socket 客户端,用 HTTP report 等价实现。
+export const reportScanLoginResultViaSocket = (
+  sessionId: string,
+  secret: string,
+  success: boolean,
+  error?: string,
+): Promise<ISuccessResponse<unknown>> => {
+  return reportScanLoginResult(sessionId, { secret, success, error });
+};
+
+export const subscribeScanLoginSession = (
+  sessionId: string,
+  secret: string,
+  onUpdate: (status: ScanLoginSessionStatus) => void,
+): (() => void) => {
+  // 轮询实现(与 desktop 的 socket 订阅等价,无需额外原生依赖)
   const interval = setInterval(async () => {
     try {
-      const res = await getScanLoginSession(sessionId);
-      if (res.data?.data) {
-        onUpdate(res.data.data);
-        if (['CONSUMED', 'EXPIRED'].includes(res.data.data.status)) {
+      const res = await getScanLoginSession(sessionId, secret);
+      if (res.data) {
+        onUpdate(res.data);
+        if (['consumed', 'expired', 'success', 'failed'].includes(res.data.status)) {
           clearInterval(interval);
         }
       }
     } catch {
-      clearInterval(interval);
+      // 网络抖动不中断轮询,会话过期后由服务端状态自然收敛
     }
   }, 2000);
 
   return () => clearInterval(interval);
-};
-
-export const reportScanLoginResultViaSocket = async (sessionId: string, result: { success: boolean; token?: string; userId?: string }) => {
-  return plusRequest.post<ISuccessResponse<any>>(`/auth/scan-login/${sessionId}/result`, result);
 };
 
 /**

@@ -1,0 +1,20 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "BookDock（书仓）电子书管理与阅读"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "BookDock（书仓）主界面"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "BookDock"
+    },
+    {
+      "name": "camera_permission_reason",
+      "value": "扫码登录需要使用相机扫描二维码"
+    }
+  ]
+}

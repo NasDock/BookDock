@@ -13,6 +13,7 @@ import {
   Paragraph,
   TTSProvider,
   TTSVoice,
+  TtsProgressRecord,
 } from "@bookdock/api-client";
 import { Ionicons } from "@expo/vector-icons";
 import { RouteProp, useNavigation, useRoute } from "@react-navigation/native";
@@ -111,10 +112,38 @@ function splitForTts(text: string, maxLen: number): string[] {
   return out;
 }
 
+/**
+ * 取「上次听书位置」：全书所有章节里 updatedAt 最新的一条进度。
+ * 后端 GET /tts/progress?bookId=xxx（不带 chapterIndex）返回该书全部章节记录。
+ */
+async function fetchLastTtsProgress(
+  apiClient: ReturnType<typeof getApiClient>,
+  bookId: string,
+): Promise<TtsProgressRecord | null> {
+  try {
+    const prog = await apiClient.getTtsProgress(bookId);
+    if (!prog.success || !prog.data) return null;
+    const list = Array.isArray(prog.data) ? prog.data : [prog.data];
+    let latest: TtsProgressRecord | null = null;
+    let latestMs = -1;
+    for (const rec of list) {
+      const parsed = rec.updatedAt ? Date.parse(rec.updatedAt) : 0;
+      const ms = Number.isNaN(parsed) ? 0 : parsed;
+      if (ms >= latestMs) {
+        latestMs = ms;
+        latest = rec;
+      }
+    }
+    return latest;
+  } catch {
+    return null;
+  }
+}
+
 export function TTSScreen() {
   const navigation = useNavigation();
   const route = useRoute<TTSScreenRouteProp>();
-  const { book } = route.params;
+  const { book, source, currentChapter } = route.params;
 
   const actualTheme = useThemeStore((state) => state.actualTheme);
   const theme = getTheme(actualTheme === "dark");
@@ -302,18 +331,45 @@ export function TTSScreen() {
         chaptersRef.current = chRes.data;
         ttsStore.setChapters(chRes.data);
 
-        // Load first chapter. skipEmpty: true so EPUBs that open with
-        // a cover/copyright page silently advance to the first chapter
-        // with readable text instead of dropping the user into the
-        // empty-state error page.
+        // ── 决定听书起点 ────────────────────────────────────────────
+        // 上次听书位置：全书所有章节里 updatedAt 最新的一条进度
+        const lastRec = await fetchLastTtsProgress(apiClient, book.id);
+        let startChapter = 0;
+        let resume = false;
+        if (
+          source === "reader" &&
+          currentChapter !== undefined &&
+          currentChapter >= 0
+        ) {
+          // 从阅读页进入：以当前阅读章节为准；若它正好是上次听到一半的章则续听，否则从本章开头
+          startChapter = currentChapter;
+          if (lastRec && lastRec.chapterIndex === startChapter) {
+            resume =
+              (lastRec.paragraphIndex || 0) > 0 ||
+              (lastRec.audioOffsetMs || 0) > 0;
+          }
+        } else if (
+          lastRec &&
+          lastRec.chapterIndex >= 0 &&
+          lastRec.chapterIndex < chRes.data.length
+        ) {
+          // 从书籍详情页（及书城/迷你播放器）进入：跨章恢复上次听书位置
+          startChapter = lastRec.chapterIndex;
+          resume = true;
+        }
         console.log(
-          "[TTSScreen] Loading chapter 0, voice:",
+          "[TTSScreen] Loading chapter",
+          startChapter,
+          "resume:",
+          resume,
+          "voice:",
           vs[0]?.id || voiceId,
           "provider:",
           finalProvider,
         );
-        await loadChapter(0, vs[0]?.id || voiceId, finalProvider, {
+        await loadChapter(startChapter, vs[0]?.id || voiceId, finalProvider, {
           skipEmpty: true,
+          resume,
         });
       } catch (e) {
         console.error("[TTSScreen] Load error:", e);
@@ -326,7 +382,7 @@ export function TTSScreen() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [book.id]);
+  }, [book.id, source, currentChapter]);
 
   // ── Auto-open chapter picker if requested via route params ──────────
   useEffect(() => {
@@ -511,7 +567,7 @@ export function TTSScreen() {
     ci: number,
     vid: string,
     prov: string,
-    options: { skipEmpty?: boolean } = {},
+    options: { skipEmpty?: boolean; resume?: boolean } = {},
   ) => {
     setChapterIndex(ci);
     try {
@@ -561,23 +617,28 @@ export function TTSScreen() {
       ttsStore.setChapterTitle(pRes.data.title);
       ttsStore.setChapterIndex(effectiveCi);
 
-      // Resume from saved cloud progress
-      try {
-        const prog = await apiClient.getTtsProgress(book.id, effectiveCi);
-        if (prog.success && prog.data && !Array.isArray(prog.data)) {
-          const rec = prog.data;
-          if (rec.provider) {
-            setProvider(rec.provider);
-            ttsStore.setSelectedProvider(rec.provider);
+      if (options.resume === false) {
+        // 从章节开头播放：不恢复云端段落进度（阅读页进入但当前章非上次听书章）
+        ttsStore.setCurrentParagraph(0);
+      } else {
+        // Resume from saved cloud progress
+        try {
+          const prog = await apiClient.getTtsProgress(book.id, effectiveCi);
+          if (prog.success && prog.data && !Array.isArray(prog.data)) {
+            const rec = prog.data;
+            if (rec.provider) {
+              setProvider(rec.provider);
+              ttsStore.setSelectedProvider(rec.provider);
+            }
+            if (rec.voice) setVoiceId(rec.voice);
+            setResumeOffsetMs(Math.max(0, rec.audioOffsetMs || 0));
+            ttsStore.setCurrentParagraph(
+              Math.min(rec.paragraphIndex, pRes.data.paragraphs.length - 1),
+            );
           }
-          if (rec.voice) setVoiceId(rec.voice);
-          setResumeOffsetMs(Math.max(0, rec.audioOffsetMs || 0));
-          ttsStore.setCurrentParagraph(
-            Math.min(rec.paragraphIndex, pRes.data.paragraphs.length - 1),
-          );
+        } catch {
+          /* ignore */
         }
-      } catch {
-        /* ignore */
       }
       ttsStore.setSelectedProvider(prov);
     } catch (e) {

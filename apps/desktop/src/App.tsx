@@ -24,6 +24,7 @@ import {
 
 // Pages
 import Admin from "./pages/Admin";
+import ApiTokens from "./pages/ApiTokens";
 import CollectionDetail from "./pages/CollectionDetail";
 import Library from "./pages/Library";
 import Login from "./pages/Login";
@@ -531,6 +532,14 @@ function AppRoutes() {
           element={
             <ProtectedRoute>
               <Settings />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/settings/api-tokens"
+          element={
+            <ProtectedRoute>
+              <ApiTokens />
             </ProtectedRoute>
           }
         />

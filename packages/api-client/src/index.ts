@@ -43,6 +43,20 @@ export interface Book {
   isbn?: string;
 }
 
+export interface ApiKey {
+  id: string;
+  name: string;
+  isActive: boolean;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+}
+
+export interface CreatedApiKey extends ApiKey {
+  /** 明文 Token，仅创建时返回一次 */
+  token: string;
+}
+
 export interface Collection {
   id: string;
   name: string;
@@ -705,6 +719,30 @@ class ApiClient {
 
   async deleteHighlight(highlightId: string): Promise<ApiResponse<void>> {
     const { data } = await this.client.delete(`/highlights/${highlightId}`);
+    return data;
+  }
+
+  // API Token 管理（需要 JWT，不能用 API Token 管理自身）
+  async getApiKeys(): Promise<ApiResponse<ApiKey[]>> {
+    const { data } = await this.client.get('/api-keys');
+    return data;
+  }
+
+  async createApiKey(dto: { name: string; expiresInDays?: number }): Promise<ApiResponse<CreatedApiKey>> {
+    const { data } = await this.client.post('/api-keys', dto);
+    return data;
+  }
+
+  async updateApiKey(
+    id: string,
+    dto: { name?: string; isActive?: boolean; expiresInDays?: number | null },
+  ): Promise<ApiResponse<ApiKey>> {
+    const { data } = await this.client.put(`/api-keys/${id}`, dto);
+    return data;
+  }
+
+  async deleteApiKey(id: string): Promise<ApiResponse<{ id: string }>> {
+    const { data } = await this.client.delete(`/api-keys/${id}`);
     return data;
   }
 }

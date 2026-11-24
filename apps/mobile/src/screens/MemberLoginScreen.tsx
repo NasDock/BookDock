@@ -11,6 +11,7 @@ import {
   Platform,
   ScrollView,
   Image,
+  Linking,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,6 +38,10 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
+
+  const PRIVACY_POLICY_URL = 'https://www.audiodock.cn/book/docs/privacy-policy/?preview=true';
+  const USER_AGREEMENT_URL = 'http://audiodock.cn/book/docs/user-agreement/?preview=true';
 
   // Countdown timer
   useEffect(() => {
@@ -71,6 +76,10 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
 
   // Phone login
   const handleLogin = useCallback(async () => {
+    if (!agreed) {
+      setError('请先阅读并同意《隐私政策》和《用户协议》');
+      return;
+    }
     if (!phone || !code) {
       setError('请输入手机号和验证码');
       return;
@@ -95,7 +104,7 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
     } finally {
       setIsLoading(false);
     }
-  }, [phone, code, navigation]);
+  }, [phone, code, agreed, navigation]);
 
   return (
     <KeyboardAvoidingView
@@ -189,6 +198,51 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
             />
           </View>
 
+          {/* Agreement */}
+          <View style={styles.agreeRow}>
+            <TouchableOpacity
+              onPress={() => {
+                setAgreed(!agreed);
+                if (!agreed) setError(null);
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons
+                name={agreed ? 'checkmark-circle' : 'ellipse-outline'}
+                size={18}
+                color={agreed ? theme.colors.primary : theme.colors.textSecondary}
+              />
+            </TouchableOpacity>
+            <Text
+              style={[styles.agreeText, { color: theme.colors.textSecondary }]}
+              onPress={() => {
+                setAgreed(!agreed);
+                if (!agreed) setError(null);
+              }}
+            >
+              我已阅读并同意
+              <Text
+                style={{ color: theme.colors.primary }}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  Linking.openURL(PRIVACY_POLICY_URL);
+                }}
+              >
+                《隐私政策》
+              </Text>
+              和
+              <Text
+                style={{ color: theme.colors.primary }}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  Linking.openURL(USER_AGREEMENT_URL);
+                }}
+              >
+                《用户协议》
+              </Text>
+            </Text>
+          </View>
+
           {error && (
             <View style={[styles.errorBox, { backgroundColor: theme.colors.error + '15', borderColor: theme.colors.error + '40' }]}>
               <Text style={[styles.errorText, { color: theme.colors.error }]}>{error}</Text>
@@ -208,15 +262,6 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
           </TouchableOpacity>
         </View>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={[styles.footerText, { color: theme.colors.textSecondary }]}>
-            登录即代表同意
-            <Text style={{ color: theme.colors.primary }}>《隐私政策》</Text>
-            和
-            <Text style={{ color: theme.colors.primary }}>《用户协议》</Text>
-          </Text>
-        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -297,6 +342,17 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: fontSizes.sm,
   },
+  agreeRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: spacing.xs,
+  },
+  agreeText: {
+    flex: 1,
+    fontSize: fontSizes.xs,
+    lineHeight: 20,
+  },
   loginBtn: {
     height: 48,
     borderRadius: borderRadius.md,
@@ -308,14 +364,5 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: fontSizes.md,
     fontWeight: '600',
-  },
-  footer: {
-    marginTop: spacing.xl,
-    alignItems: 'center',
-  },
-  footerText: {
-    fontSize: fontSizes.xs,
-    textAlign: 'center',
-    lineHeight: 20,
   },
 });

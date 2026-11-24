@@ -41,6 +41,7 @@
     "expo-web-browser": "~14.0.0",
     "gbk.js": "^0.3.0",
     "jschardet": "^3.1.4",
+    "qrcode-generator": "^2.0.4",
     "react": "18.3.1",
     "react-native": "0.76.9",
     "react-native-safe-area-context": "4.12.0",

@@ -268,21 +268,62 @@ export default function ReaderTTS() {
         }
         setChapters(chRes.data);
         chaptersRef.current = chRes.data;
-        // Chapter index resolution, in priority order:
-        //   1. ?ci=N in the URL  (deep-link / "继续听书" button target)
-        //   2. GET /books/:id/last-read  (global "last listened" pointer)
-        //   3. GET /tts/progress?bookId=... — most recently updated row
-        //      across all chapters (legacy fallback, kept for users with
-        //      old per-chapter progress but no BookLastRead row yet)
-        //   4. 0
-        let ci = 0;
+        // Chapter index + resume decision:
+        //   source=reader → start from the chapter currently being read;
+        //                   resume only if it is also the last half-listened chapter.
+        //   source=detail → resume the latest TTS progress across all chapters.
+        //   otherwise     → legacy behaviour (?ci > last-read > tts progress > 0).
+        const source = searchParams.get("source");
         const ciParam = searchParams.get("ci");
-        console.log("[Reader-TTS] URL ciParam:", ciParam);
-        if (ciParam !== null) {
-          const parsed = parseInt(ciParam, 10);
-          if (Number.isFinite(parsed) && parsed >= 0) {
-            ci = parsed;
+        const parsedCi = ciParam !== null ? parseInt(ciParam, 10) : NaN;
+        const hasCi = Number.isFinite(parsedCi) && parsedCi >= 0;
+        console.log("[Reader-TTS] source:", source, "URL ciParam:", ciParam);
+
+        // 上次听书位置：全书 TTS 进度里 updatedAt 最新的一条
+        let lastRec: TtsProgressRecord | null = null;
+        if (source === "reader" || source === "detail") {
+          try {
+            const allRes = await apiClient.getTtsProgress(id);
+            const list: TtsProgressRecord[] = Array.isArray(allRes.data)
+              ? allRes.data
+              : allRes.data
+                ? [allRes.data]
+                : [];
+            lastRec =
+              [...list].sort(
+                (a, b) =>
+                  new Date(b.updatedAt).getTime() -
+                  new Date(a.updatedAt).getTime(),
+              )[0] || null;
+          } catch (e) {
+            console.error("[Reader-TTS] getTtsProgress error:", e);
           }
+        }
+
+        let ci = 0;
+        // 是否恢复该章的段落进度；false 表示从章节开头播放
+        let resume = true;
+        if (source === "reader") {
+          // 从阅读页进入：以当前阅读章节为准；若它正好是上次听到一半的章则续听，否则从本章开头
+          ci = hasCi ? parsedCi : 0;
+          if (lastRec && lastRec.chapterIndex === ci) {
+            resume =
+              (lastRec.paragraphIndex || 0) > 0 ||
+              (lastRec.audioOffsetMs || 0) > 0;
+          } else {
+            resume = false;
+          }
+        } else if (source === "detail") {
+          // 从书籍详情页进入：跨章恢复上次听书位置
+          ci =
+            lastRec && lastRec.chapterIndex >= 0
+              ? lastRec.chapterIndex
+              : hasCi
+                ? parsedCi
+                : 0;
+          resume = true;
+        } else if (hasCi) {
+          ci = parsedCi;
         } else {
           try {
             const lastRes = await apiClient.getBookLastRead(id);
@@ -311,6 +352,8 @@ export default function ReaderTTS() {
         console.log(
           "[Reader-TTS] resolved ci:",
           ci,
+          "resume:",
+          resume,
           "chapters:",
           chRes.data.length,
         );
@@ -321,7 +364,7 @@ export default function ReaderTTS() {
         // with readable text. User-driven navigation later
         // (chapter picker, deep-link, queue-end auto-advance) keeps
         // its original ci.
-        await loadChapter(apiClient, id, ci, { skipEmpty: true });
+        await loadChapter(apiClient, id, ci, { skipEmpty: true, resume });
       } catch (err) {
         setError((err as Error).message);
       } finally {
@@ -336,7 +379,7 @@ export default function ReaderTTS() {
     apiClient: ReturnType<typeof getApiClient>,
     bookId: string,
     ci: number,
-    options: { skipEmpty?: boolean } = {},
+    options: { skipEmpty?: boolean; resume?: boolean } = {},
   ) => {
     setChapterIndex(ci);
     chapterIndexRef.current = ci;
@@ -389,37 +432,40 @@ export default function ReaderTTS() {
     let resumeParaIdx = 0;
     let resumeOffset = 0;
 
-    // Resume from saved cloud progress (cross-device sync)
-    try {
-      const p = await apiClient.getTtsProgress(bookId, effectiveCi);
-      if (p.success && p.data && !Array.isArray(p.data)) {
-        const rec = p.data as TtsProgressRecord;
-        // Apply the saved voice/provider into the manager IMMEDIATELY
-        // (don't wait for the React effect on the next render) so the
-        // very first play() after load uses the right voice. Otherwise
-        // play() reads cfg.voiceId which still holds the *previous*
-        // session's value, and the new voice doesn't take effect until
-        // the user manually reselects.
-        if (rec.provider) manager.setProvider(rec.provider);
-        if (rec.voice) manager.setVoice(rec.voice);
-        if (rec.provider) {
-          setProvider(rec.provider);
-          // Re-fetch the voice list under the right provider, then
-          // re-apply the saved voice id once voices arrive.
-          const vs = await manager.loadVoices(rec.provider);
-          setVoices(vs);
-          if (rec.voice) setVoiceId(rec.voice);
+    // Resume from saved cloud progress (cross-device sync).
+    // resume=false: 从章节开头播放，跳过云端段落/音色恢复（阅读页进入但当前章非上次听书章）
+    if (options.resume !== false) {
+      try {
+        const p = await apiClient.getTtsProgress(bookId, effectiveCi);
+        if (p.success && p.data && !Array.isArray(p.data)) {
+          const rec = p.data as TtsProgressRecord;
+          // Apply the saved voice/provider into the manager IMMEDIATELY
+          // (don't wait for the React effect on the next render) so the
+          // very first play() after load uses the right voice. Otherwise
+          // play() reads cfg.voiceId which still holds the *previous*
+          // session's value, and the new voice doesn't take effect until
+          // the user manually reselects.
+          if (rec.provider) manager.setProvider(rec.provider);
+          if (rec.voice) manager.setVoice(rec.voice);
+          if (rec.provider) {
+            setProvider(rec.provider);
+            // Re-fetch the voice list under the right provider, then
+            // re-apply the saved voice id once voices arrive.
+            const vs = await manager.loadVoices(rec.provider);
+            setVoices(vs);
+            if (rec.voice) setVoiceId(rec.voice);
+          }
+          // Clamp saved paragraph index against the freshly loaded chapter
+          // (chapter length may have changed since the progress was saved).
+          resumeParaIdx = Math.max(
+            0,
+            Math.min(rec.paragraphIndex, r.data!.paragraphs.length - 1),
+          );
+          resumeOffset = Math.max(0, rec.audioOffsetMs || 0);
         }
-        // Clamp saved paragraph index against the freshly loaded chapter
-        // (chapter length may have changed since the progress was saved).
-        resumeParaIdx = Math.max(
-          0,
-          Math.min(rec.paragraphIndex, r.data!.paragraphs.length - 1),
-        );
-        resumeOffset = Math.max(0, rec.audioOffsetMs || 0);
+      } catch {
+        /* fall back to defaults */
       }
-    } catch {
-      /* fall back to defaults */
     }
 
     setProgress({

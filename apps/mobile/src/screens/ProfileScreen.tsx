@@ -528,71 +528,78 @@ export function ProfileScreen() {
           </View>
           <View style={styles.usernameRow}>
             <Text style={styles.username}>{user?.username || "用户"}</Text>
-            <TouchableOpacity
-              onPress={async () => {
-                const plusToken = await AsyncStorage.getItem(
-                  "bookdock_plus_token",
-                );
-                if (!plusToken) {
-                  navigation.navigate("MemberLogin");
-                  return;
-                }
-                navigation.navigate(isVip ? "MemberDetail" : "MemberBenefits");
-              }}
-            >
-              <Ionicons
-                name={isVip ? "diamond" : "diamond-outline"}
-                size={20}
-                color={isVip ? "#FFD700" : theme.colors.textSecondary}
-              />
-            </TouchableOpacity>
+            {/* hm 对齐:隐藏会员购买入口,非会员不展示钻石标识 */}
+            {isVip && (
+              // soft-disable:原非会员点击跳 MemberLogin / MemberBenefits 的逻辑保留在下方
+              // <TouchableOpacity
+              //   onPress={async () => {
+              //     const plusToken = await AsyncStorage.getItem("bookdock_plus_token");
+              //     if (!plusToken) {
+              //       navigation.navigate("MemberLogin");
+              //       return;
+              //     }
+              //     navigation.navigate(isVip ? "MemberDetail" : "MemberBenefits");
+              //   }}
+              // >
+              //   <Ionicons
+              //     name={isVip ? "diamond" : "diamond-outline"}
+              //     size={20}
+              //     color={isVip ? "#FFD700" : theme.colors.textSecondary}
+              //   />
+              // </TouchableOpacity>
+              <TouchableOpacity onPress={() => navigation.navigate("MemberDetail")}>
+                <Ionicons name="diamond" size={20} color="#FFD700" />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
-        {/* Reading Time Card */}
-        {isVip ? (
-          readingSummary && (
-            <TouchableOpacity
-              style={[
-                styles.readingTimeCard,
-                { backgroundColor: theme.colors.primary },
-              ]}
-              onPress={() => navigation.navigate("Stats")}
-            >
-              <View style={styles.readingTimeContent}>
-                <Ionicons name="time-outline" size={24} color="#fff" />
-                <View style={styles.readingTimeTextContainer}>
-                  <Text style={styles.readingTimeLabel}>阅读时长</Text>
-                  <Text style={styles.readingTimeValue}>
-                    {(() => {
-                      const format = (secs: number) => {
-                        if (secs < 60) return `${secs}秒`;
-                        if (secs < 3600) return `${Math.floor(secs / 60)}分钟`;
-                        const h = Math.floor(secs / 3600);
-                        const m = Math.floor((secs % 3600) / 60);
-                        return m > 0 ? `${h}小时${m}分钟` : `${h}小时`;
-                      };
-                      if (readingSummary.todaySecs > 0) {
-                        return `今日阅读 ${format(readingSummary.todaySecs)}`;
-                      }
-                      if (readingSummary.weekSecs > 0) {
-                        return `本周阅读 ${format(readingSummary.weekSecs)}`;
-                      }
-                      if (readingSummary.monthSecs > 0) {
-                        return `本月阅读 ${format(readingSummary.monthSecs)}`;
-                      }
-                      if (readingSummary.yearSecs > 0) {
-                        return `今年阅读 ${format(readingSummary.yearSecs)}`;
-                      }
-                      return "今日还没有阅读";
-                    })()}
-                  </Text>
-                </View>
+        {/* Reading Time Card — hm 对齐:仅会员展示;非会员不展示时长统计入口 */}
+        {isVip && (
+          <TouchableOpacity
+            style={[
+              styles.readingTimeCard,
+              { backgroundColor: theme.colors.primary },
+            ]}
+            onPress={() => navigation.navigate("Stats")}
+          >
+            <View style={styles.readingTimeContent}>
+              <Ionicons name="time-outline" size={24} color="#fff" />
+              <View style={styles.readingTimeTextContainer}>
+                <Text style={styles.readingTimeLabel}>阅读时长</Text>
+                <Text style={styles.readingTimeValue}>
+                  {(() => {
+                    const format = (secs: number) => {
+                      if (secs < 60) return `${secs}秒`;
+                      if (secs < 3600) return `${Math.floor(secs / 60)}分钟`;
+                      const h = Math.floor(secs / 3600);
+                      const m = Math.floor((secs % 3600) / 60);
+                      return m > 0 ? `${h}小时${m}分钟` : `${h}小时`;
+                    };
+                    if (!readingSummary) return "今日还没有阅读";
+                    if (readingSummary.todaySecs > 0) {
+                      return `今日阅读 ${format(readingSummary.todaySecs)}`;
+                    }
+                    if (readingSummary.weekSecs > 0) {
+                      return `本周阅读 ${format(readingSummary.weekSecs)}`;
+                    }
+                    if (readingSummary.monthSecs > 0) {
+                      return `本月阅读 ${format(readingSummary.monthSecs)}`;
+                    }
+                    if (readingSummary.yearSecs > 0) {
+                      return `今年阅读 ${format(readingSummary.yearSecs)}`;
+                    }
+                    return "今日还没有阅读";
+                  })()}
+                </Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#fff" />
-            </TouchableOpacity>
-          )
-        ) : (
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#fff" />
+          </TouchableOpacity>
+        )}
+
+        {/* soft-disable:原非会员购买卡片(跳 MemberBenefits),hm 端已隐藏
+        {!isVip && (
           <TouchableOpacity
             style={[
               styles.readingTimeCard,
@@ -604,14 +611,13 @@ export function ProfileScreen() {
               <Ionicons name="diamond-outline" size={24} color="#fff" />
               <View style={styles.readingTimeTextContainer}>
                 <Text style={styles.readingTimeLabel}>阅读时长</Text>
-                <Text style={styles.readingTimeValue}>
-                  开通会员解锁阅读时长统计
-                </Text>
+                <Text style={styles.readingTimeValue}>开通会员解锁阅读时长统计</Text>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={20} color="#fff" />
           </TouchableOpacity>
         )}
+        */}
 
         {/* Tabs */}
         <View

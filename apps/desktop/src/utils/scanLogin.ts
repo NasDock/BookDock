@@ -3,6 +3,24 @@
  * Simplified version - BookDock only needs Plus auth sync
  */
 
+/** 三端统一的二维码内容:扫码端按 kind / sessionId / secret / role 解析 */
+export const SCAN_LOGIN_QR_KIND = "bookdock-scan-login";
+
+export function buildScanLoginQrValue(
+  session: { sessionId: string; secret: string },
+  deviceKind: string,
+): string {
+  return JSON.stringify({
+    kind: SCAN_LOGIN_QR_KIND,
+    version: 1,
+    sessionId: session.sessionId,
+    secret: session.secret,
+    role: "target",
+    deviceKind,
+  });
+}
+
+
 import type { ScanLoginClaimPayload, ScanLoginConfirmResult } from "../services/plus";
 
 export async function collectDesktopScanLoginPayload(): Promise<ScanLoginClaimPayload> {
