@@ -21,6 +21,7 @@ import { MemberDetailScreen } from '../screens/MemberDetailScreen';
 import { MemberPaymentSuccessScreen } from '../screens/MemberPaymentSuccessScreen';
 import { CollectionDetailScreen } from '../screens/CollectionDetailScreen';
 import { AuthorDetailScreen } from '../screens/AuthorDetailScreen';
+import { NotesScreen } from '../screens/NotesScreen';
 import { TTSMiniPlayer } from '../components/TTSMiniPlayer';
 import { AppIcon, AppIconKind } from '../components/AppIcon';
 import { ThemeStore, Theme, spacing, fontSizes } from '../theme/Theme';
@@ -32,7 +33,8 @@ import {
   BookParams,
   TTSParams,
   AuthorParams,
-  CollectionDetailParams
+  CollectionDetailParams,
+  NotesParams
 } from '../router/AppRouter';
 import { Book } from '../model/ApiModels';
 
@@ -223,6 +225,15 @@ export struct MainTabNavigator {
     } else if (name === RouteName.AUTHOR_DETAIL) {
       NavDestination() {
         AuthorDetailScreen({ initialAuthor: (param as AuthorParams).author })
+      }
+      .hideTitleBar(true)
+      .backgroundColor(this.themeBg)
+    } else if (name === RouteName.NOTES) {
+      NavDestination() {
+        NotesScreen({
+          initialBookId: (param as NotesParams).bookId ?? '',
+          initialAuthor: (param as NotesParams).author ?? ''
+        })
       }
       .hideTitleBar(true)
       .backgroundColor(this.themeBg)

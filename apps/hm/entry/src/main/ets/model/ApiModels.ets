@@ -415,6 +415,11 @@ export interface CreateCollectionDto {
   description?: string;
 }
 
+// POST /collections/:id/books 的请求体(对齐服务端 CollectionController.addBook)
+export interface AddBookToCollectionPayload {
+  bookId: string;
+}
+
 // ─── API Tokens ────────────────────────────────────────────────
 export interface ApiKey {
   id: string;

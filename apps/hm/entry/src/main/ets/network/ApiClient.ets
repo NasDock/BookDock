@@ -5,6 +5,7 @@ import { http } from '@kit.NetworkKit';
 import { util } from '@kit.ArkTS';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import {
+  AddBookToCollectionPayload,
   AddFavoritePayload,
   ApiKey,
   ApiResponse,
@@ -510,7 +511,9 @@ export class ApiClient {
   }
 
   async addBookToCollection(collectionId: string, bookId: string): Promise<ApiResponse<void>> {
-    return this.request<void>(http.RequestMethod.POST, `/collections/${collectionId}/books/${bookId}`);
+    // 对齐服务端 POST /collections/:id/books + body { bookId }（不是把 bookId 拼进 URL）
+    const payload: AddBookToCollectionPayload = { bookId: bookId };
+    return this.request<void>(http.RequestMethod.POST, `/collections/${collectionId}/books`, payload);
   }
 
   async removeBookFromCollection(collectionId: string, bookId: string): Promise<ApiResponse<void>> {
