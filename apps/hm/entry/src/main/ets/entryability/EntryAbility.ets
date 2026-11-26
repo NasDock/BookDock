@@ -4,6 +4,7 @@ import { window } from '@kit.ArkUI';
 import { PreferencesStore } from '../utils/PreferencesStore';
 import { FileHelper } from '../utils/FileHelper';
 import { ThemeStore } from '../theme/Theme';
+import { TTSPlayer } from '../player/TTSPlayer';
 
 const DOMAIN = 0x0000;
 
@@ -22,6 +23,8 @@ export default class EntryAbility extends UIAbility {
     ThemeStore.shared().setSystemDark(
       this.context.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK
     );
+    // 后台播放基建:注入 UIAbilityContext,创建 AVSession 并按播放状态申请 AUDIO_PLAYBACK 长时任务
+    TTSPlayer.shared().configure(this.context);
   }
 
   onDestroy(): void {

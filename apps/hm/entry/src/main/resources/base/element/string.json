@@ -15,6 +15,10 @@
     {
       "name": "camera_permission_reason",
       "value": "扫码登录需要使用相机扫描二维码"
+    },
+    {
+      "name": "background_permission_reason",
+      "value": "听书需在退到后台后继续朗读音频"
     }
   ]
 }

@@ -420,7 +420,8 @@ export class ApiClient {
   }
 
   async saveBookLastRead(p: BookLastReadPayload): Promise<ApiResponse<BookLastReadRecord>> {
-    return this.request<BookLastReadRecord>(http.RequestMethod.POST, '/books/last-read', p);
+    // 对齐服务端 @Controller('books/:bookId/last-read'),bookId 在路径上,DTO 内也带 bookId
+    return this.request<BookLastReadRecord>(http.RequestMethod.POST, `/books/${p.bookId}/last-read`, p);
   }
 
   async getBookLastRead(bookId: string): Promise<ApiResponse<BookLastReadRecord | null>> {

@@ -12,6 +12,10 @@
 //   - mobile setRate 0.5-2.0；hm setPlaybackSpeed 枚举 PlaybackSpeed { SPEED_FORWARD_0_50_X ... SPEED_FORWARD_2_00_X }
 
 import { media } from '@kit.MediaKit';
+import { audio } from '@kit.AudioKit';
+import { avSession } from '@kit.AVSessionKit';
+import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
+import { common, wantAgent, WantAgent } from '@kit.AbilityKit';
 import { getApiClient } from '../network/ApiClient';
 import { Paragraph, SynthesizeParagraphResult, ApiResponse } from '../model/ApiModels';
 
@@ -93,16 +97,26 @@ export class TTSPlayer {
   private queueIndex: number = 0;         // 当前播到队列第几个
   private currentParagraphIndex: number = 0; // 当前段落在 paragraphs 中的索引
   private paragraphChunkStart: number[] = []; // 每段第一个 chunk 在 queue 中的起始索引
+  // 与 paragraphChunkStart 一一对应的绝对段落索引。
+  // 从中间段起播时 paragraphChunkStart 只有 [0],队列段序号 ≠ 真实段落索引,必须单独记录。
+  private paragraphChunkIndices: number[] = [];
+  // in-flight 合成任务:预取与"队列播空后续播"可能同时触发同一段,复用同一个 Promise 避免重复合成/重复入队
+  private enqueueTasks: Map<number, Promise<void>> = new Map();
 
   // ─── 状态 ─────────────────────────────────────────────────────────
   public state: TTSPlayerState = TTSPlayerState.IDLE;
   public positionMs: number = 0;
   public durationMs: number = 0;
   public playbackRate: number = 1.0;
+  // 续播时待应用的段内偏移:playParagraphs 收到 startOffsetMs 后暂存,
+  // AVPlayer 进入 prepared(拿到真实 duration)后再 seek,避免从段首开始播。
+  private pendingSeekMs: number = 0;
 
   // ─── 当前播放书籍信息（MiniPlayer 显示用）────────────────────────────
   public currentBookId: string = '';
   public bookTitle: string = '';
+  // 当前播放章节索引(mini 展开回听书页时据此接续,避免从服务端旧进度重开第一段)
+  public currentChapterIndex: number = -1;
   public chapterTitle: string = '';
   public coverUrl: string = '';
   public totalParagraphs: number = 0;
@@ -123,7 +137,110 @@ export class TTSPlayer {
   // ─── 进度轮询定时器 ────────────────────────────────────────────────
   private progressTimerId: number = -1;
 
+  // ─── 后台播放(媒体类播放必须接入 AVSession + AUDIO_PLAYBACK 长时任务)──
+  // AVSession 必须由单例长期持有;局部变量会被系统回收,导致后台发声被强制暂停。
+  private appContext: common.UIAbilityContext | null = null;
+  private mediaSession: avSession.AVSession | null = null;
+  private backgroundTaskActive: boolean = false;
+
   private constructor() {}
+
+  // UIAbility 启动时注入上下文,并创建/激活媒体会话(全局只需一次)
+  public configure(context: common.UIAbilityContext): void {
+    this.appContext = context;
+    void this.initMediaSession();
+  }
+
+  private async initMediaSession(): Promise<void> {
+    if (!this.appContext || this.mediaSession) {
+      return;
+    }
+    try {
+      const session: avSession.AVSession = await avSession.createAVSession(
+        this.appContext, 'AudioDockTTS', 'audio');
+      this.mediaSession = session;
+      await session.setAVMetadata(this.buildAVMetadata());
+      await session.setAVPlaybackState({
+        state: avSession.PlaybackState.PLAYBACK_STATE_PAUSE
+      });
+      // activate 必须在元数据/播放状态设置完成后调用
+      await session.activate();
+      // init 可能晚于首次 setState(PLAYING),补一次状态同步
+      this.updateMediaSessionState();
+    } catch {
+      // 播控中心接入失败不影响前台播放
+    }
+  }
+
+  private buildAVMetadata(): avSession.AVMetadata {
+    return {
+      assetId: this.currentBookId || 'audiodock-tts',
+      title: this.bookTitle || '听书',
+      mediaImage: this.coverUrl || '',
+      artist: '声仓'
+    };
+  }
+
+  private updateMediaSessionState(): void {
+    const session: avSession.AVSession | null = this.mediaSession;
+    if (!session) {
+      return;
+    }
+    let state: avSession.PlaybackState = avSession.PlaybackState.PLAYBACK_STATE_PAUSE;
+    if (this.state === TTSPlayerState.PLAYING) {
+      state = avSession.PlaybackState.PLAYBACK_STATE_PLAY;
+    } else if (this.state === TTSPlayerState.LOADING) {
+      state = avSession.PlaybackState.PLAYBACK_STATE_BUFFERING;
+    }
+    const playbackState: avSession.AVPlaybackState = {
+      state: state,
+      position: { elapsedTime: Math.max(0, this.positionMs), updateTime: new Date().getTime() },
+      speed: this.playbackRate
+    };
+    void session.setAVPlaybackState(playbackState).catch((): void => {});
+  }
+
+  // 播放时申请 AUDIO_PLAYBACK 长时任务,避免退后台被系统挂起/静音
+  private startBackgroundTask(): void {
+    const context: common.UIAbilityContext | null = this.appContext;
+    if (!context || this.backgroundTaskActive) {
+      return;
+    }
+    try {
+      const info: wantAgent.WantAgentInfo = {
+        wants: [{
+          bundleName: context.abilityInfo.bundleName,
+          abilityName: context.abilityInfo.name
+        }],
+        operationType: wantAgent.OperationType.START_ABILITY,
+        requestCode: 0,
+        wantAgentFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
+      };
+      void wantAgent.getWantAgent(info).then((agent: WantAgent): Promise<void> => {
+        return backgroundTaskManager.startBackgroundRunning(
+          context, backgroundTaskManager.BackgroundMode.AUDIO_PLAYBACK, agent);
+      }).then((): void => {
+        this.backgroundTaskActive = true;
+      }).catch((): void => {
+        // 申请失败时仍可前台播放,不中断业务
+      });
+    } catch {
+      // 静默
+    }
+  }
+
+  private stopBackgroundTask(): void {
+    const context: common.UIAbilityContext | null = this.appContext;
+    if (!context || !this.backgroundTaskActive) {
+      return;
+    }
+    this.backgroundTaskActive = false;
+    try {
+      void backgroundTaskManager.stopBackgroundRunning(context).catch((): void => {});
+    } catch {
+      // 静默
+    }
+  }
 
   public static shared(): TTSPlayer {
     if (!TTSPlayer.instance) {
@@ -148,9 +265,25 @@ export class TTSPlayer {
     // 状态机（对齐 mobile TrackPlayer 状态流转）
     player.on('stateChange', (state: media.AVPlayerState): void => {
       if (state === 'initialized') {
+        // 听书场景须在 prepare 前声明 AUDIOBOOK 流类型(否则默认按 MUSIC 处理,后台受管控)
+        try {
+          player.audioRendererInfo = {
+            usage: audio.StreamUsage.STREAM_USAGE_AUDIOBOOK,
+            rendererFlags: 0
+          };
+        } catch {
+          // 设备/SDK 不支持时保持默认流类型
+        }
         player.prepare();
       } else if (state === 'prepared') {
         this.durationMs = player.duration;
+        // 恢复续播:seek 到上次的段内偏移后再播(对齐 mobile TrackPlayer.seekTo)
+        const seekMs: number = this.pendingSeekMs;
+        this.pendingSeekMs = 0;
+        if (seekMs > 0 && seekMs < this.durationMs) {
+          void player.seek(seekMs);
+          this.positionMs = seekMs;
+        }
         player.play();
         this.setState(TTSPlayerState.PLAYING);
         this.startProgressTimer();
@@ -182,11 +315,24 @@ export class TTSPlayer {
   private handleCompleted(): void {
     this.queueIndex = this.queueIndex + 1;
     if (this.queueIndex >= this.queue.length) {
-      // 队列播完 — 检查是否需要合成 idx+1 续队
+      // 队列播空:下一段可能还在后台合成(冷启动时服务端首次合成较慢,预取常来不及入队)。
+      // 必须等合成入队后主动接着播,否则播完当前段就停。
       const nextIdx: number = this.currentParagraphIndex + 1;
       if (nextIdx < this.totalParagraphs && this.currentParagraphs.length > 0) {
-        // 后台合成下一段并加入 queue（不阻塞播放）
-        void this.synthesizeAndEnqueueParagraph(this.currentParagraphs, nextIdx);
+        void this.synthesizeAndEnqueueParagraph(this.currentParagraphs, nextIdx).then((): void => {
+          if (this.queueIndex >= this.queue.length) {
+            // 合成失败:暴露真实状态,避免 mini 一直显示"播放中"却没声音
+            this.setState(TTSPlayerState.ERROR, '下一段合成失败');
+            return;
+          }
+          // 用绝对段落索引更新 UI(从中间段起播时队列段序号 ≠ 段落索引)
+          const paraIdx: number = this.findParagraphIndexByQueueIndex(this.queueIndex);
+          if (paraIdx !== this.currentParagraphIndex) {
+            this.currentParagraphIndex = paraIdx;
+            this.onParagraphChange?.(paraIdx);
+          }
+          void this.playQueueItem(this.queueIndex);
+        });
       } else {
         // 整章结束
         this.setState(TTSPlayerState.IDLE);
@@ -211,17 +357,29 @@ export class TTSPlayer {
   }
 
   // ─── 后台合成单段并加入 queue（队列长度保持 >= 2 段，零停顿切段）────
-  private async synthesizeAndEnqueueParagraph(
+  // 同一段只保留一个 in-flight Promise:预取与队列播空续播并发时不会重复合成/重复入队
+  private synthesizeAndEnqueueParagraph(
     paragraphs: Paragraph[],
     idx: number
   ): Promise<void> {
     if (idx >= paragraphs.length) {
-      return;
+      return Promise.resolve();
     }
-    const para: Paragraph = paragraphs[idx];
-    const baseId: string = `p_${para.index}`;
-    // 已在 cache → 直接用
-    if (this.prefetchedCache.has(baseId) && this.queueHasParagraph(idx)) {
+    const running: Promise<void> | undefined = this.enqueueTasks.get(idx);
+    if (running) {
+      return running;
+    }
+    const task: Promise<void> = this.doSynthesizeAndEnqueue(paragraphs, idx);
+    this.enqueueTasks.set(idx, task);
+    void task.then(
+      (): void => { this.enqueueTasks.delete(idx); },
+      (): void => { this.enqueueTasks.delete(idx); }
+    );
+    return task;
+  }
+
+  private async doSynthesizeAndEnqueue(paragraphs: Paragraph[], idx: number): Promise<void> {
+    if (idx >= paragraphs.length || this.queueHasParagraph(idx)) {
       return;
     }
     try {
@@ -231,10 +389,11 @@ export class TTSPlayer {
       if (uris.length === 0) {
         return;
       }
-      // 把新合成的 chunks 加入 queue 尾部，记录 paragraphChunkStart
+      // 把新合成的 chunks 加入 queue 尾部，记录绝对段落索引
       const startQueueIdx: number = this.queue.length;
       this.queue = this.queue.concat(uris);
       this.paragraphChunkStart = this.paragraphChunkStart.concat([startQueueIdx]);
+      this.paragraphChunkIndices = this.paragraphChunkIndices.concat([idx]);
     } catch {
       // 静默失败：切段时会再触发一次合成
     }
@@ -242,18 +401,18 @@ export class TTSPlayer {
 
   // ─── 检查 queue 是否已包含某段（避免重复合成）───────────────────────
   private queueHasParagraph(idx: number): boolean {
-    return idx < this.paragraphChunkStart.length;
+    return this.paragraphChunkIndices.some((v: number): boolean => v === idx);
   }
 
-  // ─── 根据 queueIndex 反查段落索引 ────────────────────────────────────
+  // ─── 根据 queueIndex 反查绝对段落索引 ────────────────────────────────
   private findParagraphIndexByQueueIndex(qIdx: number): number {
     // paragraphChunkStart 是每段第一个 chunk 的 queue 起始索引，倒序找最后一个 <= qIdx 的
     for (let i: number = this.paragraphChunkStart.length - 1; i >= 0; i--) {
       if (this.paragraphChunkStart[i] <= qIdx) {
-        return i;
+        return this.paragraphChunkIndices[i];
       }
     }
-    return 0;
+    return this.currentParagraphIndex;
   }
 
   // ─── 播放队列中指定项（内部复用 AVPlayer，切 url 重新 prepare）────────
@@ -285,7 +444,8 @@ export class TTSPlayer {
     startOffsetMs: number = 0,
     bookTitle: string = '',
     chapterTitle: string = '',
-    coverUrl: string = ''
+    coverUrl: string = '',
+    chapterIndex: number = -1
   ): Promise<boolean> {
     if (idx < 0 || idx >= paragraphs.length) {
       this.setState(TTSPlayerState.IDLE);
@@ -294,15 +454,21 @@ export class TTSPlayer {
     this.setState(TTSPlayerState.LOADING);
     this.currentParagraphIndex = idx;
     this.positionMs = startOffsetMs;
+    this.pendingSeekMs = Math.max(0, startOffsetMs);
     // 记录书籍信息（MiniPlayer 显示用 + handleCompleted 续队用）
     this.currentBookId = bookId;
     this.currentProvider = provider;
     this.currentVoiceId = voiceId;
     this.bookTitle = bookTitle;
+    this.currentChapterIndex = chapterIndex;
     this.chapterTitle = chapterTitle;
     this.coverUrl = coverUrl;
     this.totalParagraphs = paragraphs.length;
     this.currentParagraphs = paragraphs;
+    const session: avSession.AVSession | null = this.mediaSession;
+    if (session) {
+      void session.setAVMetadata(this.buildAVMetadata()).catch((): void => {});
+    }
 
     try {
       // 1. 合成当前段所有 chunk（必须有，才能播放）
@@ -315,6 +481,7 @@ export class TTSPlayer {
       // 2. 立即构建当前段队列并开始播放（不等下一段）
       this.queue = uris;
       this.paragraphChunkStart = [0];
+      this.paragraphChunkIndices = [idx];
       this.queueIndex = 0;
       await this.playQueueItem(0);
 
@@ -440,12 +607,16 @@ export class TTSPlayer {
     this.queue = [];
     this.queueIndex = 0;
     this.paragraphChunkStart = [];
+    this.paragraphChunkIndices = [];
+    this.enqueueTasks.clear();
     this.positionMs = 0;
     this.durationMs = 0;
+    this.pendingSeekMs = 0;
     this.currentBookId = '';
     this.currentProvider = '';
     this.currentVoiceId = '';
     this.bookTitle = '';
+    this.currentChapterIndex = -1;
     this.chapterTitle = '';
     this.coverUrl = '';
     this.totalParagraphs = 0;
@@ -527,6 +698,12 @@ export class TTSPlayer {
   // ─── 状态变更通知 ────────────────────────────────────────────────────
   private setState(s: TTSPlayerState, errorMsg?: string): void {
     this.state = s;
+    if (s === TTSPlayerState.PLAYING) {
+      this.startBackgroundTask();
+    } else if (s === TTSPlayerState.PAUSED || s === TTSPlayerState.IDLE || s === TTSPlayerState.ERROR) {
+      this.stopBackgroundTask();
+    }
+    this.updateMediaSessionState();
     this.onStateChange?.(s, errorMsg);
   }
 
@@ -549,15 +726,19 @@ export class TTSPlayer {
     this.queue = [];
     this.queueIndex = 0;
     this.paragraphChunkStart = [];
+    this.paragraphChunkIndices = [];
+    this.enqueueTasks.clear();
     this.prefetchedCache.clear();
     this.currentBookId = '';
     this.currentProvider = '';
     this.currentVoiceId = '';
     this.bookTitle = '';
+    this.currentChapterIndex = -1;
     this.chapterTitle = '';
     this.coverUrl = '';
     this.totalParagraphs = 0;
     this.currentParagraphs = [];
+    this.stopBackgroundTask();
     this.state = TTSPlayerState.IDLE;
   }
 

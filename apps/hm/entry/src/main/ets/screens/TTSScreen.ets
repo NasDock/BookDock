@@ -29,9 +29,11 @@ import {
   TtsProgressRecord,
   TtsProgressPayload,
   TtsProvidersResponse,
+  TtsLocalPrefs,
   BookLastReadPayload
 } from '../model/ApiModels';
 import { getApiClient } from '../network/ApiClient';
+import { PreferencesStore, PrefKey } from '../utils/PreferencesStore';
 import { ThemeStore, Theme, spacing, fontSizes, borderRadius } from '../theme/Theme';
 import { AppIcon, AppIconKind } from '../components/AppIcon';
 import { popRoute, pushRoute, RouteName, BookParams } from '../router/AppRouter';
@@ -73,6 +75,9 @@ function formatVoiceName(voice: TTSVoice): string {
   return name;
 }
 
+// 默认朗读音色:中文·云扬(Edge TTS ShortName = zh-CN-YunyangNeural)
+const DEFAULT_TTS_VOICE_ID: string = 'zh-CN-YunyangNeural';
+
 // ─── 倍速档位(对齐 mobile [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0])──────────
 const SPEED_OPTIONS: number[] = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
 
@@ -104,11 +109,14 @@ export struct TTSScreen {
   @State private chapterIndex: number = 0;
   @State private chapterTitle: string = '';
   @State private paragraphs: Paragraph[] = [];
-  @State private currentParagraph: number = 0;
+  // @Watch:播放切段 / 手动跳段 / 恢复进度时,段落列表跟随当前段居中
+  @State @Watch('onCurrentParagraphChange') private currentParagraph: number = 0;
   @State private providers: TTSProvider[] = [];
   @State private voices: TTSVoice[] = [];
   @State private provider: string = 'edge';
   @State private voiceId: string = '';
+  // 本地 TTS 偏好(跨书籍/章节保留音色),对齐 mobile ttsStore 的持久化行为
+  private localPrefs: TtsLocalPrefs = {};
 
   // ─── UI 状态 ──────────────────────────────────────────────────
   @State private isLoading: boolean = true;
@@ -124,6 +132,10 @@ export struct TTSScreen {
 
   // ─── 恢复播放偏移(对齐 mobile resumeOffsetMs)───────────────────────
   private resumeOffsetMs: number = 0;
+
+  // ─── 段落列表滚动(对齐 mobile flatListRef + scrollToIndex viewPosition 0.5)──
+  private paragraphScroller: ListScroller = new ListScroller();
+  private paragraphScrollTimerId: number = -1;
 
   // ─── Sheet 显隐(5 个,对齐 mobile)───────────────────────────────
   @State private showSpeedPicker: boolean = false;
@@ -177,8 +189,17 @@ export struct TTSScreen {
   aboutToDisappear(): void {
     this.unsubscribeTheme?.();
     this.clearSleepTimer();
-    // 页面销毁时停止播放并释放 AVPlayer 资源
-    void TTSPlayer.shared().release();
+    this.clearParagraphScrollTimer();
+    // 对齐 mobile beforeRemove:离开听书页时落库当前段落 + 段内偏移,
+    // 否则听到一半直接返回书籍详情页,下次只能从上次切段时保存的位置(可能还是第一段)续播。
+    if (this.book.id && this.paragraphs.length > 0) {
+      const player: TTSPlayer = TTSPlayer.shared();
+      const exitOffsetMs: number = player.currentBookId === this.book.id ? Math.max(0, player.positionMs) : 0;
+      void this.persistProgress(this.currentParagraph, exitOffsetMs);
+    }
+    // 不 release TTSPlayer:全局 mini 播放器的显隐依赖单例的 currentBookId/state,
+    // release 会清空它们导致返回书籍详情页后 mini 消失且播放中断。
+    // 对齐 mobile:离开听书页只落库进度,全局播放器(TrackPlayer/AVPlayer)继续存活。
     // 退出全屏(对齐 ReaderScreen exitImmersive)
     if (this.mainWindow && this.prevFullScreen) {
       try {
@@ -199,6 +220,57 @@ export struct TTSScreen {
     this.themeBorder = t.colors.border;
     this.themePrimary = t.colors.primary;
     this.themeError = t.colors.error;
+  }
+
+  // ─── TTS 本地偏好(音色/provider/倍速)────────────────────────────────
+  // 对齐 mobile ttsStore persist:'bookdock-tts' 的 selectedProvider/selectedVoice/playbackRate。
+  // hm 用 PrefKey.TTS_PREFS 同一份 JSON,避免每次进入听书页被 voices[0] 或章节进度覆盖。
+  private async loadLocalPrefs(): Promise<void> {
+    try {
+      const empty: TtsLocalPrefs = {};
+      const prefs: TtsLocalPrefs = await PreferencesStore.readObject<TtsLocalPrefs>(PrefKey.TTS_PREFS, empty);
+      this.localPrefs = prefs;
+      if (prefs.provider) {
+        this.provider = prefs.provider;
+      }
+      if (prefs.voiceId) {
+        this.voiceId = prefs.voiceId;
+      }
+      if (prefs.playbackRate !== undefined) {
+        this.playbackRate = prefs.playbackRate;
+      }
+    } catch {
+      this.localPrefs = {};
+    }
+  }
+
+  private async saveLocalPrefs(): Promise<void> {
+    try {
+      const prefs: TtsLocalPrefs = {
+        provider: this.provider,
+        voiceId: this.voiceId,
+        playbackRate: this.playbackRate
+      };
+      this.localPrefs = prefs;
+      await PreferencesStore.writeObject<TtsLocalPrefs>(PrefKey.TTS_PREFS, prefs);
+    } catch {
+      // 持久化失败不影响播放
+    }
+  }
+
+  // 无已选音色时优先中文·云扬,其次任意中文音色,最后才退回列表第一项
+  private preferredVoiceId(): string {
+    if (this.voices.length === 0) {
+      return DEFAULT_TTS_VOICE_ID;
+    }
+    const yunyang: TTSVoice | undefined = this.voices.find(
+      (v: TTSVoice): boolean => v.id === DEFAULT_TTS_VOICE_ID);
+    if (yunyang) {
+      return yunyang.id;
+    }
+    const chinese: TTSVoice | undefined = this.voices.find(
+      (v: TTSVoice): boolean => (v.language || '').toLowerCase().startsWith('zh'));
+    return chinese ? chinese.id : this.voices[0].id;
   }
 
   // ─── 取"上次听书位置":全书所有章节里 updatedAt 最新的一条进度 ──────
@@ -240,6 +312,8 @@ export struct TTSScreen {
     this.isLoading = true;
     this.loadError = null;
     try {
+      // 先读本地音色偏好,再拉服务商/音色列表;否则会被列表首项覆盖
+      await this.loadLocalPrefs();
       const api = getApiClient();
 
       // Providers(对齐 mobile getTtsProviders)
@@ -258,8 +332,12 @@ export struct TTSScreen {
       const vRes: ApiResponse<TTSVoice[]> = await api.getVoices(this.provider);
       if (vRes.success && vRes.data) {
         this.voices = vRes.data;
-        if (!this.voiceId && this.voices.length > 0) {
-          this.voiceId = this.voices[0].id;
+        const valid: boolean = this.voices.some((v: TTSVoice): boolean => v.id === this.voiceId);
+        if (!valid) {
+          // 没有本地偏好(或偏好音色不在当前服务商列表)时使用中文·云扬
+          this.voiceId = this.preferredVoiceId();
+          this.localPrefs.voiceId = this.voiceId;
+          void this.saveLocalPrefs();
         }
       }
 
@@ -273,6 +351,25 @@ export struct TTSScreen {
       this.chapters = chRes.data;
 
       // ── 决定听书起点 ──────────────────────────────────────────────
+      // mini 展开 / 从其它页返回时:若全局播放器正在播同一本书,直接接续其真实状态。
+      // 不从服务端旧进度恢复(否则回到第一章第一节),也不重新 playParagraph(否则打断后台音频)。
+      const player: TTSPlayer = TTSPlayer.shared();
+      const liveBookId: string = player.currentBookId;
+      const isLiveSameBook: boolean = liveBookId === this.book.id &&
+        (player.state === TTSPlayerState.PLAYING || player.state === TTSPlayerState.PAUSED);
+      if (isLiveSameBook) {
+        const liveChapter: number = player.currentChapterIndex;
+        await this.loadChapter(liveChapter >= 0 ? liveChapter : 0, true, false);
+        // 播放器段落索引优先(后台已播到第 N 段),不让云端进度覆盖
+        const livePara: number = player.getCurrentParagraphIndex();
+        if (livePara >= 0 && livePara < this.paragraphs.length) {
+          this.currentParagraph = livePara;
+        }
+        this.isPlaying = player.state === TTSPlayerState.PLAYING;
+        this.registerPlayerCallbacks();
+        return;
+      }
+
       // 上次听书位置(全书最新一条进度),用于详情页续听 / 阅读页同章判断
       const lastRec: TtsProgressRecord | null = await this.fetchLastTtsProgress(this.book.id);
       let startChapter: number = 0;
@@ -348,15 +445,9 @@ export struct TTSScreen {
           await api.getTtsProgress(this.book.id, effectiveCi);
         if (prog.success && prog.data && !Array.isArray(prog.data)) {
           const rec: TtsProgressRecord = prog.data as TtsProgressRecord;
-          const savedProvider: string = rec.provider ?? rec.currentProvider ?? '';
-          const savedVoice: string = rec.voice ?? rec.currentVoice ?? '';
-          if (savedProvider) {
-            this.provider = savedProvider;
-          }
-          if (savedVoice) {
-            this.voiceId = savedVoice;
-          }
-          if (rec.currentRate) {
+          // 音色/provider 只认本地偏好(默认云扬),不再用章节进度覆盖:
+          // 章节级记录缺失或换书/换章时会把用户选过的音色打回 voices[0]。
+          if (rec.currentRate && this.localPrefs.playbackRate === undefined) {
             this.playbackRate = rec.currentRate;
           }
           if (resume) {
@@ -397,21 +488,11 @@ export struct TTSScreen {
     await this.playParagraph(this.currentParagraph);
   }
 
-  // ─── 播放指定段落(对齐 mobile playParagraph)────────────────────────
-  private async playParagraph(idx: number): Promise<void> {
-    if (idx < 0 || idx >= this.paragraphs.length) {
-      this.currentParagraph = 0;
-      this.isPlaying = false;
-      return;
-    }
-    this.currentParagraph = idx;
-    const startOffset: number = this.resumeOffsetMs;
-    this.resumeOffsetMs = 0;
+  // ─── 注册播放器回调(新播 / mini 展开接续共用)─────────────────────
+  private registerPlayerCallbacks(): void {
     const player: TTSPlayer = TTSPlayer.shared();
-    // 注册回调(每次播放前重新注册，防止闭包旧值)
     player.onProgressUpdate = (positionMs: number, durationMs: number): void => {
-      // paragraphProgress = 当前段内播放进度 / 段总时长(用于 persistProgress 第二参数)
-      // 简化:直接用 positionMs 作为 positionMs 持久化
+      // 段内进度由 TTSPlayer.positionMs 维护,退出时落库;这里仅保留扩展点
     };
     player.onParagraphChange = (newIndex: number): void => {
       // AVPlayer 播完当前段自动切下一段时回调
@@ -433,6 +514,21 @@ export struct TTSScreen {
         promptAction.showToast({ message: errorMsg ?? '播放出错', duration: 2000 });
       }
     };
+  }
+
+  // ─── 播放指定段落(对齐 mobile playParagraph)────────────────────────
+  private async playParagraph(idx: number): Promise<void> {
+    if (idx < 0 || idx >= this.paragraphs.length) {
+      this.currentParagraph = 0;
+      this.isPlaying = false;
+      return;
+    }
+    this.currentParagraph = idx;
+    const startOffset: number = this.resumeOffsetMs;
+    this.resumeOffsetMs = 0;
+    const player: TTSPlayer = TTSPlayer.shared();
+    // 注册回调(每次播放前重新注册，防止闭包旧值)
+    this.registerPlayerCallbacks();
 
     const ok: boolean = await player.playParagraphs(
       this.paragraphs,
@@ -443,7 +539,8 @@ export struct TTSScreen {
       startOffset,
       this.book.title ?? '',
       this.chapterTitle,
-      this.book.coverUrl ?? ''
+      this.book.coverUrl ?? '',
+      this.chapterIndex
     );
     if (!ok) {
       this.isPlaying = false;
@@ -494,6 +591,8 @@ export struct TTSScreen {
   private async handleRateChange(r: number): Promise<void> {
     this.playbackRate = Math.max(0.5, Math.min(2.0, r));
     this.showSpeedPicker = false;
+    // 与 mobile ttsStore 一致,倍速也进本地偏好(TTS_PREFS.playbackRate)
+    void this.saveLocalPrefs();
     // 同步到播放器(对齐 mobile TrackPlayer.setRate)
     await TTSPlayer.shared().setPlaybackSpeed(this.playbackRate);
   }
@@ -539,14 +638,16 @@ export struct TTSScreen {
     }
     try {
       const api = getApiClient();
+      // 字段名对齐服务端 SaveTtsProgressDto(voice/provider/totalParagraphs)。
+      // 旧版用 currentProvider/currentVoice/currentRate,被 forbidNonWhitelisted 拒绝导致进度从未落库。
       const ttsPayload: TtsProgressPayload = {
         bookId: this.book.id,
         chapterIndex: this.chapterIndex,
         paragraphIndex: idx,
         audioOffsetMs: positionMs,
-        currentProvider: this.provider,
-        currentVoice: this.voiceId,
-        currentRate: this.playbackRate
+        voice: this.voiceId,
+        provider: this.provider,
+        totalParagraphs: this.paragraphs.length
       };
       const lastReadPayload: BookLastReadPayload = {
         bookId: this.book.id,
@@ -566,6 +667,37 @@ export struct TTSScreen {
   // ─── 视图切换(对齐 mobile toggleViewMode)─────────────────────────
   private toggleViewMode(): void {
     this.viewMode = this.viewMode === 'controls' ? 'content' : 'controls';
+  }
+
+  // ─── 段落列表滚动:当前段居中(对齐 mobile scrollToIndex viewPosition 0.5)──
+  private clearParagraphScrollTimer(): void {
+    if (this.paragraphScrollTimerId >= 0) {
+      clearTimeout(this.paragraphScrollTimerId);
+      this.paragraphScrollTimerId = -1;
+    }
+  }
+
+  private scrollToCurrentParagraph(smooth: boolean, delayMs: number): void {
+    this.clearParagraphScrollTimer();
+    // 列表只在 content 视图挂载;controls / 加载中时无需滚动
+    if (this.viewMode !== 'content' || this.paragraphs.length === 0 ||
+      this.currentParagraph < 0 || this.currentParagraph >= this.paragraphs.length) {
+      return;
+    }
+    // 等列表布局完成后再滚,否则 scrollToIndex 拿不到正确的 item 高度
+    this.paragraphScrollTimerId = setTimeout((): void => {
+      this.paragraphScrollTimerId = -1;
+      try {
+        this.paragraphScroller.scrollToIndex(this.currentParagraph, smooth, ScrollAlign.CENTER);
+      } catch {
+        // 列表尚未布局完成时忽略,下次段落变化会再滚
+      }
+    }, delayMs);
+  }
+
+  // 播放切段 / 手动跳段 / 进度恢复时:平滑跟随当前段(mobile 100ms effect)
+  private onCurrentParagraphChange(): void {
+    this.scrollToCurrentParagraph(true, 100);
   }
 
   // ─── 跳阅读器(对齐 mobile handleReadBook)─────────────────────────
@@ -982,7 +1114,7 @@ export struct TTSScreen {
   private ContentView() {
     Column() {
       // 段落列表(对齐 mobile renderParagraphList)
-      List() {
+      List({ scroller: this.paragraphScroller }) {
         ForEach(this.paragraphs, (item: Paragraph, index: number) => {
           ListItem() {
             Column() {
@@ -1022,6 +1154,10 @@ export struct TTSScreen {
       .layoutWeight(1)
       .padding(spacing.md)
       .scrollBar(BarState.Off)
+      .onAppear((): void => {
+        // 进入朗读文本页:当前段立即居中(对齐 mobile 300ms initial effect)
+        this.scrollToCurrentParagraph(false, 300);
+      })
 
       this.BottomBar()
     }
@@ -1318,6 +1454,7 @@ export struct TTSScreen {
                   .onClick((): void => {
                     if (p.enabled) {
                       this.provider = p.name;
+                      void this.saveLocalPrefs();
                       // Reload voices for new provider
                       void this.reloadVoices();
                     }
@@ -1370,6 +1507,8 @@ export struct TTSScreen {
                   .alignItems(VerticalAlign.Center)
                   .onClick((): void => {
                     this.voiceId = v.id;
+                    // 立即持久化,下次进入听书页/换章不再回退到默认音色
+                    void this.saveLocalPrefs();
                   })
                 },
                 (v: TTSVoice): string => v.id
@@ -1402,8 +1541,9 @@ export struct TTSScreen {
       if (vRes.success && vRes.data) {
         this.voices = vRes.data;
         const found: boolean = this.voices.some((v: TTSVoice) => v.id === this.voiceId);
-        if (!found && this.voices.length > 0) {
-          this.voiceId = this.voices[0].id;
+        if (!found) {
+          this.voiceId = this.preferredVoiceId();
+          void this.saveLocalPrefs();
         }
       }
     } catch {

@@ -39,7 +39,7 @@ export struct MemberLoginScreen {
 
   // 协议链接(对齐 mobile 组件内 URL 常量)
   private readonly PRIVACY_POLICY_URL: string = 'https://www.audiodock.cn/book/docs/privacy-policy/?preview=true';
-  private readonly USER_AGREEMENT_URL: string = 'http://audiodock.cn/book/docs/user-agreement/?preview=true';
+  private readonly USER_AGREEMENT_URL: string = 'https://www.audiodock.cn/book/docs/user-agreement/?preview=true';
 
   // ─── 打开外部协议链接(对齐 mobile Linking.openURL)──────────────────────
   private openUrl(url: string): void {

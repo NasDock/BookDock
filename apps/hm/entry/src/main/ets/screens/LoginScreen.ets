@@ -119,7 +119,7 @@ export struct LoginScreen {
 
   // 协议链接(与 MemberLoginScreen / mobile 保持同一组 URL)
   private readonly PRIVACY_POLICY_URL: string = 'https://www.audiodock.cn/book/docs/privacy-policy/?preview=true';
-  private readonly USER_AGREEMENT_URL: string = 'http://audiodock.cn/book/docs/user-agreement/?preview=true';
+  private readonly USER_AGREEMENT_URL: string = 'https://www.audiodock.cn/book/docs/user-agreement/?preview=true';
 
   // ─── 打开外部协议链接(对齐 MemberLoginScreen.openUrl)────────────────────
   private openUrl(url: string): void {
@@ -742,6 +742,7 @@ export struct LoginScreen {
       .width('100%')
       .margin({ top: spacing.sm })
       .alignItems(VerticalAlign.Center)
+      .justifyContent(FlexAlign.Center)
     }
     .width('100%')
     .alignItems(HorizontalAlign.Start)

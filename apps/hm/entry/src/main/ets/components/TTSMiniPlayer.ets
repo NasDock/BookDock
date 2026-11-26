@@ -30,6 +30,12 @@ export struct TTSMiniPlayer {
   private player: TTSPlayer = TTSPlayer.shared();
   private stateUnsub: (() => void) | null = null;
   private progressUnsub: (() => void) | null = null;
+  private paraUnsub: (() => void) | null = null;
+  // 自己设置的回调引用:仅当当前回调仍是自己时才恢复,
+  // 避免展开听书页后 TTSScreen 重新注册回调被误恢复成旧值。
+  private myStateCb: ((state: TTSPlayerState, errorMsg?: string) => void) | null = null;
+  private myProgressCb: ((positionMs: number, durationMs: number) => void) | null = null;
+  private myParaCb: ((newIndex: number) => void) | null = null;
 
   private unsubscribeTheme: (() => void) | null = null;
 
@@ -72,38 +78,52 @@ export struct TTSMiniPlayer {
   private subscribePlayer(): void {
     // 保存旧回调（TTSScreen 可能已注册），链式调用
     const prevStateCb = this.player.onStateChange;
-    this.player.onStateChange = (state: TTSPlayerState, errorMsg?: string): void => {
+    this.myStateCb = (state: TTSPlayerState, errorMsg?: string): void => {
       this.isPlaying = state === TTSPlayerState.PLAYING;
       prevStateCb?.(state, errorMsg);
     };
+    this.player.onStateChange = this.myStateCb;
 
     const prevProgressCb = this.player.onProgressUpdate;
-    this.player.onProgressUpdate = (positionMs: number, durationMs: number): void => {
+    this.myProgressCb = (positionMs: number, durationMs: number): void => {
       this.positionMs = positionMs;
       this.durationMs = durationMs;
       prevProgressCb?.(positionMs, durationMs);
     };
+    this.player.onProgressUpdate = this.myProgressCb;
 
     const prevParaCb = this.player.onParagraphChange;
-    this.player.onParagraphChange = (newIndex: number): void => {
+    this.myParaCb = (newIndex: number): void => {
       this.currentParagraph = newIndex;
       prevParaCb?.(newIndex);
     };
+    this.player.onParagraphChange = this.myParaCb;
 
-    // 记录取消函数（恢复旧回调）
+    // 记录取消函数（仅当仍是自己设置的回调时才恢复,避免覆盖 TTSScreen 新注册的回调）
     this.stateUnsub = (): void => {
-      this.player.onStateChange = prevStateCb;
+      if (this.player.onStateChange === this.myStateCb) {
+        this.player.onStateChange = prevStateCb;
+      }
     };
     this.progressUnsub = (): void => {
-      this.player.onProgressUpdate = prevProgressCb;
+      if (this.player.onProgressUpdate === this.myProgressCb) {
+        this.player.onProgressUpdate = prevProgressCb;
+      }
+    };
+    this.paraUnsub = (): void => {
+      if (this.player.onParagraphChange === this.myParaCb) {
+        this.player.onParagraphChange = prevParaCb;
+      }
     };
   }
 
   private unsubscribePlayer(): void {
     this.stateUnsub?.();
     this.progressUnsub?.();
+    this.paraUnsub?.();
     this.stateUnsub = null;
     this.progressUnsub = null;
+    this.paraUnsub = null;
   }
 
   // ─── 整体进度（对齐 mobile overallProgress）───────────────────────────
@@ -153,10 +173,13 @@ export struct TTSMiniPlayer {
   build() {
     Column() {
       // ─── 顶部进度条（对齐 mobile progressBar）─────────────────────────
+      // Column 默认 alignItems=Center 会让百分比宽度的 Row 从中间向两边扩,
+      // 必须左对齐才从左往右走。
       Row()
         .width(`${this.overallProgress() * 100}%`)
         .height(2)
         .backgroundColor(this.themePrimary)
+        .alignSelf(ItemAlign.Start)
 
       // ─── 主体内容 ────────────────────────────────────────────────────
       Row() {

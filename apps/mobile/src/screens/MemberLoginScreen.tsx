@@ -41,7 +41,7 @@ export function MemberLoginScreen({ navigation }: MemberLoginScreenProps) {
   const [agreed, setAgreed] = useState(false);
 
   const PRIVACY_POLICY_URL = 'https://www.audiodock.cn/book/docs/privacy-policy/?preview=true';
-  const USER_AGREEMENT_URL = 'http://audiodock.cn/book/docs/user-agreement/?preview=true';
+  const USER_AGREEMENT_URL = 'https://www.audiodock.cn/book/docs/user-agreement/?preview=true';
 
   // Countdown timer
   useEffect(() => {

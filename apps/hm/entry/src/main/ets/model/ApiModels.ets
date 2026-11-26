@@ -193,17 +193,17 @@ export interface SynthesizeParagraphResult {
   cached?: boolean;
 }
 
+// 对齐服务端 SaveTtsProgressDto:服务端开启 forbidNonWhitelisted,
+// 多传 currentProvider/currentVoice/currentRate 等字段会直接 400,进度保存全部失败。
 export interface TtsProgressPayload {
   bookId: string;
   chapterIndex: number;
   paragraphIndex?: number;
+  charOffset?: number;
   audioOffsetMs?: number;
-  totalDurationSecs?: number;
-  currentProvider?: string;
-  currentVoice?: string;
-  currentRate?: number;
-  status?: string;
-  updatedAt?: string;
+  voice?: string;
+  provider?: string;
+  totalParagraphs?: number;
 }
 
 export interface TtsProgressRecord {
@@ -221,6 +221,14 @@ export interface TtsProgressRecord {
   currentRate?: number;
   status?: string;
   updatedAt?: string;
+}
+
+// TTS 本地偏好(对齐 mobile zustand persist 的 selectedProvider/selectedVoice/playbackRate)
+// 存于 PrefKey.TTS_PREFS,作为跨书籍/跨章节的音色真源,章节进度不再覆盖音色选择。
+export interface TtsLocalPrefs {
+  provider?: string;
+  voiceId?: string;
+  playbackRate?: number;
 }
 
 export interface BookLastReadPayload {
